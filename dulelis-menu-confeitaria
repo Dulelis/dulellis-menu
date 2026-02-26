@@ -1,0 +1,2 @@
+git remote set-url origin https://github.com/Dulelis/dulellis-menu.git
+git push -u origin main
