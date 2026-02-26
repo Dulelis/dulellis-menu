@@ -1,2 +1,6 @@
-git remote set-url origin https://github.com/Dulelis/dulellis-menu.git
+git init
+git add .
+git commit -m "primeiro deploy"
+git branch -M main
+git remote add origin https://github.com/Dulelis/dulellis-menu.git
 git push -u origin main
