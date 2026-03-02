@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+@keyframes gentleBlink {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.88;
+    transform: translateY(-1px);
+  }
+}
+
+.gentle-blink {
+  animation: gentleBlink 2.8s ease-in-out infinite;
+}

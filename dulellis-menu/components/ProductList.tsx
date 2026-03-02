@@ -22,7 +22,7 @@ export default function ProductList({ onAdicionar }: ProductListProps) {
           setProdutos(data || [])
         }
       } catch (err) {
-        console.error('Erro de conexão:', err)
+        console.error('Erro de conex\u00E3o:', err)
       } finally {
         setCarregando(false)
       }
@@ -41,10 +41,10 @@ export default function ProductList({ onAdicionar }: ProductListProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
       {produtos.length === 0 ? (
-        <p className="text-center col-span-full text-gray-400">Nenhum doce encontrado no cardápio.</p>
+        <p className="text-center col-span-full text-gray-400">Nenhum doce encontrado no card\u00E1pio.</p>
       ) : (
         produtos.map((item: any, index: number) => {
-          // LÓGICA DE DETECÇÃO AUTOMÁTICA DE PREÇO
+          // LOGICA DE DETECCAO AUTOMATICA DE PRECO
           // Ele tenta encontrar o valor em qualquer uma dessas colunas:
           const precoEncontrado = item.preco ?? item.valor ?? item.Preco ?? item.Valor ?? 0;
 
@@ -68,7 +68,7 @@ export default function ProductList({ onAdicionar }: ProductListProps) {
               
               <div className="flex justify-between items-center mt-6">
                 <div className="flex flex-col">
-                  <span className="text-xs text-gray-400 font-bold uppercase">Preço</span>
+                  <span className="text-xs text-gray-400 font-bold uppercase">Pre\u00E7o</span>
                   <span className="text-2xl font-black text-pink-600">
                     R$ {Number(precoEncontrado).toFixed(2).replace('.', ',')}
                   </span>

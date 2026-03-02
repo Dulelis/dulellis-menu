@@ -4,9 +4,11 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import {
+  AlertTriangle,
   ArrowLeft,
   Bike,
   CheckCircle2,
+  Clock3,
   ChevronRight,
   Hash,
   Loader2,
@@ -24,9 +26,20 @@ const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
 const CIDADE_ATENDIDA = "Navegantes";
 const CATEGORIAS = ["Todos", "Doces", "Bolos", "Salgados", "Bebidas"];
-const FORMAS_PAGAMENTO = ["Pix", "Dinheiro", "Cartao de Debito", "Cartao de Credito"];
-const CHAVE_PIX = "47988347100";
-const FORMAS_CARTAO = ["Cartao de Debito", "Cartao de Credito"];
+const ORDEM_VITRINE_CATEGORIAS = ["Bolos", "Doces", "Salgados", "Bebidas"];
+const DIAS_SEMANA_CHAVES = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"] as const;
+const DIAS_SEMANA_LABELS: Record<(typeof DIAS_SEMANA_CHAVES)[number], string> = {
+  domingo: "Domingo",
+  segunda: "Segunda",
+  terca: "Terca",
+  quarta: "Quarta",
+  quinta: "Quinta",
+  sexta: "Sexta",
+  sabado: "Sabado",
+};
+const FORMAS_PAGAMENTO = ["Pix", "Dinheiro", "Cartao na Entrega"];
+const CHAVE_PIX = "fa91d87d-289a-46b1-8e06-0c13ca292325";
+const VITRINE_MODAL_SLIDE_MS = 6000;
 
 type Cliente = {
   nome: string;
@@ -36,7 +49,7 @@ type Cliente = {
   numero: string;
   bairro: string;
   cidade: string;
-  observacao: string;
+  ponto_referencia: string;
   data_aniversario: string;
 };
 
@@ -50,6 +63,7 @@ type ClienteRow = Partial<Cliente> & {
 type Produto = {
   id: number;
   nome: string;
+  descricao?: string | null;
   categoria: string;
   preco: number;
   quantidade: number;
@@ -63,6 +77,44 @@ type ItemCarrinho = Produto & {
 type TaxaEntregaRow = {
   bairro: string;
   taxa: number | string;
+};
+
+type Promocao = {
+  id: number;
+  titulo?: string | null;
+  descricao?: string | null;
+  produto_id?: number | null;
+  tipo?: string | null;
+  valor_promocional?: number | string | null;
+  preco_promocional?: number | string | null;
+  qtd_minima?: number | null;
+  qtd_bonus?: number | null;
+  valor_minimo_pedido?: number | null;
+  data_inicio?: string | null;
+  data_fim?: string | null;
+  ativa?: boolean | null;
+};
+
+type Propaganda = {
+  id: number;
+  titulo?: string | null;
+  descricao?: string | null;
+  imagem_url?: string | null;
+  botao_texto?: string | null;
+  botao_link?: string | null;
+  ordem?: number | null;
+  data_inicio?: string | null;
+  data_fim?: string | null;
+  ativa?: boolean | null;
+  created_at?: string | null;
+};
+
+type HorarioFuncionamentoRow = {
+  id?: number;
+  hora_abertura?: string | null;
+  hora_fechamento?: string | null;
+  ativo?: boolean | null;
+  dias_semana?: string[] | null;
 };
 
 type CepApiResponse = {
@@ -81,7 +133,7 @@ const CLIENTE_INICIAL: Cliente = {
   numero: "",
   bairro: "",
   cidade: DEFAULT_CITY,
-  observacao: "",
+  ponto_referencia: "",
   data_aniversario: "",
 };
 
@@ -111,12 +163,167 @@ function calcularDistanciaKm(lat: number, lng: number) {
   return R * c * DISTANCE_MULTIPLIER;
 }
 
+function obterMensagemErro(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const erroObj = error as { message?: unknown; error_description?: unknown; details?: unknown };
+    const message =
+      (typeof erroObj.message === "string" && erroObj.message) ||
+      (typeof erroObj.error_description === "string" && erroObj.error_description) ||
+      (typeof erroObj.details === "string" && erroObj.details) ||
+      "";
+    if (message) return message;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+function erroDePontoReferencia(error: unknown) {
+  return obterMensagemErro(error).toLowerCase().includes("ponto_referencia");
+}
+
+function montarEnderecoComReferencia(endereco: string, pontoReferencia: string) {
+  const enderecoBase = String(endereco || "").trim();
+  const referencia = String(pontoReferencia || "").trim();
+  if (!referencia) return enderecoBase;
+  if (enderecoBase.toLowerCase().includes("ponto de referencia:")) return enderecoBase;
+  return `${enderecoBase} - Ponto de referencia: ${referencia}`;
+}
+
+function extrairPontoReferenciaDeEndereco(endereco: string) {
+  const texto = String(endereco || "");
+  const marcador = "ponto de referencia:";
+  const idx = texto.toLowerCase().indexOf(marcador);
+  if (idx < 0) return "";
+  return texto.slice(idx + marcador.length).trim();
+}
+
+function limparEnderecoDePontoReferencia(endereco: string) {
+  const texto = String(endereco || "");
+  const marcador = "ponto de referencia:";
+  const idx = texto.toLowerCase().indexOf(marcador);
+  if (idx < 0) return texto;
+  return texto.slice(0, idx).replace(/\-\s*$/g, "").trim();
+}
+
+function dataHojeISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function normalizarHoraHHMM(hora?: string | null) {
+  const texto = String(hora || "").trim();
+  const match = texto.match(/^(\d{2}):(\d{2})/);
+  if (!match) return "";
+  return `${match[1]}:${match[2]}`;
+}
+
+function horaParaMinutos(horaHHMM: string) {
+  const [h, m] = horaHHMM.split(":").map((parte) => Number(parte));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
+  return h * 60 + m;
+}
+
+function obterIntervaloFuncionamento(agora: Date, aberturaHHMM: string, fechamentoHHMM: string) {
+  const [abH, abM] = aberturaHHMM.split(":").map((v) => Number(v));
+  const [feH, feM] = fechamentoHHMM.split(":").map((v) => Number(v));
+  const aberturaMin = horaParaMinutos(aberturaHHMM);
+  const fechamentoMin = horaParaMinutos(fechamentoHHMM);
+
+  const aberturaHoje = new Date(agora);
+  aberturaHoje.setHours(abH || 0, abM || 0, 0, 0);
+  const fechamentoHoje = new Date(agora);
+  fechamentoHoje.setHours(feH || 0, feM || 0, 0, 0);
+
+  if (fechamentoMin > aberturaMin) {
+    return { inicio: aberturaHoje, fim: fechamentoHoje, viraDia: false };
+  }
+
+  const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+  if (agoraMin >= aberturaMin) {
+    const fimAmanha = new Date(aberturaHoje);
+    fimAmanha.setDate(fimAmanha.getDate() + 1);
+    fimAmanha.setHours(feH || 0, feM || 0, 0, 0);
+    return { inicio: aberturaHoje, fim: fimAmanha, viraDia: true };
+  }
+
+  const inicioOntem = new Date(aberturaHoje);
+  inicioOntem.setDate(inicioOntem.getDate() - 1);
+  const fimHoje = new Date(fechamentoHoje);
+  return { inicio: inicioOntem, fim: fimHoje, viraDia: true };
+}
+
+function obterChaveDiaOperacional(agora: Date, aberturaHHMM: string, fechamentoHHMM: string) {
+  const aberturaMin = horaParaMinutos(aberturaHHMM);
+  const fechamentoMin = horaParaMinutos(fechamentoHHMM);
+  const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+  const hojeIdx = agora.getDay();
+  const ontemIdx = (hojeIdx + 6) % 7;
+
+  if (fechamentoMin <= aberturaMin && agoraMin < fechamentoMin) {
+    return DIAS_SEMANA_CHAVES[ontemIdx];
+  }
+  return DIAS_SEMANA_CHAVES[hojeIdx];
+}
+
+function normalizarDiasSemana(dias?: string[] | null) {
+  const base = Array.isArray(dias) ? dias : [];
+  const validos = base
+    .map((d) => String(d || "").trim().toLowerCase())
+    .filter((d): d is (typeof DIAS_SEMANA_CHAVES)[number] =>
+      (DIAS_SEMANA_CHAVES as readonly string[]).includes(d),
+    );
+  const unicos = Array.from(new Set(validos));
+  return unicos.length > 0 ? unicos : [...DIAS_SEMANA_CHAVES];
+}
+
+function aniversarioEhHoje(dataAniversario?: string) {
+  if (!dataAniversario) return false;
+  const base = String(dataAniversario).slice(0, 10);
+  if (!base) return false;
+  const [, mes, dia] = base.split("-");
+  if (!mes || !dia) return false;
+  const hoje = new Date();
+  const hojeMes = String(hoje.getMonth() + 1).padStart(2, "0");
+  const hojeDia = String(hoje.getDate()).padStart(2, "0");
+  return mes === hojeMes && dia === hojeDia;
+}
+
+function descricaoPromocaoVitrine(promo: Promocao) {
+  const tipo = String(promo.tipo || "percentual");
+  const valor = Number(promo.valor_promocional ?? promo.preco_promocional ?? 0);
+  if (tipo === "percentual") return `${valor}% OFF`;
+  if (tipo === "desconto_fixo") return `Desconto de R$ ${valor.toFixed(2)}`;
+  if (tipo === "leve_mais_um") {
+    return `Compre ${Number(promo.qtd_minima || 1)} e leve +${Number(promo.qtd_bonus || 1)}`;
+  }
+  if (tipo === "aniversariante") return `${valor}% para aniversariante`;
+  if (tipo === "frete_gratis") {
+    const minimo = Number(promo.valor_minimo_pedido || 0);
+    return `Frete gratis acima de R$ ${minimo.toFixed(2)}`;
+  }
+  return "Oferta especial por tempo limitado";
+}
+
 export default function ClientePage() {
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [taxas, setTaxas] = useState<TaxaEntregaRow[]>([]);
+  const [promocoes, setPromocoes] = useState<Promocao[]>([]);
+  const [propagandas, setPropagandas] = useState<Propaganda[]>([]);
+  const [horarioFuncionamento, setHorarioFuncionamento] = useState<HorarioFuncionamentoRow>({
+    hora_abertura: "08:00",
+    hora_fechamento: "18:00",
+    ativo: false,
+    dias_semana: [...DIAS_SEMANA_CHAVES],
+  });
+  const [agoraHorario, setAgoraHorario] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
-  const [processandoCartao, setProcessandoCartao] = useState(false);
+  const [estoqueEmAtualizacao, setEstoqueEmAtualizacao] = useState<Record<number, boolean>>({});
   const [abaCarrinho, setAbaCarrinho] = useState(false);
   const [passo, setPasso] = useState(1);
   const [categoriaAtiva, setCategoriaAtiva] = useState("Todos");
@@ -129,29 +336,150 @@ export default function ClientePage() {
   const [cliente, setCliente] = useState<Cliente>(CLIENTE_INICIAL);
   const [formaPagamento, setFormaPagamento] = useState("");
   const [pixCopiado, setPixCopiado] = useState(false);
+  const [referenciaPagamento, setReferenciaPagamento] = useState("");
+  const [vitrineSlideIndex, setVitrineSlideIndex] = useState(0);
 
   const subtotal = useMemo(
     () => carrinho.reduce((acc, i) => acc + i.preco * i.qtd, 0),
     [carrinho],
   );
-  const totalGeral = useMemo(() => subtotal + taxaEntrega, [subtotal, taxaEntrega]);
+  const promocoesAtivasHoje = useMemo(() => {
+    const hoje = dataHojeISO();
+    return promocoes.filter((promo) => {
+      if (promo.ativa === false) return false;
+      const inicio = promo.data_inicio ? String(promo.data_inicio).slice(0, 10) : "";
+      const fim = promo.data_fim ? String(promo.data_fim).slice(0, 10) : "";
+      if (inicio && hoje < inicio) return false;
+      if (fim && hoje > fim) return false;
+      return true;
+    });
+  }, [promocoes]);
+  const propagandasAtivasHoje = useMemo(() => {
+    const hoje = dataHojeISO();
+    return propagandas.filter((item) => {
+      if (item.ativa === false) return false;
+      const inicio = item.data_inicio ? String(item.data_inicio).slice(0, 10) : "";
+      const fim = item.data_fim ? String(item.data_fim).slice(0, 10) : "";
+      if (inicio && hoje < inicio) return false;
+      if (fim && hoje > fim) return false;
+      return true;
+    });
+  }, [propagandas]);
+
+  const aniversarioHoje = useMemo(
+    () => aniversarioEhHoje(cliente.data_aniversario),
+    [cliente.data_aniversario],
+  );
+
+  const descontoPromocoes = useMemo(() => {
+    let descontoTotal = 0;
+    for (const item of carrinho) {
+      const promoItem = promocoesAtivasHoje.filter(
+        (promo) => promo.produto_id == null || Number(promo.produto_id) === item.id,
+      );
+      let maiorDescontoDoItem = 0;
+
+      for (const promo of promoItem) {
+        const tipo = String(promo.tipo || "percentual");
+        const valor = Number(promo.valor_promocional ?? promo.preco_promocional ?? 0);
+        let descontoAtual = 0;
+
+        if (tipo === "percentual") {
+          descontoAtual = item.preco * item.qtd * (valor / 100);
+        } else if (tipo === "desconto_fixo") {
+          descontoAtual = Math.min(item.preco, valor) * item.qtd;
+        } else if (tipo === "leve_mais_um") {
+          const qtdMinima = Math.max(1, Number(promo.qtd_minima || 1));
+          const qtdBonus = Math.max(1, Number(promo.qtd_bonus || 1));
+          const tamanhoLote = qtdMinima + qtdBonus;
+          const lotes = Math.floor(item.qtd / tamanhoLote);
+          descontoAtual = lotes * qtdBonus * item.preco;
+        } else if (tipo === "aniversariante") {
+          if (!aniversarioHoje) continue;
+          descontoAtual = item.preco * item.qtd * (valor / 100);
+        }
+
+        if (descontoAtual > maiorDescontoDoItem) {
+          maiorDescontoDoItem = descontoAtual;
+        }
+      }
+
+      descontoTotal += maiorDescontoDoItem;
+    }
+
+    const promoFrete = promocoesAtivasHoje.find((promo) => String(promo.tipo || "") === "frete_gratis");
+    const minimoFrete = Number(promoFrete?.valor_minimo_pedido || 0);
+    if (promoFrete && subtotal >= minimoFrete) {
+      descontoTotal += taxaEntrega;
+    }
+
+    return Math.min(descontoTotal, subtotal + taxaEntrega);
+  }, [aniversarioHoje, carrinho, promocoesAtivasHoje, subtotal, taxaEntrega]);
+  const subtotalComPromocao = useMemo(
+    () => Math.max(0, subtotal - Math.min(descontoPromocoes, subtotal)),
+    [descontoPromocoes, subtotal],
+  );
+  const totalGeral = useMemo(
+    () => Math.max(0, subtotal + taxaEntrega - descontoPromocoes),
+    [descontoPromocoes, subtotal, taxaEntrega],
+  );
 
   const carregarDadosIniciais = useCallback(async () => {
     try {
       setLoading(true);
 
-      const [{ data: resProdutos, error: errProd }, { data: resTaxas, error: errTax }] =
+      const [
+        { data: resProdutos, error: errProd },
+        { data: resTaxas, error: errTax },
+        { data: resPromocoes, error: errProm },
+        { data: resPropagandas, error: errProp },
+        { data: resHorario, error: errHorario },
+      ] =
         await Promise.all([
           supabase.from("estoque").select("*").order("nome"),
           supabase.from("taxas_entrega").select("*"),
+          supabase.from("promocoes").select("*").eq("ativa", true).order("created_at", { ascending: false }),
+          supabase.from("propagandas").select("*").eq("ativa", true).order("ordem").order("created_at", { ascending: false }),
+          supabase
+            .from("configuracoes_loja")
+            .select("id,hora_abertura,hora_fechamento,ativo,dias_semana")
+            .order("id", { ascending: true })
+            .limit(1)
+            .maybeSingle(),
         ]);
 
       if (errProd || errTax) {
-        throw new Error("Erro ao conectar com Supabase");
+        const detalhes = [errProd?.message, errTax?.message].filter(Boolean).join(" | ");
+        throw new Error(`Erro ao conectar com Supabase${detalhes ? `: ${detalhes}` : ""}`);
       }
 
       setProdutos((resProdutos ?? []) as Produto[]);
       setTaxas((resTaxas ?? []) as TaxaEntregaRow[]);
+      if (errProm) {
+        console.warn("Falha ao carregar promocoes. Seguindo sem promocoes.", errProm.message);
+        setPromocoes([]);
+      } else {
+        setPromocoes((resPromocoes ?? []) as Promocao[]);
+      }
+      if (errProp) {
+        console.warn("Falha ao carregar propagandas. Seguindo sem banners.", errProp.message);
+        setPropagandas([]);
+      } else {
+        setPropagandas((resPropagandas ?? []) as Propaganda[]);
+      }
+      if (errHorario) {
+        console.warn("Falha ao carregar horario de funcionamento. Seguindo com padrao.", errHorario.message);
+        setHorarioFuncionamento({ hora_abertura: "08:00", hora_fechamento: "18:00", ativo: false });
+      } else {
+        const horario = (resHorario ?? {}) as HorarioFuncionamentoRow;
+        setHorarioFuncionamento({
+          id: horario.id,
+          hora_abertura: normalizarHoraHHMM(horario.hora_abertura) || "08:00",
+          hora_fechamento: normalizarHoraHHMM(horario.hora_fechamento) || "18:00",
+          ativo: horario.ativo !== false,
+          dias_semana: normalizarDiasSemana(horario.dias_semana),
+        });
+      }
     } catch (e) {
       console.error("Erro Supabase:", e);
       alert("Erro ao carregar cardápio. Verifique sua conexão.");
@@ -270,17 +598,22 @@ export default function ClientePage() {
         }
 
         const cepNormalizado = normalizarNumero(String(clienteEncontradoDb.cep ?? "")).slice(0, 8);
+        const enderecoBruto = String(clienteEncontradoDb.endereco ?? "");
+        const pontoDireto = String(clienteEncontradoDb.ponto_referencia ?? "").trim();
+        const pontoExtraido = extrairPontoReferenciaDeEndereco(enderecoBruto);
+        const pontoFinal = pontoDireto || pontoExtraido;
+        const enderecoFinal = limparEnderecoDePontoReferencia(enderecoBruto);
 
         setCliente((prev) => ({
           ...prev,
           nome: String(clienteEncontradoDb.nome ?? ""),
           whatsapp: zap,
           cep: cepNormalizado,
-          endereco: String(clienteEncontradoDb.endereco ?? ""),
+          endereco: enderecoFinal,
           numero: String(clienteEncontradoDb.numero ?? ""),
           bairro: String(clienteEncontradoDb.bairro ?? ""),
           cidade: String(clienteEncontradoDb.cidade ?? DEFAULT_CITY),
-          observacao: String(clienteEncontradoDb.observacao ?? ""),
+          ponto_referencia: pontoFinal,
           data_aniversario: String(clienteEncontradoDb.data_aniversario ?? ""),
         }));
         setClienteEncontrado(true);
@@ -313,50 +646,218 @@ export default function ClientePage() {
     setClienteEncontrado(false);
   }, [cliente.whatsapp, executarBuscaCliente]);
 
-  const adicionarAoCarrinho = useCallback(
-    (produto: Produto | ItemCarrinho) => {
-      setCarrinho((prevCarrinho) => {
-        const produtoOriginal = produtos.find((i) => i.id === produto.id);
-        if (!produtoOriginal) return prevCarrinho;
+  const setItemEstoqueProcessando = useCallback((id: number, processando: boolean) => {
+    setEstoqueEmAtualizacao((prev) => ({ ...prev, [id]: processando }));
+  }, []);
 
-        const existente = prevCarrinho.find((i) => i.id === produto.id);
+  const ajustarQuantidadeProdutoLocal = useCallback((id: number, delta: number) => {
+    setProdutos((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, quantidade: Math.max(0, Number(p.quantidade || 0) + delta) } : p,
+      ),
+    );
+  }, []);
 
-        if (existente) {
-          if (existente.qtd >= produtoOriginal.quantidade) {
-            alert("Limite de estoque!");
-            return prevCarrinho;
-          }
+  const atualizarQuantidadeEstoque = useCallback(
+    async (id: number, delta: number) => {
+      if (delta === 0) return true;
 
-          return prevCarrinho.map((i) =>
-            i.id === produto.id ? { ...i, qtd: i.qtd + 1 } : i,
-          );
+      const tentativasMaximas = 5;
+      for (let tentativa = 0; tentativa < tentativasMaximas; tentativa += 1) {
+        const { data: itemAtual, error: erroBusca } = await supabase
+          .from("estoque")
+          .select("id, quantidade")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (erroBusca) throw erroBusca;
+        if (!itemAtual) return false;
+
+        const quantidadeAtualBruta = itemAtual.quantidade;
+        const quantidadeAtual = Number(quantidadeAtualBruta ?? 0);
+        if (!Number.isFinite(quantidadeAtual)) {
+          throw new Error("Quantidade inválida no estoque para este item.");
+        }
+        if (delta < 0 && quantidadeAtual < Math.abs(delta)) {
+          return false;
         }
 
-        return [...prevCarrinho, { ...produtoOriginal, qtd: 1 }];
-      });
+        const novaQuantidade = quantidadeAtual + delta;
+        const { data: atualizado, error: erroUpdate } = await supabase
+          .from("estoque")
+          .update({ quantidade: novaQuantidade })
+          .eq("id", id)
+          .eq("quantidade", quantidadeAtualBruta as string | number | null)
+          .select("id")
+          .maybeSingle();
+
+        if (erroUpdate) throw erroUpdate;
+        if (atualizado) {
+          ajustarQuantidadeProdutoLocal(id, delta);
+          return true;
+        }
+      }
+
+      return false;
     },
-    [produtos],
+    [ajustarQuantidadeProdutoLocal],
   );
 
-  const removerDoCarrinho = useCallback((id: number) => {
-    setCarrinho((prevCarrinho) => {
-      const item = prevCarrinho.find((i) => i.id === id);
-      if (!item) return prevCarrinho;
-      if (item.qtd > 1) {
-        return prevCarrinho.map((i) => (i.id === id ? { ...i, qtd: i.qtd - 1 } : i));
+  const adicionarAoCarrinho = useCallback(
+    async (produto: Produto | ItemCarrinho) => {
+      if (loading || estoqueEmAtualizacao[produto.id]) return;
+
+      const produtoAtual = produtos.find((i) => i.id === produto.id);
+      if (produtoAtual && Number(produtoAtual.quantidade ?? 0) <= 2) {
+        alert("Este item esta acabando! Ultimas unidades.");
       }
-      return prevCarrinho.filter((i) => i.id !== id);
-    });
-  }, []);
-  const limparCarrinho = useCallback(() => {
-    setCarrinho([]);
-    setAbaCarrinho(false);
-    setPasso(1);
-    setFormaPagamento("");
-    setPixCopiado(false);
-  }, []);
+
+      setItemEstoqueProcessando(produto.id, true);
+      try {
+        const reservou = await atualizarQuantidadeEstoque(produto.id, -1);
+        if (!reservou) {
+          alert("Item sem estoque no momento. Quem adicionou primeiro ficou com a última unidade.");
+          await carregarDadosIniciais();
+          return;
+        }
+
+        const produtoOriginal = produtos.find((i) => i.id === produto.id) ?? (produto as Produto);
+        setCarrinho((prevCarrinho) => {
+          const existente = prevCarrinho.find((i) => i.id === produto.id);
+          if (existente) {
+            return prevCarrinho.map((i) =>
+              i.id === produto.id ? { ...i, qtd: i.qtd + 1 } : i,
+            );
+          }
+          return [...prevCarrinho, { ...produtoOriginal, qtd: 1 }];
+        });
+      } catch (error) {
+        const mensagem = obterMensagemErro(error) || "Erro ao reservar item. Tente novamente.";
+        console.error("Erro ao reservar estoque:", error);
+        alert(mensagem);
+        await carregarDadosIniciais();
+      } finally {
+        setItemEstoqueProcessando(produto.id, false);
+      }
+    },
+    [atualizarQuantidadeEstoque, carregarDadosIniciais, estoqueEmAtualizacao, loading, produtos, setItemEstoqueProcessando],
+  );
+
+  const removerDoCarrinho = useCallback(
+    async (id: number) => {
+      if (loading || estoqueEmAtualizacao[id]) return;
+
+      const item = carrinho.find((i) => i.id === id);
+      if (!item) return;
+
+      setItemEstoqueProcessando(id, true);
+      try {
+        const liberou = await atualizarQuantidadeEstoque(id, 1);
+        if (!liberou) {
+          alert("Nao foi possivel atualizar o estoque agora. Tente novamente.");
+          await carregarDadosIniciais();
+          return;
+        }
+
+        setCarrinho((prevCarrinho) => {
+          const itemAtual = prevCarrinho.find((i) => i.id === id);
+          if (!itemAtual) return prevCarrinho;
+          if (itemAtual.qtd > 1) {
+            return prevCarrinho.map((i) => (i.id === id ? { ...i, qtd: i.qtd - 1 } : i));
+          }
+          return prevCarrinho.filter((i) => i.id !== id);
+        });
+      } catch (error) {
+        const mensagem = obterMensagemErro(error) || "Erro ao devolver item ao estoque.";
+        console.error("Erro ao devolver item para o estoque:", error);
+        alert(mensagem);
+        await carregarDadosIniciais();
+      } finally {
+        setItemEstoqueProcessando(id, false);
+      }
+    },
+    [atualizarQuantidadeEstoque, carregarDadosIniciais, carrinho, estoqueEmAtualizacao, loading, setItemEstoqueProcessando],
+  );
+  const limparCarrinho = useCallback(async () => {
+    if (!carrinho.length) return;
+
+    setLoading(true);
+    try {
+      const itensCarrinho = [...carrinho];
+      let houveFalha = false;
+
+      for (const item of itensCarrinho) {
+        let liberou = false;
+        setItemEstoqueProcessando(item.id, true);
+        try {
+          liberou = await atualizarQuantidadeEstoque(item.id, item.qtd);
+        } finally {
+          setItemEstoqueProcessando(item.id, false);
+        }
+
+        if (!liberou) {
+          houveFalha = true;
+          continue;
+        }
+
+        setCarrinho((prevCarrinho) => prevCarrinho.filter((i) => i.id !== item.id));
+      }
+
+      if (houveFalha) {
+        alert("Alguns itens nao puderam ser liberados do estoque. Tente limpar novamente.");
+        await carregarDadosIniciais();
+        return;
+      }
+
+      setAbaCarrinho(false);
+      setPasso(1);
+      setFormaPagamento("");
+      setPixCopiado(false);
+    } catch (error) {
+      const mensagem = obterMensagemErro(error) || "Erro ao limpar carrinho.";
+      console.error("Erro ao limpar carrinho:", error);
+      alert(mensagem);
+      await carregarDadosIniciais();
+    } finally {
+      setLoading(false);
+    }
+  }, [atualizarQuantidadeEstoque, carregarDadosIniciais, carrinho, setItemEstoqueProcessando]);
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
+
+    if (forma === "Cartao na Entrega") {
+      setPixCopiado(false);
+      const referencia =
+        referenciaPagamento ||
+        (typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `ref-${Date.now()}`);
+      setReferenciaPagamento(referencia);
+      try {
+        const res = await fetch("/api/mercadopago/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            total: totalGeral,
+            cliente_nome: cliente.nome,
+            whatsapp: normalizarNumero(cliente.whatsapp),
+            referencia,
+            itens: carrinho.map((i) => ({ nome: i.nome, qtd: i.qtd, preco: i.preco })),
+          }),
+        });
+
+        const data = (await res.json()) as { url?: string; error?: string };
+        if (!res.ok) throw new Error(data.error || "Falha ao criar pagamento no Mercado Pago");
+        if (!data.url) throw new Error("Link de pagamento indisponivel");
+        window.open(data.url, "_blank");
+      } catch (error) {
+        const mensagem =
+          (error instanceof Error && error.message) ||
+          "Nao foi possivel abrir o Checkout do Mercado Pago.";
+        alert(mensagem);
+      }
+      return;
+    }
 
     if (forma !== "Pix") {
       setPixCopiado(false);
@@ -371,16 +872,26 @@ export default function ClientePage() {
       setPixCopiado(false);
       alert("Nao foi possivel copiar a chave Pix automaticamente.");
     }
-  }, []);
+  }, [carrinho, cliente.nome, cliente.whatsapp, referenciaPagamento, totalGeral]);
 
   const finalizarPedido = useCallback(async () => {
     if (!carrinho.length) return;
 
     setLoading(true);
     try {
-      let avisoPagamento = "";
       const whatsappLimpo = normalizarNumero(cliente.whatsapp);
       const payloadCliente = { ...cliente, whatsapp: whatsappLimpo };
+      const {
+        ponto_referencia: _pontoReferencia,
+        ...payloadClienteSemPontoReferencia
+      } = payloadCliente;
+      const payloadClienteFallback = {
+        ...payloadClienteSemPontoReferencia,
+        endereco: montarEnderecoComReferencia(
+          payloadClienteSemPontoReferencia.endereco,
+          payloadCliente.ponto_referencia,
+        ),
+      };
 
       const { data: clienteExistente, error: erroBuscaCliente } = await supabase
         .from("clientes")
@@ -393,87 +904,84 @@ export default function ClientePage() {
       }
 
       if (!clienteExistente) {
-        const { error: erroInsertCliente } = await supabase
-          .from("clientes")
-          .insert([payloadCliente]);
-        if (erroInsertCliente) throw erroInsertCliente;
+        const { error: erroInsertCliente } = await supabase.from("clientes").insert([payloadCliente]);
+        if (erroInsertCliente) {
+          if (!erroDePontoReferencia(erroInsertCliente)) throw erroInsertCliente;
+          const { error: erroRetryInsert } = await supabase
+            .from("clientes")
+            .insert([payloadClienteFallback]);
+          if (erroRetryInsert) throw erroRetryInsert;
+        }
       } else {
         const { error: erroUpdateCliente } = await supabase
           .from("clientes")
           .update(payloadCliente)
           .eq("whatsapp", whatsappLimpo);
-        if (erroUpdateCliente) throw erroUpdateCliente;
-      }
-
-      const { error: erroPedido } = await supabase.from("pedidos").insert([
-        {
-          cliente_nome: payloadCliente.nome,
-          whatsapp: payloadCliente.whatsapp,
-          itens: carrinho,
-          total: totalGeral,
-        },
-      ]);
-
-      if (erroPedido) throw erroPedido;
-
-      if (FORMAS_CARTAO.includes(formaPagamento)) {
-        setProcessandoCartao(true);
-        const respostaPagamento = await fetch("/api/pagamento/cartao", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            formaPagamento,
-            total: totalGeral,
-            cliente: {
-              nome: payloadCliente.nome,
-              whatsapp: payloadCliente.whatsapp,
-            },
-            itens: carrinho.map((item) => ({
-              id: item.id,
-              nome: item.nome,
-              qtd: item.qtd,
-              preco: item.preco,
-            })),
-          }),
-        });
-
-        if (!respostaPagamento.ok) {
-          const corpoBruto = await respostaPagamento.text();
-          let erroPagamento: { error?: string; endpoint?: string } | null = null;
-
-          try {
-            erroPagamento = corpoBruto
-              ? (JSON.parse(corpoBruto) as { error?: string; endpoint?: string })
-              : null;
-          } catch {
-            erroPagamento = null;
-          }
-
-          const endpointErro = erroPagamento?.endpoint ?? "nao informado";
-          avisoPagamento =
-            `Integracao de cartao indisponivel (${endpointErro}). Cobrar no recebimento.`;
-
-          console.warn("Falha pagamento cartao:", {
-            status: respostaPagamento.status,
-            statusText: respostaPagamento.statusText,
-            endpoint: endpointErro,
-            error: erroPagamento?.error ?? "sem detalhe",
-            body: corpoBruto || "vazio",
-          });
+        if (erroUpdateCliente) {
+          if (!erroDePontoReferencia(erroUpdateCliente)) throw erroUpdateCliente;
+          const { error: erroRetryUpdate } = await supabase
+            .from("clientes")
+            .update(payloadClienteFallback)
+            .eq("whatsapp", whatsappLimpo);
+          if (erroRetryUpdate) throw erroRetryUpdate;
         }
       }
 
       const pagamentoTexto = formaPagamento;
+      const pedidoPayload = {
+        cliente_nome: payloadCliente.nome,
+        whatsapp: payloadCliente.whatsapp,
+        itens: carrinho,
+        total: totalGeral,
+        forma_pagamento: pagamentoTexto,
+        pagamento_referencia: referenciaPagamento || null,
+        status_pagamento: formaPagamento === "Cartao na Entrega" ? "pending" : null,
+      };
+      const pedidoPayloadComForma = {
+        cliente_nome: payloadCliente.nome,
+        whatsapp: payloadCliente.whatsapp,
+        itens: carrinho,
+        total: totalGeral,
+        forma_pagamento: pagamentoTexto,
+      };
+      const pedidoPayloadLegado = {
+        cliente_nome: payloadCliente.nome,
+        whatsapp: payloadCliente.whatsapp,
+        itens: carrinho,
+        total: totalGeral,
+      };
+
+      const { error: erroPedidoCompleto } = await supabase.from("pedidos").insert([pedidoPayload]);
+      if (erroPedidoCompleto) {
+        const msgErroPedido = obterMensagemErro(erroPedidoCompleto).toLowerCase();
+        const erroSchema = msgErroPedido.includes("schema cache") || msgErroPedido.includes("column");
+        if (!erroSchema) throw erroPedidoCompleto;
+
+        const { error: erroPedidoComForma } = await supabase
+          .from("pedidos")
+          .insert([pedidoPayloadComForma]);
+        if (erroPedidoComForma) {
+          const msgErroForma = obterMensagemErro(erroPedidoComForma).toLowerCase();
+          const erroFormaSchema = msgErroForma.includes("forma_pagamento") || msgErroForma.includes("schema cache") || msgErroForma.includes("column");
+          if (!erroFormaSchema) throw erroPedidoComForma;
+
+          const { error: erroPedidoLegado } = await supabase
+            .from("pedidos")
+            .insert([pedidoPayloadLegado]);
+          if (erroPedidoLegado) throw erroPedidoLegado;
+        }
+      }
 
       const msg =
         `Pedido Dulelis\n\n` +
         `Cliente: ${payloadCliente.nome}\n` +
         `Endereco: ${payloadCliente.endereco}, ${payloadCliente.numero}\n\n` +
+        (payloadCliente.ponto_referencia
+          ? `Ponto de Referencia: ${payloadCliente.ponto_referencia}\n\n`
+          : "") +
         `Pagamento: ${pagamentoTexto}\n\n` +
-        (avisoPagamento ? `Aviso: ${avisoPagamento}\n\n` : "") +
         `Itens:\n${carrinho.map((i) => `${i.qtd}x ${i.nome}`).join("\n")}\n\n` +
+        (descontoPromocoes > 0 ? `Descontos: R$ ${descontoPromocoes.toFixed(2)}\n` : "") +
         `Total: R$ ${totalGeral.toFixed(2)}`;
 
       window.open(
@@ -491,25 +999,18 @@ export default function ClientePage() {
       setMsgTaxa("Aguardando endereço...");
       setFormaPagamento("");
       setPixCopiado(false);
+      setReferenciaPagamento("");
 
       await carregarDadosIniciais();
     } catch (error) {
+      const mensagem = obterMensagemErro(error) || "Erro ao finalizar pedido.";
       console.error("Erro ao finalizar pedido:", error);
-      const mensagem = error instanceof Error ? error.message : "Erro ao finalizar pedido.";
       alert(mensagem);
     } finally {
-      setProcessandoCartao(false);
       setLoading(false);
     }
-  }, [carrinho, carregarDadosIniciais, cliente, formaPagamento, totalGeral]);
+  }, [carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, totalGeral]);
 
-  const produtosFiltrados = useMemo(
-    () =>
-      produtos
-        .filter((p) => p.quantidade > 0)
-        .filter((p) => categoriaAtiva === "Todos" || p.categoria === categoriaAtiva),
-    [categoriaAtiva, produtos],
-  );
   const quantidadesCarrinho = useMemo(
     () =>
       carrinho.reduce<Record<number, number>>((acc, item) => {
@@ -518,95 +1019,454 @@ export default function ClientePage() {
       }, {}),
     [carrinho],
   );
+  const produtosFiltrados = useMemo(
+    () => {
+      const base = produtos
+        .filter((p) => p.quantidade > 0 || (quantidadesCarrinho[p.id] ?? 0) > 0)
+        .filter((p) => categoriaAtiva === "Todos" || p.categoria === categoriaAtiva);
+
+      if (categoriaAtiva !== "Todos") return base;
+
+      return [...base].sort((a, b) => {
+        const idxA = ORDEM_VITRINE_CATEGORIAS.indexOf(a.categoria);
+        const idxB = ORDEM_VITRINE_CATEGORIAS.indexOf(b.categoria);
+        const ordemA = idxA === -1 ? ORDEM_VITRINE_CATEGORIAS.length : idxA;
+        const ordemB = idxB === -1 ? ORDEM_VITRINE_CATEGORIAS.length : idxB;
+        if (ordemA !== ordemB) return ordemA - ordemB;
+        return a.nome.localeCompare(b.nome, "pt-BR");
+      });
+    },
+    [categoriaAtiva, produtos, quantidadesCarrinho],
+  );
+  const resumoPromocaoProduto = useCallback(
+    (produtoId: number) => {
+      const promo = promocoesAtivasHoje.find(
+        (p) => p.produto_id == null || Number(p.produto_id) === produtoId,
+      );
+      if (!promo) return "";
+      const tipo = String(promo.tipo || "percentual");
+      const valor = Number(promo.valor_promocional ?? promo.preco_promocional ?? 0);
+      if (tipo === "percentual") return `${valor}% OFF`;
+      if (tipo === "desconto_fixo") return `R$ ${valor.toFixed(2)} OFF`;
+      if (tipo === "leve_mais_um") return `Compre ${Number(promo.qtd_minima || 1)} Leve ${Number(promo.qtd_bonus || 1)}`;
+      if (tipo === "aniversariante") return `${valor}% no aniversario`;
+      if (tipo === "frete_gratis") return "Frete Gratis";
+      return "Promocao";
+    },
+    [promocoesAtivasHoje],
+  );
 
   const formOk = Boolean(
     cliente.nome &&
       normalizarNumero(cliente.whatsapp).length >= 10 &&
       cliente.cep &&
       cliente.endereco &&
-      cliente.numero,
+      cliente.numero &&
+      cliente.ponto_referencia.trim(),
   );
+  const mensagensVitrine = useMemo(() => {
+    const mensagensPropaganda = propagandasAtivasHoje.slice(0, 8).map((item) => ({
+      id: item.id,
+      titulo: String(item.titulo || "Destaque"),
+      descricao: String(item.descricao || "").trim() || "Confira essa novidade da Dulelis.",
+      imagem_url: String(item.imagem_url || "").trim(),
+      botao_texto: String(item.botao_texto || "").trim(),
+      botao_link: String(item.botao_link || "").trim(),
+    }));
+    if (mensagensPropaganda.length > 0) return mensagensPropaganda;
+
+    const mensagensPromocoes = promocoesAtivasHoje.slice(0, 6).map((promo) => ({
+      id: promo.id,
+      titulo: String(promo.titulo || "Promocao"),
+      descricao:
+        String(promo.descricao || "").trim() || descricaoPromocaoVitrine(promo),
+      imagem_url: "",
+      botao_texto: "",
+      botao_link: "",
+    }));
+
+    if (mensagensPromocoes.length > 0) return mensagensPromocoes;
+
+    return [
+      {
+        id: -1,
+        titulo: "Novidades da Semana",
+        descricao: "Confira os doces e bolos que acabaram de entrar no cardapio.",
+        imagem_url: "",
+        botao_texto: "",
+        botao_link: "",
+      },
+      {
+        id: -2,
+        titulo: "Pedido Rapido no WhatsApp",
+        descricao: "Monte seu carrinho e finalize em poucos cliques.",
+        imagem_url: "",
+        botao_texto: "",
+        botao_link: "",
+      },
+    ];
+  }, [promocoesAtivasHoje, propagandasAtivasHoje]);
+  const slideAtualVitrine = mensagensVitrine[vitrineSlideIndex];
+
+  useEffect(() => {
+    setVitrineSlideIndex(0);
+  }, [mensagensVitrine.length]);
+
+  useEffect(() => {
+    if (mensagensVitrine.length < 2) return;
+    const timer = window.setInterval(() => {
+      setVitrineSlideIndex((prev) => (prev + 1) % mensagensVitrine.length);
+    }, VITRINE_MODAL_SLIDE_MS);
+    return () => window.clearInterval(timer);
+  }, [mensagensVitrine.length]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setAgoraHorario(new Date());
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const statusHorario = useMemo(() => {
+    const abertura = normalizarHoraHHMM(horarioFuncionamento.hora_abertura) || "08:00";
+    const fechamento = normalizarHoraHHMM(horarioFuncionamento.hora_fechamento) || "18:00";
+    const diasSelecionados = normalizarDiasSemana(horarioFuncionamento.dias_semana);
+    const chaveOperacional = obterChaveDiaOperacional(agoraHorario, abertura, fechamento);
+    const hojeAtivo = diasSelecionados.includes(chaveOperacional);
+    const faixa = `${abertura} - ${fechamento}`;
+    if (horarioFuncionamento.ativo === false) {
+      return {
+        faixa,
+        aberto: false,
+        fechando: false,
+        mensagem: "Loja fechada no momento. Retornamos no proximo dia.",
+      };
+    }
+    if (!hojeAtivo) {
+      return {
+        faixa,
+        aberto: false,
+        fechando: false,
+        mensagem: "Fechado hoje. Retornamos no proximo dia.",
+      };
+    }
+
+    const intervalo = obterIntervaloFuncionamento(agoraHorario, abertura, fechamento);
+
+    if (agoraHorario.getTime() < intervalo.inicio.getTime()) {
+      return {
+        faixa,
+        aberto: false,
+        fechando: false,
+        mensagem: `Fechado agora. Abrimos as ${abertura}`,
+      };
+    }
+
+    const diffMs = intervalo.fim.getTime() - agoraHorario.getTime();
+    if (diffMs <= 0) {
+      return {
+        faixa,
+        aberto: false,
+        fechando: false,
+        mensagem: "Fechado agora. Retornamos no proximo dia.",
+      };
+    }
+
+    const segundosParaFechar = Math.floor(diffMs / 1_000);
+    if (segundosParaFechar > 0 && segundosParaFechar <= 5 * 60) {
+      const minutosParaFechar = Math.ceil(segundosParaFechar / 60);
+      return {
+        faixa,
+        aberto: true,
+        fechando: true,
+        mensagem: `Estamos fechando (${minutosParaFechar} min)`,
+      };
+    }
+
+    return {
+      faixa,
+      aberto: true,
+      fechando: false,
+      mensagem: "Aberto agora",
+    };
+  }, [agoraHorario, horarioFuncionamento]);
+
+  const pedidosEncerradosHoje = useMemo(() => {
+    if (horarioFuncionamento.ativo === false) return true;
+    const diasSelecionados = normalizarDiasSemana(horarioFuncionamento.dias_semana);
+    const abertura = normalizarHoraHHMM(horarioFuncionamento.hora_abertura) || "08:00";
+    const fechamento = normalizarHoraHHMM(horarioFuncionamento.hora_fechamento) || "18:00";
+    const chaveOperacional = obterChaveDiaOperacional(agoraHorario, abertura, fechamento);
+    if (!diasSelecionados.includes(chaveOperacional)) return true;
+
+    const intervalo = obterIntervaloFuncionamento(agoraHorario, abertura, fechamento);
+    if (agoraHorario.getTime() < intervalo.inicio.getTime()) return true;
+    return agoraHorario.getTime() >= intervalo.fim.getTime();
+  }, [agoraHorario, horarioFuncionamento]);
+
+  const segundosParaFecharAviso = useMemo(() => {
+    if (horarioFuncionamento.ativo === false) return null;
+    const diasSelecionados = normalizarDiasSemana(horarioFuncionamento.dias_semana);
+    const abertura = normalizarHoraHHMM(horarioFuncionamento.hora_abertura) || "08:00";
+    const fechamento = normalizarHoraHHMM(horarioFuncionamento.hora_fechamento) || "18:00";
+    const chaveOperacional = obterChaveDiaOperacional(agoraHorario, abertura, fechamento);
+    if (!diasSelecionados.includes(chaveOperacional)) return null;
+
+    const intervalo = obterIntervaloFuncionamento(agoraHorario, abertura, fechamento);
+    const agoraMs = agoraHorario.getTime();
+    if (agoraMs < intervalo.inicio.getTime() || agoraMs >= intervalo.fim.getTime()) return null;
+    const diffSeg = Math.ceil((intervalo.fim.getTime() - agoraMs) / 1_000);
+    if (diffSeg <= 0 || diffSeg > 5 * 60) return null;
+    return diffSeg;
+  }, [agoraHorario, horarioFuncionamento]);
+
+  const fechandoAgora = segundosParaFecharAviso !== null;
+  const minutosParaFecharAviso = fechandoAgora ? Math.ceil((segundosParaFecharAviso || 0) / 60) : null;
+  const diasFuncionamentoTexto = useMemo(() => {
+    const diasSelecionados = normalizarDiasSemana(horarioFuncionamento.dias_semana);
+    return diasSelecionados.map((dia) => DIAS_SEMANA_LABELS[dia]).join(", ");
+  }, [horarioFuncionamento.dias_semana]);
+  const interacoesBloqueadas = pedidosEncerradosHoje;
 
   return (
     <div className="min-h-screen bg-[#FDFCFD] pb-24 font-sans text-slate-900">
-      <header className="p-10 text-center bg-white border-b border-pink-50 relative overflow-hidden">
+      <header className="p-8 text-center bg-white border-b border-pink-50 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-200 via-pink-500 to-pink-200"></div>
-        <h1 className="text-5xl font-black text-pink-600 italic tracking-tighter drop-shadow-sm">
-          DULELIS
-        </h1>
-        <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.4em] mt-2">
-          Confeitaria Artesanal
-        </p>
+        <div className="flex items-center justify-center gap-4">
+          <Image src="/logo.png" alt="Dulelis" width={80} height={80} className="object-contain" />
+          <div className="text-left">
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-4xl font-black text-pink-600 italic tracking-tighter drop-shadow-sm">
+                DULELIS
+              </h1>
+              <span className="text-2xl text-pink-400">𝒟𝑒𝑙𝑖𝑣𝑒𝑟𝑦</span>
+            </div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.4em]">
+              Confeitaria Artesanal
+            </p>
+          </div>
+        </div>
       </header>
 
-      <div className="flex gap-3 overflow-x-auto py-5 px-6 no-scrollbar sticky top-0 bg-white/80 backdrop-blur-xl z-40 border-b border-pink-50/50">
+      <div className="relative z-40 bg-white/90 backdrop-blur-xl border-b border-pink-50/50">
+        <div className="px-3 pt-2 pb-2">
+          <div className="max-w-xl mx-auto mb-2">
+              <div
+                className={`rounded-xl border px-2.5 py-1.5 ${
+                  fechandoAgora
+                    ? "border-yellow-300/70 bg-red-700/45"
+                    : statusHorario.aberto
+                    ? "border-pink-200/80 bg-white"
+                    : "border-red-200/60 bg-red-50"
+                }`}
+              >
+              <div className={`flex items-center gap-1.5 font-black uppercase tracking-wider ${fechandoAgora ? "text-base text-yellow-900" : "text-[11px] text-slate-700"}`}>
+                <Clock3 size={fechandoAgora ? 18 : 14} />
+                Horario: {statusHorario.faixa}
+              </div>
+              <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Dias: {diasFuncionamentoTexto}
+              </p>
+              <p className={`${fechandoAgora ? "text-sm font-black text-yellow-900" : "text-[10px] font-bold text-slate-600"} mt-0.5`}>
+                {fechandoAgora ? `Estamos fechando (${minutosParaFecharAviso} min)` : statusHorario.mensagem}
+              </p>
+              {fechandoAgora && (
+                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-yellow-300/20 px-2 py-0.5 text-xs font-black uppercase tracking-wide text-yellow-900 animate-pulse">
+                  <AlertTriangle size={12} />
+                  Estamos fechando
+                </p>
+              )}
+              {pedidosEncerradosHoje && (
+                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-black uppercase tracking-wide text-red-700">
+                  Pedidos encerrados. Retornamos no proximo dia
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="max-w-xl mx-auto rounded-2xl bg-gradient-to-r from-pink-600 via-pink-500 to-fuchsia-500 text-white px-4 py-3 shadow-lg h-[336px] flex flex-col">
+            <div className="h-3 mb-2">
+              {mensagensVitrine.length > 1 && (
+                <div className="flex items-center gap-1.5">
+                  {mensagensVitrine.map((msg, idx) => (
+                    <button
+                      key={`story-${msg.id}`}
+                      type="button"
+                      onClick={() => setVitrineSlideIndex(idx)}
+                      className="h-1.5 flex-1 rounded-full bg-white/30 overflow-hidden"
+                      aria-label={`Ir para propaganda ${idx + 1}`}
+                    >
+                      <span
+                        key={`story-fill-${msg.id}-${idx === vitrineSlideIndex ? "active" : "idle"}`}
+                        className="block h-full bg-white"
+                        style={{
+                          width:
+                            idx < vitrineSlideIndex
+                              ? "100%"
+                              : idx > vitrineSlideIndex
+                                ? "0%"
+                                : undefined,
+                          animation:
+                            idx === vitrineSlideIndex
+                              ? `encherBarra ${VITRINE_MODAL_SLIDE_MS}ms linear forwards`
+                              : "none",
+                        }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="relative mt-1 rounded-xl overflow-hidden border border-white/20 p-[1px] h-52 sm:h-56 bg-white/10">
+              {slideAtualVitrine?.imagem_url ? (
+                <Image
+                  src={slideAtualVitrine.imagem_url}
+                  alt={slideAtualVitrine?.titulo || "Banner"}
+                  width={640}
+                  height={260}
+                  className="w-full h-full object-cover rounded-[10px]"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-pink-100/80">
+                  Dulelis
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 via-black/30 to-transparent p-2 rounded-b-[10px]">
+                <h3 className="font-black text-sm leading-tight line-clamp-1 text-white drop-shadow-sm">
+                  {slideAtualVitrine?.titulo}
+                </h3>
+                <p className="mt-1 inline-block max-w-full rounded-full border border-white/30 bg-black/30 px-2 py-0.5 text-[10px] font-bold text-white line-clamp-1">
+                  {slideAtualVitrine?.descricao}
+                </p>
+              </div>
+            </div>
+            <div className="h-7 mt-2">
+              {slideAtualVitrine?.botao_texto && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const link = String(slideAtualVitrine?.botao_link || "");
+                    if (/^https?:\/\//i.test(link)) {
+                      window.open(link, "_blank", "noopener,noreferrer");
+                    }
+                  }}
+                  className="rounded-xl bg-white/20 hover:bg-white/30 transition-colors px-3 py-1.5 text-[10px] font-black uppercase tracking-wider"
+                >
+                  {slideAtualVitrine.botao_texto}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-5 gap-2 py-3 px-3 sm:flex sm:justify-center sm:gap-3 sm:overflow-x-auto sm:py-4 sm:px-6 sm:no-scrollbar">
         {CATEGORIAS.map((cat) => (
           <button
             key={cat}
             type="button"
             onClick={() => setCategoriaAtiva(cat)}
-            className={`px-7 py-2.5 rounded-full font-black text-[10px] whitespace-nowrap transition-all uppercase tracking-widest border-2 ${categoriaAtiva === cat ? "bg-pink-600 border-pink-600 text-white shadow-lg" : "bg-white border-slate-100 text-slate-400"}`}
+            className={`px-1 py-2 rounded-full font-black text-[9px] text-center whitespace-nowrap transition-all uppercase tracking-wide border-2 sm:px-7 sm:py-2.5 sm:text-[10px] sm:tracking-widest ${categoriaAtiva === cat ? "bg-pink-600 border-pink-600 text-white shadow-lg" : "bg-white border-slate-100 text-slate-400"}`}
           >
             {cat}
           </button>
         ))}
+        </div>
       </div>
+
+      <style jsx global>{`
+        @keyframes encherBarra {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+      `}</style>
 
       <main className="max-w-xl mx-auto p-6 grid gap-5">
         {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="animate-spin text-pink-500" size={40} />
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <Image src="/logo.png" alt="Carregando" width={60} height={60} className="object-contain animate-pulse" />
+            <Loader2 className="animate-spin text-pink-500" size={30} />
           </div>
         ) : (
-          produtosFiltrados.map((prod) => (
-            <div
-              key={prod.id}
-              className="group flex items-center gap-5 p-4 rounded-[2.5rem] border bg-white border-pink-50 shadow-sm transition-all active:scale-[0.98]"
-            >
-              <div className="w-24 h-24 rounded-[1.8rem] bg-slate-50 overflow-hidden shrink-0 border border-pink-50/50">
-                {prod.imagem_url ? (
-                  <Image
-                    src={prod.imagem_url}
-                    className="w-full h-full object-cover"
-                    alt={prod.nome}
-                    width={96}
-                    height={96}
-                    sizes="96px"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-pink-100 font-black italic text-[10px]">
-                    DULELIS
+          produtosFiltrados.map((prod, idx) => {
+            const categoriaAnterior = idx > 0 ? produtosFiltrados[idx - 1]?.categoria : "";
+            const exibirArabesco = categoriaAtiva === "Todos" && idx > 0 && categoriaAnterior !== prod.categoria;
+
+            return (
+              <React.Fragment key={prod.id}>
+                {exibirArabesco && (
+                  <div className="flex items-center gap-3 py-1 text-black/90">
+                    <div className="h-px flex-1 bg-black/40" />
+                    <span className="text-lg leading-none">❦</span>
+                    <div className="h-px flex-1 bg-black/40" />
                   </div>
                 )}
-              </div>
-              <div className="flex-1">
-                <span className="text-[8px] font-black text-pink-400 uppercase tracking-widest bg-pink-50 px-2 py-0.5 rounded-full">
-                  {prod.categoria}
-                </span>
-                <h3 className="font-black text-slate-800 text-lg mt-1">{prod.nome}</h3>
-                <p className="text-pink-600 font-black text-xl">R$ {Number(prod.preco).toFixed(2)}</p>
-              </div>
-              <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => removerDoCarrinho(prod.id)}
-                  className="text-pink-600 p-2"
-                >
-                  <Minus size={18} />
-                </button>
-                <span className="font-black text-sm w-6 text-center">
-                  {quantidadesCarrinho[prod.id] ?? 0}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => adicionarAoCarrinho(prod)}
-                  className="bg-pink-600 text-white p-2 rounded-xl shadow-lg shadow-pink-100"
-                >
-                  <Plus size={18} />
-                </button>
-              </div>
-            </div>
-          ))
+                <div className="group flex items-center gap-5 p-4 rounded-[2.5rem] border bg-white border-pink-50 shadow-sm transition-all active:scale-[0.98]">
+                  <div className="w-24 h-24 rounded-[1.8rem] bg-slate-50 overflow-hidden shrink-0 border border-pink-50/50">
+                    {prod.imagem_url ? (
+                      <Image
+                        src={prod.imagem_url}
+                        className="w-full h-full object-cover"
+                        alt={prod.nome}
+                        width={96}
+                        height={96}
+                        sizes="96px"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-white p-2">
+                        <Image
+                          src="/logo.png"
+                          alt="Dulelis"
+                          width={50}
+                          height={50}
+                          className="object-contain opacity-50"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-[8px] font-black text-pink-400 uppercase tracking-widest bg-pink-50 px-2 py-0.5 rounded-full">
+                      {prod.categoria}
+                    </span>
+                    {resumoPromocaoProduto(prod.id) && (
+                      <span className="ml-2 text-[8px] font-black text-green-700 uppercase tracking-widest bg-green-50 px-2 py-0.5 rounded-full">
+                        {resumoPromocaoProduto(prod.id)}
+                      </span>
+                    )}
+                    <h3 className="font-black text-slate-800 text-lg mt-1">{prod.nome}</h3>
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                      {String(prod.descricao || "").trim() || "Confira essa delicia da Dulelis."}
+                    </p>
+                    {Number(prod.quantidade ?? 0) <= 2 && (
+                      <p className="text-[10px] font-black uppercase tracking-wider text-orange-500 mt-1">
+                        Esta acabando
+                      </p>
+                    )}
+                    <p className="text-pink-600 font-black text-xl">R$ {Number(prod.preco).toFixed(2)}</p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => void removerDoCarrinho(prod.id)}
+                      disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
+                      className="text-pink-600 p-2"
+                    >
+                      <Minus size={18} />
+                    </button>
+                    <span className="font-black text-sm w-6 text-center">
+                      {quantidadesCarrinho[prod.id] ?? 0}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void adicionarAoCarrinho(prod)}
+                      disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
+                      className="bg-pink-600 text-white p-2 rounded-xl shadow-lg shadow-pink-100"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
+                </div>
+              </React.Fragment>
+            );
+          })
         )}
       </main>
 
@@ -620,7 +1480,7 @@ export default function ClientePage() {
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none mb-1">
                 Total
               </p>
-              <p className="font-black text-2xl text-pink-500">R$ {subtotal.toFixed(2)}</p>
+              <p className="font-black text-2xl text-pink-500">R$ {subtotalComPromocao.toFixed(2)}</p>
             </div>
           </div>
           <button
@@ -651,11 +1511,18 @@ export default function ClientePage() {
 
             {passo === 1 ? (
               <div className="space-y-4">
+                <div className="bg-blue-50 text-blue-800 p-4 rounded-3xl border border-blue-100 gentle-blink">
+                  <p className="text-[12px] font-bold tracking-wide">
+                    Seu cadastro e rapidinho: voce faz uma vez e, nos proximos pedidos, a gente ja lembra de voce.
+                  </p>
+                </div>
                 <div className="relative">
+                  <label htmlFor="whatsapp" className="sr-only">WhatsApp</label>
                   <div className="absolute inset-y-0 left-5 flex items-center text-slate-300">
                     <Phone size={20} />
                   </div>
                   <input
+                    id="whatsapp"
                     placeholder="WhatsApp *"
                     className="w-full p-5 pl-14 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                     value={cliente.whatsapp}
@@ -681,10 +1548,12 @@ export default function ClientePage() {
                 )}
 
                 <div className="relative">
+                  <label htmlFor="nome" className="sr-only">Seu Nome Completo</label>
                   <div className="absolute inset-y-0 left-5 flex items-center text-slate-300">
                     <User size={20} />
                   </div>
                   <input
+                    id="nome"
                     placeholder="Seu Nome Completo *"
                     className="w-full p-5 pl-14 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                     value={cliente.nome}
@@ -692,13 +1561,26 @@ export default function ClientePage() {
                   />
                 </div>
 
+                <label htmlFor="data_nascimento" className="sr-only">Data de Nascimento</label>
+                <input
+                  id="data_nascimento"
+                  type="date"
+                  value={cliente.data_aniversario}
+                  className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold text-slate-500"
+                  onChange={(e) =>
+                    setCliente((prev) => ({ ...prev, data_aniversario: e.target.value }))
+                  }
+                />
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="relative">
+                    <label htmlFor="cep" className="sr-only">CEP</label>
                     <div className="absolute inset-y-0 left-5 flex items-center text-slate-300">
                       <Hash size={18} />
                     </div>
                     <input
                       placeholder="CEP *"
+                      id="cep"
                       maxLength={8}
                       value={cliente.cep}
                       className="w-full p-5 pl-14 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
@@ -711,13 +1593,58 @@ export default function ClientePage() {
                       />
                     )}
                   </div>
+                  <label htmlFor="cidade" className="sr-only">Cidade</label>
                   <input
+                    id="cidade"
                     placeholder="Cidade"
                     value={cliente.cidade}
                     className="w-full p-5 rounded-3xl bg-slate-50 border-none font-bold text-slate-400"
                     disabled
                   />
                 </div>
+
+                <div className="grid grid-cols-4 gap-3">
+                  <label htmlFor="rua" className="sr-only">Rua</label>
+                  <input
+                    id="rua"
+                    placeholder="Rua *"
+                    value={cliente.endereco}
+                    className="col-span-3 w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
+                    onChange={(e) =>
+                      setCliente((prev) => ({ ...prev, endereco: e.target.value }))
+                    }
+                  />
+                  <label htmlFor="numero" className="sr-only">Número</label>
+                  <input
+                    id="numero"
+                    placeholder="Nº *"
+                    value={cliente.numero}
+                    className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold text-center"
+                    onChange={(e) =>
+                      setCliente((prev) => ({ ...prev, numero: e.target.value }))
+                    }
+                  />
+                </div>
+
+                <label htmlFor="bairro" className="sr-only">Bairro</label>
+                <input
+                  id="bairro"
+                  placeholder="Bairro *"
+                  value={cliente.bairro}
+                  className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
+                  onChange={(e) => setCliente((prev) => ({ ...prev, bairro: e.target.value }))}
+                />
+
+                <label htmlFor="ponto_referencia" className="sr-only">Ponto de Referência</label>
+                <input
+                  id="ponto_referencia"
+                  placeholder="Ponto de Referência *"
+                  value={cliente.ponto_referencia}
+                  className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
+                  onChange={(e) =>
+                    setCliente((prev) => ({ ...prev, ponto_referencia: e.target.value }))
+                  }
+                />
 
                 <div
                   className={`p-5 rounded-[2rem] border-2 transition-all flex items-center gap-4 ${distanciaKm !== null ? "bg-blue-50 border-blue-200" : "bg-slate-50 border-slate-100"}`}
@@ -738,32 +1665,6 @@ export default function ClientePage() {
                     </p>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-4 gap-3">
-                  <input
-                    placeholder="Rua *"
-                    value={cliente.endereco}
-                    className="col-span-3 w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                    onChange={(e) =>
-                      setCliente((prev) => ({ ...prev, endereco: e.target.value }))
-                    }
-                  />
-                  <input
-                    placeholder="Nº *"
-                    value={cliente.numero}
-                    className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold text-center"
-                    onChange={(e) =>
-                      setCliente((prev) => ({ ...prev, numero: e.target.value }))
-                    }
-                  />
-                </div>
-
-                <input
-                  placeholder="Bairro *"
-                  value={cliente.bairro}
-                  className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                  onChange={(e) => setCliente((prev) => ({ ...prev, bairro: e.target.value }))}
-                />
 
                 <button
                   type="button"
@@ -791,7 +1692,8 @@ export default function ClientePage() {
                       <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-2xl border border-slate-100">
                         <button
                           type="button"
-                          onClick={() => removerDoCarrinho(item.id)}
+                          onClick={() => void removerDoCarrinho(item.id)}
+                          disabled={loading || Boolean(estoqueEmAtualizacao[item.id]) || interacoesBloqueadas}
                           className="text-pink-600"
                         >
                           <Minus size={16} />
@@ -799,7 +1701,8 @@ export default function ClientePage() {
                         <span className="font-black text-sm w-4 text-center">{item.qtd}</span>
                         <button
                           type="button"
-                          onClick={() => adicionarAoCarrinho(item)}
+                          onClick={() => void adicionarAoCarrinho(item)}
+                          disabled={loading || Boolean(estoqueEmAtualizacao[item.id]) || interacoesBloqueadas}
                           className="text-pink-600"
                         >
                           <Plus size={16} />
@@ -815,6 +1718,12 @@ export default function ClientePage() {
                       <span>Subtotal</span>
                       <span>R$ {subtotal.toFixed(2)}</span>
                     </div>
+                    {descontoPromocoes > 0 && (
+                      <div className="flex justify-between text-xs font-bold text-green-400">
+                        <span>Descontos e Promocoes</span>
+                        <span>- R$ {descontoPromocoes.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-xs font-bold text-blue-400 border-b border-white/10 pb-3">
                       <span>Taxa de Entrega</span>
                       <span>R$ {taxaEntrega.toFixed(2)}</span>
@@ -856,14 +1765,14 @@ export default function ClientePage() {
                 <button
                   type="button"
                   onClick={finalizarPedido}
-                  disabled={!formaPagamento || processandoCartao}
-                  className={`w-full p-7 rounded-[2.5rem] font-black uppercase shadow-xl tracking-widest text-xl flex items-center justify-center gap-3 ${formaPagamento ? "bg-green-500 text-white" : "bg-slate-100 text-slate-300 shadow-none"}`}
+                  disabled={!formaPagamento || interacoesBloqueadas}
+                  className={`w-full p-7 rounded-[2.5rem] font-black uppercase shadow-xl tracking-widest text-xl flex items-center justify-center gap-3 ${formaPagamento && !interacoesBloqueadas ? "bg-green-500 text-white" : "bg-slate-100 text-slate-300 shadow-none"}`}
                 >
-                  {processandoCartao ? "Processando Cartao..." : "Enviar para o WhatsApp"}
+                  {interacoesBloqueadas ? "Loja Fechada" : "Enviar para o WhatsApp"}
                 </button>
                 <button
                   type="button"
-                  onClick={limparCarrinho}
+                  onClick={() => void limparCarrinho()}
                   className="w-full bg-slate-100 text-slate-500 p-5 rounded-[2.2rem] font-black uppercase text-sm tracking-widest"
                 >
                   Limpar Carrinho

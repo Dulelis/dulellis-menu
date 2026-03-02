@@ -1,12 +1,23 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   Package, Users, PlusCircle, Minus, Plus, 
   Trash2, Pencil, X, Loader2, Camera, Image as ImageIcon, 
-  Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map
+  Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map, RotateCcw, ChevronDown, ChevronUp, BadgePercent, Megaphone, Clock3
 } from 'lucide-react';
+
+const DIAS_SEMANA = [
+  { key: 'domingo', label: 'Domingo' },
+  { key: 'segunda', label: 'Segunda' },
+  { key: 'terca', label: 'Terca' },
+  { key: 'quarta', label: 'Quarta' },
+  { key: 'quinta', label: 'Quinta' },
+  { key: 'sexta', label: 'Sexta' },
+  { key: 'sabado', label: 'Sabado' },
+] as const;
+const CATEGORIAS_ESTOQUE = ['Bolos', 'Doces', 'Salgados', 'Bebidas'] as const;
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('estoque');
@@ -15,22 +26,104 @@ export default function AdminPage() {
   const [clientes, setClientes] = useState<any[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [taxas, setTaxas] = useState<any[]>([]); 
+  const [promocoes, setPromocoes] = useState<any[]>([]);
+  const [propagandas, setPropagandas] = useState<any[]>([]);
+  const [horarioFuncionamento, setHorarioFuncionamento] = useState({
+    id: null as number | null,
+    hora_abertura: '08:00',
+    hora_fechamento: '18:00',
+    ativo: true,
+    dias_semana: DIAS_SEMANA.map((d) => d.key) as string[],
+  });
   
   const [uploading, setUploading] = useState(false);
+  const [uploadingPropaganda, setUploadingPropaganda] = useState(false);
   const [mostrarModalEstoque, setMostrarModalEstoque] = useState(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
 
   const [mostrarModalTaxa, setMostrarModalTaxa] = useState(false);
   const [editandoTaxaId, setEditandoTaxaId] = useState<number | null>(null);
+  const [mostrarModalPromocao, setMostrarModalPromocao] = useState(false);
+  const [editandoPromocaoId, setEditandoPromocaoId] = useState<number | null>(null);
+  const [mostrarModalPropaganda, setMostrarModalPropaganda] = useState(false);
+  const [editandoPropagandaId, setEditandoPropagandaId] = useState<number | null>(null);
   
   // Agora o padrão começa em 2km
   const [novaTaxa, setNovaTaxa] = useState({ bairro: 'Até 2km', taxa: 0 });
+  const [novaPromocao, setNovaPromocao] = useState({
+    titulo: '',
+    descricao: '',
+    produto_id: '',
+    tipo: 'percentual',
+    valor_promocional: 10,
+    qtd_minima: 1,
+    qtd_bonus: 1,
+    valor_minimo_pedido: 0,
+    data_inicio: '',
+    data_fim: '',
+    ativa: true,
+  });
+  const TIPOS_PROMO = [
+    { value: 'percentual', label: 'Percentual (%)' },
+    { value: 'leve_mais_um', label: 'Compre e Leve Mais' },
+    { value: 'aniversariante', label: 'Dia do Aniversariante' },
+    { value: 'desconto_fixo', label: 'Desconto Fixo (R$)' },
+    { value: 'frete_gratis', label: 'Frete Gratis' },
+  ];
 
   const [novoItem, setNovoItem] = useState({ 
     nome: '', quantidade: 0, preco: 0, descricao: '', imagem_url: '', categoria: 'Doces' 
   });
+  const [novaPropaganda, setNovaPropaganda] = useState({
+    titulo: '',
+    descricao: '',
+    imagem_url: '',
+    botao_texto: '',
+    botao_link: '',
+    ordem: 0,
+    data_inicio: '',
+    data_fim: '',
+    ativa: true,
+  });
+  const [filtrosRelatorio, setFiltrosRelatorio] = useState({
+    dia: true,
+    semana: true,
+    aniversariantes: true,
+  });
+  const hojeRef = new Date();
+  const [mesRelatorio, setMesRelatorio] = useState(hojeRef.getMonth());
+  const [anoRelatorio, setAnoRelatorio] = useState(hojeRef.getFullYear());
+  const [clienteEmFoco, setClienteEmFoco] = useState<{ whatsapp: string; nome: string } | null>(null);
+  const [clienteExpandidoId, setClienteExpandidoId] = useState<number | null>(null);
+  const [clienteHistoricoAbertoId, setClienteHistoricoAbertoId] = useState<number | null>(null);
+  const [pedidosSelecionadosPorCliente, setPedidosSelecionadosPorCliente] = useState<Record<number, number[]>>({});
+  const [pedidosSelecionadosVendas, setPedidosSelecionadosVendas] = useState<number[]>([]);
+  const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
+    categoria,
+    itens: estoque.filter((item) => String(item.categoria || '').trim().toLowerCase() === categoria.toLowerCase()),
+  }));
+  const estoqueOutros = estoque.filter((item) => {
+    const categoria = String(item.categoria || '').trim().toLowerCase();
+    return !CATEGORIAS_ESTOQUE.some((base) => base.toLowerCase() === categoria);
+  });
 
-  const carregarDados = async () => {
+  const normalizarHorarioInput = (valor?: string | null) => {
+    const texto = String(valor || '').trim();
+    const match = texto.match(/^(\d{2}):(\d{2})/);
+    if (!match) return '';
+    return `${match[1]}:${match[2]}`;
+  };
+
+  const normalizarDiasSemana = (dias?: string[] | null) => {
+    const base = Array.isArray(dias) ? dias : [];
+    const validos = base
+      .map((d) => String(d || '').trim().toLowerCase())
+      .filter((d) => DIAS_SEMANA.some((dia) => dia.key === d));
+    const unicos = Array.from(new Set(validos));
+    return unicos.length > 0 ? unicos : DIAS_SEMANA.map((d) => d.key);
+  };
+
+  const carregarDados = useCallback(async () => {
     setLoading(true);
     const resEst = await supabase.from('estoque').select('*').order('nome');
     const resCli = await supabase.from('clientes').select('*').order('created_at', { ascending: false });
@@ -38,15 +131,74 @@ export default function AdminPage() {
     
     // Carrega as taxas ordenadas pelo valor para ficar bonito na tela
     const resTaxas = await supabase.from('taxas_entrega').select('*').order('taxa'); 
+    const resProm = await supabase.from('promocoes').select('*').order('created_at', { ascending: false });
+    const resPropagandas = await supabase.from('propagandas').select('*').order('ordem').order('created_at', { ascending: false });
+    const resHorario = await supabase
+      .from('configuracoes_loja')
+      .select('id,hora_abertura,hora_fechamento,ativo,dias_semana')
+      .order('id', { ascending: true })
+      .limit(1)
+      .maybeSingle();
     
     setEstoque(resEst.data || []);
     setClientes(resCli.data || []);
     setPedidos(resPed.data || []);
     setTaxas(resTaxas.data || []);
+    setPromocoes(resProm.data || []);
+    setPropagandas(resPropagandas.data || []);
+    if (resHorario.error) {
+      console.warn('Falha ao carregar configuracao de horario:', resHorario.error.message);
+    } else if (resHorario.data) {
+      setHorarioFuncionamento({
+        id: Number(resHorario.data.id),
+        hora_abertura: normalizarHorarioInput(resHorario.data.hora_abertura) || '08:00',
+        hora_fechamento: normalizarHorarioInput(resHorario.data.hora_fechamento) || '18:00',
+        ativo: resHorario.data.ativo !== false,
+        dias_semana: normalizarDiasSemana(resHorario.data.dias_semana),
+      });
+    }
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { carregarDados(); }, []);
+  useEffect(() => {
+    void carregarDados();
+  }, [carregarDados]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-live-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'estoque' }, () => {
+        void carregarDados();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
+        void carregarDados();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
+        void carregarDados();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'taxas_entrega' }, () => {
+        void carregarDados();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'promocoes' }, () => {
+        void carregarDados();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'propagandas' }, () => {
+        void carregarDados();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes_loja' }, () => {
+        void carregarDados();
+      })
+      .subscribe();
+
+    const timer = window.setInterval(() => {
+      void carregarDados();
+    }, 8000);
+
+    return () => {
+      window.clearInterval(timer);
+      void supabase.removeChannel(channel);
+    };
+  }, [carregarDados]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -88,6 +240,11 @@ export default function AdminPage() {
     setNovoItem({ nome: '', quantidade: 0, preco: 0, descricao: '', imagem_url: '', categoria: 'Doces' });
   };
 
+  const limparFormularioProduto = () => {
+    setEditandoId(null);
+    setNovoItem({ nome: '', quantidade: 0, preco: 0, descricao: '', imagem_url: '', categoria: 'Doces' });
+  };
+
   const mudarQtd = async (id: number, atual: number, mudanca: number) => {
     await supabase.from('estoque').update({ quantidade: Math.max(0, atual + mudanca) }).eq('id', id);
     carregarDados();
@@ -124,23 +281,532 @@ export default function AdminPage() {
     setNovaTaxa({ bairro: 'Até 2km', taxa: 0 }); // Retorna para 2km
   };
 
+  const limparFormularioTaxa = () => {
+    setEditandoTaxaId(null);
+    setNovaTaxa({ bairro: 'Até 2km', taxa: 0 });
+  };
+
+  const fecharModalPromocao = () => {
+    setMostrarModalPromocao(false);
+    setEditandoPromocaoId(null);
+    setNovaPromocao({
+      titulo: '',
+      descricao: '',
+      produto_id: '',
+      tipo: 'percentual',
+      valor_promocional: 10,
+      qtd_minima: 1,
+      qtd_bonus: 1,
+      valor_minimo_pedido: 0,
+      data_inicio: '',
+      data_fim: '',
+      ativa: true,
+    });
+  };
+
+  const limparFormularioPromocao = () => {
+    setEditandoPromocaoId(null);
+    setNovaPromocao({
+      titulo: '',
+      descricao: '',
+      produto_id: '',
+      tipo: 'percentual',
+      valor_promocional: 10,
+      qtd_minima: 1,
+      qtd_bonus: 1,
+      valor_minimo_pedido: 0,
+      data_inicio: '',
+      data_fim: '',
+      ativa: true,
+    });
+  };
+
+  const abrirModalPromocaoParaProduto = (item: any) => {
+    const promocaoAtual = promocoes.find((p) => Number(p.produto_id) === Number(item.id) && p.ativa !== false);
+    if (promocaoAtual) {
+      if (confirm('Este item ja esta em promocao. Deseja remover da promocao?')) {
+        void supabase.from('promocoes').update({ ativa: false }).eq('id', promocaoAtual.id).then(() => carregarDados());
+      }
+      return;
+    }
+
+    setEditandoPromocaoId(null);
+    setNovaPromocao({
+      titulo: `Promocao ${item.nome}`,
+      descricao: '',
+      produto_id: String(item.id),
+      tipo: 'percentual',
+      valor_promocional: 10,
+      qtd_minima: 1,
+      qtd_bonus: 1,
+      valor_minimo_pedido: 0,
+      data_inicio: '',
+      data_fim: '',
+      ativa: true,
+    });
+    setMostrarModalPromocao(true);
+  };
+
+  const abrirEdicaoPromocao = (promo: any) => {
+    setNovaPromocao({
+      titulo: String(promo.titulo || ''),
+      descricao: String(promo.descricao || ''),
+      produto_id: promo.produto_id ? String(promo.produto_id) : '',
+      tipo: String(promo.tipo || 'percentual'),
+      valor_promocional: Number(promo.valor_promocional ?? promo.preco_promocional ?? 0),
+      qtd_minima: Number(promo.qtd_minima || 1),
+      qtd_bonus: Number(promo.qtd_bonus || 1),
+      valor_minimo_pedido: Number(promo.valor_minimo_pedido || 0),
+      data_inicio: String(promo.data_inicio || ''),
+      data_fim: String(promo.data_fim || ''),
+      ativa: promo.ativa !== false,
+    });
+    setEditandoPromocaoId(promo.id);
+    setMostrarModalPromocao(true);
+  };
+
+  const salvarPromocao = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const payload = {
+      titulo: novaPromocao.titulo,
+      descricao: novaPromocao.descricao,
+      produto_id: novaPromocao.produto_id ? Number(novaPromocao.produto_id) : null,
+      tipo: novaPromocao.tipo,
+      valor_promocional: Number(novaPromocao.valor_promocional) || 0,
+      qtd_minima: Number(novaPromocao.qtd_minima) || 1,
+      qtd_bonus: Number(novaPromocao.qtd_bonus) || 1,
+      valor_minimo_pedido: Number(novaPromocao.valor_minimo_pedido) || 0,
+      data_inicio: novaPromocao.data_inicio || null,
+      data_fim: novaPromocao.data_fim || null,
+      ativa: novaPromocao.ativa,
+    };
+    const payloadLegado = {
+      titulo: novaPromocao.titulo,
+      descricao: novaPromocao.descricao,
+      produto_id: novaPromocao.produto_id ? Number(novaPromocao.produto_id) : null,
+      preco_promocional: Number(novaPromocao.valor_promocional) || 0,
+      ativa: novaPromocao.ativa,
+    };
+
+    let error: any = null;
+    const ehErroSchemaPromocao =
+      (mensagem: string) =>
+        mensagem.includes("schema cache") ||
+        mensagem.includes("data_fim") ||
+        mensagem.includes("data_inicio") ||
+        mensagem.includes("valor_promocional") ||
+        mensagem.includes("tipo");
+
+    if (editandoPromocaoId) {
+      const res = await supabase.from('promocoes').update(payload).eq('id', editandoPromocaoId);
+      error = res.error;
+      if (error && ehErroSchemaPromocao(String(error.message || '').toLowerCase())) {
+        const retry = await supabase.from('promocoes').update(payloadLegado).eq('id', editandoPromocaoId);
+        error = retry.error;
+      }
+    } else {
+      const res = await supabase.from('promocoes').insert([payload]);
+      error = res.error;
+      if (error && ehErroSchemaPromocao(String(error.message || '').toLowerCase())) {
+        const retry = await supabase.from('promocoes').insert([payloadLegado]);
+        error = retry.error;
+      }
+    }
+
+    if (error) {
+      alert(`Erro ao salvar promocao: ${error.message}`);
+      return;
+    }
+
+    const usandoModeloAntigo =
+      !('tipo' in (promocoes[0] || {})) &&
+      !('valor_promocional' in (promocoes[0] || {}));
+    if (usandoModeloAntigo) {
+      alert('Promocao salva no modelo antigo. Para liberar regras novas, rode o SQL upgrade_promocoes_regras.sql no Supabase.');
+    }
+
+    fecharModalPromocao();
+    carregarDados();
+  };
+
+  const alternarStatusPromocao = async (promo: any) => {
+    await supabase.from('promocoes').update({ ativa: !(promo.ativa !== false) }).eq('id', promo.id);
+    carregarDados();
+  };
+
+  const handleUploadPropaganda = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      if (!e.target.files || e.target.files.length === 0) return;
+      setUploadingPropaganda(true);
+      const file = e.target.files[0];
+      const extensao = file.name.split('.').pop();
+      const fileName = `propagandas/${Date.now()}-${Math.random()}.${extensao}`;
+      const { error: uploadError } = await supabase.storage.from('fotos-produtos').upload(fileName, file);
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from('fotos-produtos').getPublicUrl(fileName);
+      setNovaPropaganda((prev) => ({ ...prev, imagem_url: data.publicUrl }));
+    } catch (error: any) {
+      alert('Erro no upload da propaganda: ' + error.message);
+    } finally {
+      setUploadingPropaganda(false);
+    }
+  };
+
+  const fecharModalPropaganda = () => {
+    setMostrarModalPropaganda(false);
+    setEditandoPropagandaId(null);
+    setNovaPropaganda({
+      titulo: '',
+      descricao: '',
+      imagem_url: '',
+      botao_texto: '',
+      botao_link: '',
+      ordem: 0,
+      data_inicio: '',
+      data_fim: '',
+      ativa: true,
+    });
+  };
+
+  const limparFormularioPropaganda = () => {
+    setEditandoPropagandaId(null);
+    setNovaPropaganda({
+      titulo: '',
+      descricao: '',
+      imagem_url: '',
+      botao_texto: '',
+      botao_link: '',
+      ordem: 0,
+      data_inicio: '',
+      data_fim: '',
+      ativa: true,
+    });
+  };
+
+  const abrirEdicaoPropaganda = (propaganda: any) => {
+    setEditandoPropagandaId(propaganda.id);
+    setNovaPropaganda({
+      titulo: String(propaganda.titulo || ''),
+      descricao: String(propaganda.descricao || ''),
+      imagem_url: String(propaganda.imagem_url || ''),
+      botao_texto: String(propaganda.botao_texto || ''),
+      botao_link: String(propaganda.botao_link || ''),
+      ordem: Number(propaganda.ordem || 0),
+      data_inicio: String(propaganda.data_inicio || ''),
+      data_fim: String(propaganda.data_fim || ''),
+      ativa: propaganda.ativa !== false,
+    });
+    setMostrarModalPropaganda(true);
+  };
+
+  const salvarPropaganda = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      titulo: novaPropaganda.titulo,
+      descricao: novaPropaganda.descricao || null,
+      imagem_url: novaPropaganda.imagem_url || null,
+      botao_texto: novaPropaganda.botao_texto || null,
+      botao_link: novaPropaganda.botao_link || null,
+      ordem: Number(novaPropaganda.ordem) || 0,
+      data_inicio: novaPropaganda.data_inicio || null,
+      data_fim: novaPropaganda.data_fim || null,
+      ativa: novaPropaganda.ativa,
+    };
+
+    let error: any = null;
+    if (editandoPropagandaId) {
+      const res = await supabase.from('propagandas').update(payload).eq('id', editandoPropagandaId);
+      error = res.error;
+    } else {
+      const res = await supabase.from('propagandas').insert([payload]);
+      error = res.error;
+    }
+
+    if (error) {
+      alert(`Erro ao salvar propaganda: ${error.message}`);
+      return;
+    }
+
+    fecharModalPropaganda();
+    carregarDados();
+  };
+
+  const alternarStatusPropaganda = async (propaganda: any) => {
+    await supabase
+      .from('propagandas')
+      .update({ ativa: !(propaganda.ativa !== false) })
+      .eq('id', propaganda.id);
+    carregarDados();
+  };
+
+  const salvarHorarioFuncionamento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const abertura = normalizarHorarioInput(horarioFuncionamento.hora_abertura);
+    const fechamento = normalizarHorarioInput(horarioFuncionamento.hora_fechamento);
+    if (!abertura || !fechamento) {
+      alert('Preencha os horarios de abertura e fechamento.');
+      return;
+    }
+
+    const payload = {
+      hora_abertura: `${abertura}:00`,
+      hora_fechamento: `${fechamento}:00`,
+      ativo: horarioFuncionamento.ativo,
+      dias_semana: normalizarDiasSemana(horarioFuncionamento.dias_semana),
+    };
+
+    let error: any = null;
+    if (horarioFuncionamento.id) {
+      const res = await supabase.from('configuracoes_loja').update(payload).eq('id', horarioFuncionamento.id);
+      error = res.error;
+    } else {
+      const res = await supabase.from('configuracoes_loja').insert([payload]);
+      error = res.error;
+    }
+
+    if (error) {
+      alert(`Erro ao salvar horario: ${error.message}`);
+      return;
+    }
+
+    alert('Horario de funcionamento salvo com sucesso.');
+    void carregarDados();
+  };
+
+  const alternarStatusLoja = async () => {
+    const abertura = normalizarHorarioInput(horarioFuncionamento.hora_abertura) || '08:00';
+    const fechamento = normalizarHorarioInput(horarioFuncionamento.hora_fechamento) || '18:00';
+    const novoStatus = !horarioFuncionamento.ativo;
+    const payload = {
+      hora_abertura: `${abertura}:00`,
+      hora_fechamento: `${fechamento}:00`,
+      ativo: novoStatus,
+      dias_semana: normalizarDiasSemana(horarioFuncionamento.dias_semana),
+    };
+
+    let error: any = null;
+    if (horarioFuncionamento.id) {
+      const res = await supabase.from('configuracoes_loja').update(payload).eq('id', horarioFuncionamento.id);
+      error = res.error;
+    } else {
+      const res = await supabase.from('configuracoes_loja').insert([payload]);
+      error = res.error;
+    }
+
+    if (error) {
+      alert(`Erro ao atualizar status da loja: ${error.message}`);
+      return;
+    }
+
+    setHorarioFuncionamento((prev) => ({ ...prev, ativo: novoStatus }));
+    alert(novoStatus ? 'Loja iniciada.' : 'Loja finalizada.');
+    void carregarDados();
+  };
+
+  const alternarDiaFuncionamento = (dia: string) => {
+    setHorarioFuncionamento((prev) => {
+      const existe = prev.dias_semana.includes(dia);
+      const proximo = existe ? prev.dias_semana.filter((d) => d !== dia) : [...prev.dias_semana, dia];
+      return {
+        ...prev,
+        dias_semana: proximo.length > 0 ? proximo : prev.dias_semana,
+      };
+    });
+  };
+
+  const resumoRegraPromocao = (promo: any) => {
+    const tipo = String(promo.tipo || 'percentual');
+    const valor = Number(promo.valor_promocional ?? promo.preco_promocional ?? 0);
+    if (tipo === 'percentual') return `${valor}% de desconto`;
+    if (tipo === 'desconto_fixo') return `R$ ${valor.toFixed(2)} de desconto`;
+    if (tipo === 'leve_mais_um') {
+      const min = Number(promo.qtd_minima || 1);
+      const bonus = Number(promo.qtd_bonus || 1);
+      return `Compre ${min} e leve +${bonus}`;
+    }
+    if (tipo === 'aniversariante') return `${valor}% no dia do aniversario`;
+    if (tipo === 'frete_gratis') return `Frete gratis acima de R$ ${Number(promo.valor_minimo_pedido || 0).toFixed(2)}`;
+    return 'Regra personalizada';
+  };
+
+  const alternarFiltroRelatorio = (chave: 'dia' | 'semana' | 'aniversariantes') => {
+    setFiltrosRelatorio((prev) => ({ ...prev, [chave]: !prev[chave] }));
+  };
+
+  const limparRelatorio = () => {
+    setFiltrosRelatorio({ dia: false, semana: false, aniversariantes: false });
+  };
+
+  const limparRelatorioDefinitivo = async () => {
+    const idsPedidos = new Set<number>();
+    if (filtrosRelatorio.dia) {
+      pedidosDoDia.forEach((p) => {
+        if (typeof p.id === 'number') idsPedidos.add(p.id);
+      });
+    }
+    if (filtrosRelatorio.semana) {
+      pedidosDaSemana.forEach((p) => {
+        if (typeof p.id === 'number') idsPedidos.add(p.id);
+      });
+    }
+
+    const idsClientesNiver = filtrosRelatorio.aniversariantes
+      ? aniversariantesDoMesVigente
+          .map((c) => c.id)
+          .filter((id): id is number => typeof id === 'number')
+      : [];
+
+    if (idsPedidos.size === 0 && idsClientesNiver.length === 0) {
+      alert('Marque ao menos um bloco do relatorio com dados para limpar.');
+      return;
+    }
+
+    const confirmar = confirm(
+      `Limpeza definitiva:\n` +
+      `- Pedidos: ${idsPedidos.size}\n` +
+      `- Clientes sem data de aniversario: ${idsClientesNiver.length}\n\n` +
+      `Deseja continuar?`,
+    );
+    if (!confirmar) return;
+
+    if (idsPedidos.size > 0) {
+      const { error } = await supabase.from('pedidos').delete().in('id', Array.from(idsPedidos));
+      if (error) {
+        alert(`Erro ao limpar pedidos: ${error.message}`);
+        return;
+      }
+    }
+
+    if (idsClientesNiver.length > 0) {
+      const { error } = await supabase
+        .from('clientes')
+        .update({ data_aniversario: null })
+        .in('id', idsClientesNiver);
+      if (error) {
+        alert(`Erro ao limpar aniversariantes: ${error.message}`);
+        return;
+      }
+    }
+
+    await carregarDados();
+    alert('Limpeza definitiva concluida.');
+  };
+
+  const normalizarNumero = (valor: string) => valor.replace(/\D/g, '');
+  const extrairPontoReferencia = (cliente: any) => {
+    const pontoDireto = String(cliente?.ponto_referencia || '').trim();
+    if (pontoDireto) return pontoDireto;
+    const endereco = String(cliente?.endereco || '');
+    const marcador = 'ponto de referencia:';
+    const idx = endereco.toLowerCase().indexOf(marcador);
+    if (idx < 0) return '';
+    return endereco.slice(idx + marcador.length).trim();
+  };
+  const extrairEnderecoSemPonto = (cliente: any) => {
+    const endereco = String(cliente?.endereco || '');
+    const marcador = 'ponto de referencia:';
+    const idx = endereco.toLowerCase().indexOf(marcador);
+    if (idx < 0) return endereco;
+    return endereco.slice(0, idx).replace(/\-\s*$/g, '').trim();
+  };
+
+  const irParaCadastroCliente = (whatsapp?: string, nome?: string) => {
+    const zap = normalizarNumero(String(whatsapp || ''));
+    const nomeCliente = String(nome || '').trim();
+    setClienteEmFoco({ whatsapp: zap, nome: nomeCliente });
+    setActiveTab('clientes');
+  };
+
+  const imprimirCadastroCliente = (cliente: any) => {
+    const valor = (v: unknown) => String(v ?? '');
+    const pontoReferencia = extrairPontoReferencia(cliente);
+    const enderecoSemPonto = extrairEnderecoSemPonto(cliente);
+    const popup = window.open('', '_blank', 'width=900,height=700');
+    if (!popup) {
+      alert('Nao foi possivel abrir a janela de impressao.');
+      return;
+    }
+
+    const html = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Cadastro do Cliente</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { margin: 0 0 16px; font-size: 22px; }
+            .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+            .row { margin-bottom: 10px; }
+            .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: .08em; }
+            .value { font-size: 15px; font-weight: 700; margin-top: 2px; }
+          </style>
+        </head>
+        <body>
+          <h1>Cadastro do Cliente</h1>
+          <div class="card">
+            <div class="row"><div class="label">Nome</div><div class="value">${valor(cliente.nome) || 'Cliente sem nome'}</div></div>
+            <div class="row"><div class="label">WhatsApp</div><div class="value">${valor(cliente.whatsapp) || 'Nao informado'}</div></div>
+            <div class="row"><div class="label">Endereco</div><div class="value">${valor(enderecoSemPonto)}, ${valor(cliente.numero)}</div></div>
+            <div class="row"><div class="label">Ponto de Referencia</div><div class="value">${valor(pontoReferencia) || 'Nao informado'}</div></div>
+            <div class="row"><div class="label">Bairro</div><div class="value">${valor(cliente.bairro) || '-'}</div></div>
+            <div class="row"><div class="label">Cidade</div><div class="value">${valor(cliente.cidade) || 'Navegantes'}</div></div>
+            <div class="row"><div class="label">CEP</div><div class="value">${valor(cliente.cep) || 'Nao informado'}</div></div>
+            <div class="row"><div class="label">Nascimento</div><div class="value">${cliente.data_aniversario ? new Date(cliente.data_aniversario).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Nao informado'}</div></div>
+            <div class="row"><div class="label">Observacao</div><div class="value">${valor(cliente.observacao) || 'Sem observacoes'}</div></div>
+          </div>
+          <script>
+            window.onload = () => {
+              window.print();
+              window.onafterprint = () => window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+  };
+
   // Lógica dos Relatórios
-  const mesAtual = new Date().getMonth();
-  const anoAtual = new Date().getFullYear();
+  const mesVigente = new Date().getMonth();
+  const anoVigente = new Date().getFullYear();
   const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   
-  const pedidosDoMes = pedidos.filter(p => {
+  const pedidosDoMesRelatorio = pedidos.filter(p => {
     if (!p.created_at) return false;
     const dataPedido = new Date(p.created_at);
-    return dataPedido.getMonth() === mesAtual && dataPedido.getFullYear() === anoAtual;
+    return dataPedido.getMonth() === mesRelatorio && dataPedido.getFullYear() === anoRelatorio;
   });
 
-  const faturamentoTotal = pedidosDoMes.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
+  const faturamentoTotal = pedidosDoMesRelatorio.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
+  const inicioDia = new Date();
+  inicioDia.setHours(0, 0, 0, 0);
+  const fimDia = new Date(inicioDia);
+  fimDia.setDate(fimDia.getDate() + 1);
+  const pedidosDoDia = pedidos.filter((p) => {
+    if (!p.created_at) return false;
+    const dataPedido = new Date(p.created_at);
+    return dataPedido >= inicioDia && dataPedido < fimDia;
+  });
+  const faturamentoDia = pedidosDoDia.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
+  const inicioSemana = new Date();
+  inicioSemana.setHours(0, 0, 0, 0);
+  const diaSemana = (inicioSemana.getDay() + 6) % 7;
+  inicioSemana.setDate(inicioSemana.getDate() - diaSemana);
+  const pedidosDaSemana = pedidos.filter((p) => {
+    if (!p.created_at) return false;
+    return new Date(p.created_at) >= inicioSemana;
+  });
+  const faturamentoSemana = pedidosDaSemana.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
   
   const vendasPorProduto: Record<string, { qtd: number, valor: number }> = {};
-  const comprasPorCliente: Record<string, { nome: string, qtdPedidos: number, valorGasto: number }> = {};
+  const comprasPorCliente: Record<string, { nome: string, whatsapp: string, qtdPedidos: number, valorGasto: number }> = {};
   
-  pedidosDoMes.forEach(pedido => {
+  pedidosDoMesRelatorio.forEach(pedido => {
     let itensArray = pedido.itens;
     if (typeof itensArray === 'string') {
       try { itensArray = JSON.parse(itensArray); } catch (e) { itensArray = []; }
@@ -156,7 +822,7 @@ export default function AdminPage() {
 
     const zap = pedido.whatsapp || 'sem-numero';
     if (!comprasPorCliente[zap]) {
-      comprasPorCliente[zap] = { nome: pedido.cliente_nome || 'Cliente sem nome', qtdPedidos: 0, valorGasto: 0 };
+      comprasPorCliente[zap] = { nome: pedido.cliente_nome || 'Cliente sem nome', whatsapp: zap, qtdPedidos: 0, valorGasto: 0 };
     }
     comprasPorCliente[zap].qtdPedidos += 1;
     comprasPorCliente[zap].valorGasto += (Number(pedido.total) || 0);
@@ -164,6 +830,297 @@ export default function AdminPage() {
 
   const rankingProdutos = Object.entries(vendasPorProduto).map(([nome, dados]) => ({ nome, ...dados })).sort((a, b) => b.qtd - a.qtd);
   const rankingClientes = Object.values(comprasPorCliente).sort((a, b) => b.valorGasto - a.valorGasto);
+  const ultimasVendasSemana = pedidosDaSemana.slice(0, 8);
+  const aniversariantesDoMesVigente = clientes
+    .filter((c) => {
+      if (!c.data_aniversario) return false;
+      const base = String(c.data_aniversario).slice(0, 10);
+      const dataNiver = new Date(`${base}T00:00:00`);
+      return !Number.isNaN(dataNiver.getTime()) && dataNiver.getMonth() === mesVigente;
+    })
+    .sort((a, b) => {
+      const dataA = new Date(`${String(a.data_aniversario).slice(0, 10)}T00:00:00`).getDate();
+      const dataB = new Date(`${String(b.data_aniversario).slice(0, 10)}T00:00:00`).getDate();
+      return dataA - dataB;
+    });
+
+  const historicoPorWhatsapp = React.useMemo(() => {
+    const mapa: Record<string, any[]> = {};
+    pedidos.forEach((pedido) => {
+      const zap = normalizarNumero(String(pedido.whatsapp || ''));
+      if (!zap) return;
+      if (!mapa[zap]) mapa[zap] = [];
+      mapa[zap].push(pedido);
+    });
+    Object.values(mapa).forEach((lista) =>
+      lista.sort(
+        (a, b) =>
+          new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime(),
+      ),
+    );
+    return mapa;
+  }, [pedidos]);
+
+  const limparHistoricoCliente = async (cliente: any) => {
+    const zap = normalizarNumero(String(cliente.whatsapp || ''));
+    const historico = historicoPorWhatsapp[zap] || [];
+    const ids = historico
+      .map((p) => p.id)
+      .filter((id: unknown): id is number => typeof id === 'number');
+
+    if (!ids.length) {
+      alert('Este cliente nao possui historico de compras.');
+      return;
+    }
+
+    if (!confirm(`Apagar definitivamente ${ids.length} compra(s) deste cliente?`)) return;
+
+    const { error } = await supabase.from('pedidos').delete().in('id', ids);
+    if (error) {
+      alert(`Erro ao limpar historico: ${error.message}`);
+      return;
+    }
+
+    if (clienteHistoricoAbertoId === cliente.id) {
+      setClienteHistoricoAbertoId(null);
+    }
+    setPedidosSelecionadosPorCliente((prev) => ({ ...prev, [cliente.id]: [] }));
+    await carregarDados();
+    alert('Historico de compras removido.');
+  };
+
+  const alternarSelecaoPedidoCliente = (clienteId: number, pedidoId: number) => {
+    setPedidosSelecionadosPorCliente((prev) => {
+      const atuais = prev[clienteId] || [];
+      const existe = atuais.includes(pedidoId);
+      return {
+        ...prev,
+        [clienteId]: existe ? atuais.filter((id) => id !== pedidoId) : [...atuais, pedidoId],
+      };
+    });
+  };
+
+  const marcarTodosPedidosCliente = (clienteId: number, historico: any[]) => {
+    const ids = historico
+      .map((p) => p.id)
+      .filter((id: unknown): id is number => typeof id === 'number');
+    setPedidosSelecionadosPorCliente((prev) => ({ ...prev, [clienteId]: ids }));
+  };
+
+  const desmarcarPedidosCliente = (clienteId: number) => {
+    setPedidosSelecionadosPorCliente((prev) => ({ ...prev, [clienteId]: [] }));
+  };
+
+  const idsVendasVisiveis = React.useMemo(() => {
+    const ids = new Set<number>();
+    if (filtrosRelatorio.dia) {
+      pedidosDoDia.forEach((p) => {
+        if (typeof p.id === 'number') ids.add(p.id);
+      });
+    }
+    if (filtrosRelatorio.semana) {
+      ultimasVendasSemana.forEach((p) => {
+        if (typeof p.id === 'number') ids.add(p.id);
+      });
+    }
+    return Array.from(ids);
+  }, [filtrosRelatorio.dia, filtrosRelatorio.semana, pedidosDoDia, ultimasVendasSemana]);
+
+  const alternarSelecaoVenda = (pedidoId: number) => {
+    setPedidosSelecionadosVendas((prev) =>
+      prev.includes(pedidoId) ? prev.filter((id) => id !== pedidoId) : [...prev, pedidoId],
+    );
+  };
+
+  const marcarVendasVisiveis = () => {
+    setPedidosSelecionadosVendas((prev) => Array.from(new Set([...prev, ...idsVendasVisiveis])));
+  };
+
+  const desmarcarVendasSelecionadas = () => {
+    setPedidosSelecionadosVendas([]);
+  };
+
+  const imprimirVendasSelecionadas = () => {
+    const selecionados = pedidos
+      .filter((p) => pedidosSelecionadosVendas.includes(p.id))
+      .sort((a, b) => new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime());
+
+    if (!selecionados.length) {
+      alert('Selecione ao menos uma venda para imprimir.');
+      return;
+    }
+
+    const valorTotal = selecionados.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
+    const htmlVendas = selecionados.map((pedido, idx) => `
+      <div class="order">
+        <div class="order-title">Venda ${idx + 1}</div>
+        <div class="order-meta">Cliente: ${String(pedido.cliente_nome || 'Cliente sem nome')}</div>
+        <div class="order-meta">WhatsApp: ${String(pedido.whatsapp || 'Nao informado')}</div>
+        <div class="order-meta">Data: ${pedido.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
+        <div class="order-meta">Total: R$ ${Number(pedido.total || 0).toFixed(2)}</div>
+      </div>
+    `).join('');
+
+    const popup = window.open('', '_blank', 'width=900,height=700');
+    if (!popup) {
+      alert('Nao foi possivel abrir a janela de impressao.');
+      return;
+    }
+
+    popup.document.open();
+    popup.document.write(`
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Vendas Selecionadas</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { margin: 0 0 10px; font-size: 22px; }
+            .meta { margin-bottom: 16px; color: #475569; font-weight: 700; }
+            .order { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+            .order-title { font-weight: 800; margin-bottom: 6px; }
+            .order-meta { font-size: 13px; margin-bottom: 4px; }
+          </style>
+        </head>
+        <body>
+          <h1>Vendas Selecionadas</h1>
+          <div class="meta">Quantidade: ${selecionados.length} • Total: R$ ${valorTotal.toFixed(2)}</div>
+          ${htmlVendas}
+          <script>
+            window.onload = () => {
+              window.print();
+              window.onafterprint = () => window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+  };
+
+  const parseItensPedido = (pedido: any) => {
+    let itensArray = pedido?.itens;
+    if (typeof itensArray === 'string') {
+      try { itensArray = JSON.parse(itensArray); } catch { itensArray = []; }
+    }
+    return Array.isArray(itensArray) ? itensArray : [];
+  };
+
+  const imprimirHistoricoCliente = (cliente: any, incluirCadastro: boolean) => {
+    const zap = normalizarNumero(String(cliente.whatsapp || ''));
+    const historico = historicoPorWhatsapp[zap] || [];
+    const idsSelecionados = pedidosSelecionadosPorCliente[cliente.id] || [];
+    const selecionados = historico.filter((p) => idsSelecionados.includes(p.id));
+    const pedidosParaImprimir = selecionados.length > 0 ? selecionados : historico.slice(0, 1);
+
+    if (!pedidosParaImprimir.length) {
+      alert('Nao ha pedidos para imprimir neste cliente.');
+      return;
+    }
+
+    const valor = (v: unknown) => String(v ?? '');
+    const pontoReferencia = extrairPontoReferencia(cliente);
+    const enderecoSemPonto = extrairEnderecoSemPonto(cliente);
+
+    const blocosPedidos = pedidosParaImprimir.map((pedido, idx) => {
+      const itens = parseItensPedido(pedido);
+      const itensHtml = itens.length
+        ? itens.map((item: any) => `<li>${valor(item.qtd || 1)}x ${valor(item.nome || 'Item')} - R$ ${Number(item.preco || 0).toFixed(2)}</li>`).join('')
+        : '<li>Itens nao informados</li>';
+      return `
+        <div class="order">
+          <div class="order-title">Pedido ${idx + 1}${idx === 0 ? ' (Ultimo pedido)' : ''}</div>
+          <div class="order-meta">Data: ${pedido.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
+          <div class="order-meta">Total: R$ ${Number(pedido.total || 0).toFixed(2)}</div>
+          <ul>${itensHtml}</ul>
+        </div>
+      `;
+    }).join('');
+
+    const cadastroHtml = incluirCadastro
+      ? `
+        <div class="card">
+          <h2>Cadastro do Cliente</h2>
+          <div class="row"><span>Nome:</span> ${valor(cliente.nome) || 'Cliente sem nome'}</div>
+          <div class="row"><span>WhatsApp:</span> ${valor(cliente.whatsapp) || 'Nao informado'}</div>
+          <div class="row"><span>Endereco:</span> ${valor(enderecoSemPonto)}, ${valor(cliente.numero)}</div>
+          <div class="row"><span>Ponto de Referencia:</span> ${valor(pontoReferencia) || 'Nao informado'}</div>
+          <div class="row"><span>Bairro:</span> ${valor(cliente.bairro) || '-'}</div>
+          <div class="row"><span>Cidade:</span> ${valor(cliente.cidade) || 'Navegantes'}</div>
+          <div class="row"><span>CEP:</span> ${valor(cliente.cep) || 'Nao informado'}</div>
+        </div>
+      `
+      : '';
+
+    const popup = window.open('', '_blank', 'width=900,height=700');
+    if (!popup) {
+      alert('Nao foi possivel abrir a janela de impressao.');
+      return;
+    }
+
+    popup.document.open();
+    popup.document.write(`
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Historico de Compras</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { margin: 0 0 12px; font-size: 22px; }
+            h2 { margin: 0 0 8px; font-size: 16px; }
+            .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; margin-bottom: 16px; }
+            .row { margin: 4px 0; font-size: 14px; }
+            .row span { font-weight: 700; }
+            .order { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+            .order-title { font-weight: 800; margin-bottom: 4px; }
+            .order-meta { font-size: 13px; color: #475569; margin-bottom: 4px; }
+            ul { margin: 8px 0 0 18px; padding: 0; }
+            li { margin-bottom: 4px; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <h1>Historico de Compras</h1>
+          ${cadastroHtml}
+          ${blocosPedidos}
+          <script>
+            window.onload = () => {
+              window.print();
+              window.onafterprint = () => window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+  };
+  const clienteEstaEmFoco = (cliente: { whatsapp?: string; nome?: string }) => {
+    if (!clienteEmFoco) return false;
+    const focoZap = normalizarNumero(clienteEmFoco.whatsapp || '');
+    const clienteZap = normalizarNumero(String(cliente.whatsapp || ''));
+    if (focoZap && focoZap === clienteZap) return true;
+    if (clienteEmFoco.nome) {
+      return String(cliente.nome || '').trim().toLowerCase() === clienteEmFoco.nome.trim().toLowerCase();
+    }
+    return false;
+  };
+  const clientesOrdenados = [...clientes].sort((a, b) => Number(clienteEstaEmFoco(b)) - Number(clienteEstaEmFoco(a)));
+
+  useEffect(() => {
+    if (activeTab !== 'clientes' || !clienteEmFoco) return;
+    const focoZap = normalizarNumero(clienteEmFoco.whatsapp || '');
+    const focoNome = clienteEmFoco.nome.trim().toLowerCase();
+    const match = clientes.find((c) => {
+      const clienteZap = normalizarNumero(String(c.whatsapp || ''));
+      if (focoZap && focoZap === clienteZap) return true;
+      if (focoNome) {
+        return String(c.nome || '').trim().toLowerCase() === focoNome;
+      }
+      return false;
+    });
+    setClienteExpandidoId(match?.id ?? null);
+  }, [activeTab, clienteEmFoco, clientes]);
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans print:bg-white">
@@ -171,9 +1128,13 @@ export default function AdminPage() {
         <h2 className="text-2xl font-black text-pink-500 italic mb-10 text-center tracking-tighter">DULELIS</h2>
         <nav className="space-y-2">
           <button onClick={() => setActiveTab('estoque')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'estoque' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Package size={20}/> Estoque / Cardápio </button>
+          <button onClick={() => setActiveTab('promocoes')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'promocoes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <BadgePercent size={20}/> Promocoes </button>
+          <button onClick={() => setActiveTab('propagandas')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'propagandas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Megaphone size={20}/> Propaganda </button>
+          <button onClick={() => setActiveTab('horario')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'horario' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Clock3 size={20}/> Horario </button>
           <button onClick={() => setActiveTab('clientes')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'clientes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Users size={20}/> Lista de Clientes </button>
           <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'taxas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Map size={20}/> Taxas de Entrega </button>
-          <button onClick={() => setActiveTab('relatorios')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'relatorios' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <TrendingUp size={20}/> Relatórios & Vendas </button>
+          <button onClick={() => setActiveTab('vendas')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'vendas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <ShoppingBag size={20}/> Vendas </button>
+          <button onClick={() => setActiveTab('relatorios')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'relatorios' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <TrendingUp size={20}/> Relatorios </button>
         </nav>
       </aside>
 
@@ -181,14 +1142,18 @@ export default function AdminPage() {
         <header className="flex justify-between items-center mb-8 print:hidden">
           <h1 className="text-3xl font-black text-slate-800">
             {activeTab === 'estoque' && 'Produtos'}
+            {activeTab === 'promocoes' && 'Promocoes'}
+            {activeTab === 'propagandas' && 'Propaganda'}
+            {activeTab === 'horario' && 'Horario de Funcionamento'}
             {activeTab === 'clientes' && 'Clientes'}
             {activeTab === 'taxas' && 'Raio de Entrega (km)'}
-            {activeTab === 'relatorios' && 'Fechamento do Mês'}
+            {activeTab === 'vendas' && 'Vendas'}
+            {activeTab === 'relatorios' && 'Relatorios'}
           </h1>
           
           {activeTab === 'estoque' && (
             <button onClick={() => { fecharModal(); setMostrarModalEstoque(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
-              <PlusCircle size={20} /> Novo Doce 
+              <PlusCircle size={20} /> Adicionar
             </button>
           )}
 
@@ -197,35 +1162,190 @@ export default function AdminPage() {
               <PlusCircle size={20} /> Adicionar Raio 
             </button>
           )}
+
+          {activeTab === 'promocoes' && (
+            <button onClick={() => { fecharModalPromocao(); setMostrarModalPromocao(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+              <PlusCircle size={20} /> Nova Promocao 
+            </button>
+          )}
+          {activeTab === 'propagandas' && (
+            <button onClick={() => { fecharModalPropaganda(); setMostrarModalPropaganda(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+              <PlusCircle size={20} /> Nova Propaganda
+            </button>
+          )}
         </header>
 
         {activeTab === 'estoque' && (
-          <div className="grid gap-4">
-            {estoque.map(item => (
-              <div key={item.id} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
-                <div className="w-20 h-20 rounded-2xl bg-slate-100 overflow-hidden flex-shrink-0">
-                  {item.imagem_url ? <img src={item.imagem_url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={24}/></div>}
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-black text-slate-800">{item.nome}</h3>
-                  <span className="text-[10px] bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full font-bold uppercase">{item.categoria}</span>
-                  <p className="text-pink-600 font-bold">R$ {Number(item.preco).toFixed(2)}</p>
-                </div>
-                <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
-                  <button onClick={() => mudarQtd(item.id, item.quantidade, -1)} className="p-1 hover:text-red-500"><Minus size={18}/></button>
-                  <span className="font-black text-lg w-8 text-center">{item.quantidade}</span>
-                  <button onClick={() => mudarQtd(item.id, item.quantidade, 1)} className="p-1 hover:text-green-500"><Plus size={18}/></button>
-                </div>
-                <div className="flex items-center gap-2 ml-4 border-l border-slate-100 pl-4">
-                  <button onClick={() => abrirEdicao(item)} className="text-slate-300 hover:text-blue-500 transition-colors" title="Editar Produto"><Pencil size={20}/></button>
-                  <button onClick={() => excluir('estoque', item.id)} className="text-slate-300 hover:text-red-500 transition-colors" title="Excluir Produto"><Trash2 size={20}/></button>
-                </div>
+          <div className="space-y-8">
+            <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIAS_ESTOQUE.map((categoria) => (
+                  <a
+                    key={categoria}
+                    href={`#categoria-${categoria.toLowerCase()}`}
+                    className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 text-xs font-black uppercase hover:bg-pink-50 hover:text-pink-700 transition-colors"
+                  >
+                    {categoria}
+                  </a>
+                ))}
               </div>
+            </div>
+
+            {estoquePorCategoria.map(({ categoria, itens }) => (
+              <section key={categoria} id={`categoria-${categoria.toLowerCase()}`} className="space-y-4 scroll-mt-28">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-black text-slate-800 uppercase tracking-wide">{categoria}</h2>
+                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">{itens.length} itens</span>
+                </div>
+                <div className="grid gap-4">
+                  {itens.length === 0 && (
+                    <div className="bg-white p-4 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-sm font-medium">
+                      Nenhum item nesta categoria.
+                    </div>
+                  )}
+                  {itens.map(item => (
+                    <div key={item.id} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
+                      <div className="w-20 h-20 rounded-2xl bg-slate-100 overflow-hidden flex-shrink-0">
+                        {item.imagem_url ? <img src={item.imagem_url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={24}/></div>}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-black text-slate-800">{item.nome}</h3>
+                        <span className="text-[10px] bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full font-bold uppercase">{item.categoria}</span>
+                        {promocoes.some((p) => Number(p.produto_id) === Number(item.id) && p.ativa !== false) && (
+                          <span className="ml-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-black uppercase">Em promocao</span>
+                        )}
+                        <p className="text-pink-600 font-bold">R$ {Number(item.preco).toFixed(2)}</p>
+                      </div>
+                      <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                        <button onClick={() => mudarQtd(item.id, item.quantidade, -1)} className="p-1 hover:text-red-500"><Minus size={18}/></button>
+                        <span className="font-black text-lg w-8 text-center">{item.quantidade}</span>
+                        <button onClick={() => mudarQtd(item.id, item.quantidade, 1)} className="p-1 hover:text-green-500"><Plus size={18}/></button>
+                      </div>
+                      <div className="flex items-center gap-2 ml-4 border-l border-slate-100 pl-4">
+                        <button onClick={() => abrirEdicao(item)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors text-xs font-bold flex items-center gap-1" title="Editar Produto"><Pencil size={14}/> Editar</button>
+                        <button onClick={() => excluir('estoque', item.id)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs font-bold flex items-center gap-1" title="Limpar Produto"><Trash2 size={14}/> Limpar</button>
+                        <button onClick={() => abrirModalPromocaoParaProduto(item)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors text-xs font-bold flex items-center gap-1" title="Marcar Promocao"><BadgePercent size={14}/> Promo</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             ))}
+
+            {estoqueOutros.length > 0 && (
+              <section id="categoria-outros" className="space-y-4 scroll-mt-28">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-black text-slate-800 uppercase tracking-wide">Outros</h2>
+                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">{estoqueOutros.length} itens</span>
+                </div>
+                <div className="grid gap-4">
+                  {estoqueOutros.map(item => (
+                    <div key={item.id} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
+                      <div className="w-20 h-20 rounded-2xl bg-slate-100 overflow-hidden flex-shrink-0">
+                        {item.imagem_url ? <img src={item.imagem_url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={24}/></div>}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-black text-slate-800">{item.nome}</h3>
+                        <span className="text-[10px] bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full font-bold uppercase">{item.categoria || 'Sem categoria'}</span>
+                        {promocoes.some((p) => Number(p.produto_id) === Number(item.id) && p.ativa !== false) && (
+                          <span className="ml-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-black uppercase">Em promocao</span>
+                        )}
+                        <p className="text-pink-600 font-bold">R$ {Number(item.preco).toFixed(2)}</p>
+                      </div>
+                      <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                        <button onClick={() => mudarQtd(item.id, item.quantidade, -1)} className="p-1 hover:text-red-500"><Minus size={18}/></button>
+                        <span className="font-black text-lg w-8 text-center">{item.quantidade}</span>
+                        <button onClick={() => mudarQtd(item.id, item.quantidade, 1)} className="p-1 hover:text-green-500"><Plus size={18}/></button>
+                      </div>
+                      <div className="flex items-center gap-2 ml-4 border-l border-slate-100 pl-4">
+                        <button onClick={() => abrirEdicao(item)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors text-xs font-bold flex items-center gap-1" title="Editar Produto"><Pencil size={14}/> Editar</button>
+                        <button onClick={() => excluir('estoque', item.id)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs font-bold flex items-center gap-1" title="Limpar Produto"><Trash2 size={14}/> Limpar</button>
+                        <button onClick={() => abrirModalPromocaoParaProduto(item)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors text-xs font-bold flex items-center gap-1" title="Marcar Promocao"><BadgePercent size={14}/> Promo</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
 
-        {/* TELA DE TAXAS DE ENTREGA (NOVO VISUAL COM RAIO AO LADO DO BOTÃO) */}
+        {activeTab === 'promocoes' && (
+          <div className="grid gap-4">
+            {promocoes.map((promo) => {
+              const produto = estoque.find((e) => Number(e.id) === Number(promo.produto_id));
+              return (
+                <div key={promo.id} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-black text-slate-800">{promo.titulo || 'Promocao sem titulo'}</h3>
+                    <p className="text-xs text-slate-500 font-medium mt-1">{promo.descricao || 'Sem descricao'}</p>
+                    <p className="text-[11px] text-slate-400 font-bold mt-2 uppercase">Produto: {produto?.nome || 'Nao vinculado'}</p>
+                    <p className="text-green-600 font-black mt-1">{resumoRegraPromocao(promo)}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => alternarStatusPromocao(promo)} className={`px-3 py-2 rounded-xl text-xs font-black uppercase ${promo.ativa !== false ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {promo.ativa !== false ? 'Ativa' : 'Inativa'}
+                    </button>
+                    <button onClick={() => abrirEdicaoPromocao(promo)} className="p-2 bg-slate-50 rounded-xl text-slate-400 hover:text-blue-500 transition-colors"><Pencil size={18}/></button>
+                    <button onClick={() => excluir('promocoes', promo.id)} className="p-2 bg-slate-50 rounded-xl text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                  </div>
+                </div>
+              );
+            })}
+            {promocoes.length === 0 && (
+              <div className="text-center py-20 text-slate-400 font-medium italic">
+                Nenhuma promocao cadastrada ainda.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TELA DE TAXAS DE ENTREGA (NOVO VISUAL COM RAIO AO LADO DO BOT?O) */}
+        {activeTab === 'propagandas' && (
+          <div className="grid gap-4">
+            {propagandas.map((propaganda) => (
+              <div key={propaganda.id} className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="w-28 h-20 rounded-2xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                  {propaganda.imagem_url ? (
+                    <img src={propaganda.imagem_url} alt={propaganda.titulo || 'Propaganda'} className="w-full h-full object-cover" />
+                  ) : (
+                    <Megaphone className="text-slate-300" size={26} />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-slate-800 truncate">{propaganda.titulo || 'Propaganda sem titulo'}</h3>
+                    <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold uppercase">
+                      Ordem {Number(propaganda.ordem || 0)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1 line-clamp-2">{propaganda.descricao || 'Sem descricao'}</p>
+                  {propaganda.botao_texto && (
+                    <p className="text-[10px] text-pink-600 font-black uppercase tracking-widest mt-2">
+                      Botao: {propaganda.botao_texto}
+                    </p>
+                  )}
+                  {propaganda.botao_link && (
+                    <p className="text-[10px] text-blue-600 font-bold mt-1 truncate">{propaganda.botao_link}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => alternarStatusPropaganda(propaganda)} className={`px-3 py-2 rounded-xl text-xs font-black uppercase ${propaganda.ativa !== false ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {propaganda.ativa !== false ? 'Ativa' : 'Inativa'}
+                  </button>
+                  <button onClick={() => abrirEdicaoPropaganda(propaganda)} className="p-2 bg-slate-50 rounded-xl text-slate-400 hover:text-blue-500 transition-colors"><Pencil size={18}/></button>
+                  <button onClick={() => excluir('propagandas', propaganda.id)} className="p-2 bg-slate-50 rounded-xl text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                </div>
+              </div>
+            ))}
+            {propagandas.length === 0 && (
+              <div className="text-center py-20 text-slate-400 font-medium italic">
+                Nenhuma propaganda cadastrada ainda.
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'taxas' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {taxas.map(t => (
@@ -235,7 +1355,7 @@ export default function AdminPage() {
                     <p className="text-pink-600 font-black text-2xl">R$ {Number(t.taxa).toFixed(2)}</p>
                  </div>
                  
-                 {/* A MÁGICA VISUAL ESTÁ AQUI: DISTÂNCIA + BOTÕES */}
+                 {/* A MÁGICA VISUAL ESTÁ AQUI: DIST?NCIA + BOTÕES */}
                  <div className="flex items-center gap-2 border-l border-slate-100 pl-4">
                     <span className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl font-black text-xs whitespace-nowrap mr-1 flex items-center gap-1">
                       <MapPin size={14} className="text-pink-500" /> {t.bairro}
@@ -253,35 +1373,370 @@ export default function AdminPage() {
           </div>
         )}
 
-        {activeTab === 'clientes' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {clientes.map(c => (
-              <div key={c.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative flex flex-col">
-                 <button onClick={() => excluir('clientes', c.id)} className="absolute top-6 right-6 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
-                 <h3 className="font-black text-xl text-slate-800 border-b border-slate-50 pb-3 mb-4 pr-8">{c.nome}</h3>
-                 <div className="space-y-4 text-sm flex-1">
-                    <div className="space-y-2">
-                      <p className="flex items-center gap-3 text-slate-700 font-medium"><Phone size={16} className="text-green-500"/> {c.whatsapp || 'Não informado'}</p>
-                      {c.data_aniversario && <p className="flex items-center gap-3 text-slate-700 font-medium"><Cake size={16} className="text-pink-400"/> Niver: {new Date(c.data_aniversario).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</p>}
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
-                      <p className="flex items-start gap-3 font-black text-slate-800"><MapPin size={16} className="text-pink-500 mt-0.5 shrink-0"/> <span>{c.endereco}, {c.numero}</span></p>
-                      <div className="ml-7 text-xs text-slate-500 space-y-1 font-medium"><p>Bairro: <span className="text-slate-700">{c.bairro || '-'}</span></p><p>Cidade: <span className="text-slate-700">{c.cidade || 'Navegantes'}</span></p><p>CEP: <span className="text-slate-700">{c.cep || 'Não informado'}</span></p></div>
-                    </div>
-                    {c.observacao && <div className="bg-pink-50/50 p-4 rounded-2xl border border-pink-100"><p className="flex items-start gap-2 text-pink-700 text-xs italic font-medium"><MessageSquare size={14} className="mt-0.5 shrink-0"/> "{c.observacao}"</p></div>}
-                 </div>
+        {activeTab === 'horario' && (
+          <div className="max-w-2xl">
+            <form onSubmit={salvarHorarioFuncionamento} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Controle da Vitrine</p>
+                  <h3 className="text-xl font-black text-slate-800 mt-1">Horario de Funcionamento</h3>
+                  <p className="text-sm text-slate-500 mt-1">
+                    A vitrine exibira status de aberto/fechado e alerta nos ultimos 5 minutos antes de fechar.
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`text-xs font-black uppercase tracking-wide ${horarioFuncionamento.ativo ? 'text-green-600' : 'text-red-600'}`}>
+                    {horarioFuncionamento.ativo ? 'Loja Aberta' : 'Loja Fechada'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void alternarStatusLoja()}
+                    className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wide text-white ${horarioFuncionamento.ativo ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
+                  >
+                    {horarioFuncionamento.ativo ? 'Finalizar Loja' : 'Iniciar Loja'}
+                  </button>
+                </div>
               </div>
-            ))}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Abre as</label>
+                  <input
+                    type="time"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                    value={horarioFuncionamento.hora_abertura}
+                    onChange={(e) => setHorarioFuncionamento((prev) => ({ ...prev, hora_abertura: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Fecha as</label>
+                  <input
+                    type="time"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                    value={horarioFuncionamento.hora_fechamento}
+                    onChange={(e) => setHorarioFuncionamento((prev) => ({ ...prev, hora_fechamento: e.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Dias da Semana</label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {DIAS_SEMANA.map((dia) => {
+                    const ativo = horarioFuncionamento.dias_semana.includes(dia.key);
+                    return (
+                      <button
+                        key={dia.key}
+                        type="button"
+                        onClick={() => alternarDiaFuncionamento(dia.key)}
+                        className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wide border transition-colors ${
+                          ativo
+                            ? 'bg-pink-600 border-pink-600 text-white'
+                            : 'bg-slate-50 border-slate-200 text-slate-500'
+                        }`}
+                      >
+                        {dia.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button type="submit" className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg hover:bg-pink-700 transition-all">
+                Salvar Horario
+              </button>
+            </form>
+          </div>
+        )}
+
+        {activeTab === 'clientes' && (
+          <div className="space-y-4">
+            {clienteEmFoco && (
+              <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-2xl p-3 text-xs font-bold uppercase tracking-widest">
+                Cliente selecionado pelo relatorio
+              </div>
+            )}
+            {clientesOrdenados.map(c => {
+              const expandido = clienteExpandidoId === c.id;
+              const foco = clienteEstaEmFoco(c);
+              const zapCliente = normalizarNumero(String(c.whatsapp || ''));
+              const historicoCliente = historicoPorWhatsapp[zapCliente] || [];
+              const totalHistorico = historicoCliente.reduce((acc, pedido) => acc + (Number(pedido.total) || 0), 0);
+              const historicoAberto = clienteHistoricoAbertoId === c.id;
+              const pontoReferenciaExibicao = extrairPontoReferencia(c);
+              const enderecoSemPonto = extrairEnderecoSemPonto(c);
+              const pedidosSelecionados = pedidosSelecionadosPorCliente[c.id] || [];
+              return (
+                <div key={c.id} className={`bg-white rounded-[2rem] border shadow-sm overflow-hidden ${foco ? 'border-blue-300' : 'border-slate-100'}`}>
+                  <div className="p-4 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setClienteExpandidoId(expandido ? null : c.id)}
+                      className="flex-1 flex items-center justify-between text-left"
+                    >
+                      <div>
+                        <p className="font-black text-slate-800">{c.nome}</p>
+                        <p className="text-xs text-slate-500 font-bold">{c.whatsapp || 'Nao informado'}</p>
+                      </div>
+                      {expandido ? <ChevronUp className="text-slate-400" size={18} /> : <ChevronDown className="text-slate-400" size={18} />}
+                    </button>
+                    <button onClick={() => excluir('clientes', c.id)} className="text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                  </div>
+                  {expandido && (
+                    <div className="px-4 pb-4">
+                      <div className="mb-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => imprimirCadastroCliente(c)}
+                          className="bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-all"
+                        >
+                          Imprimir Cadastro
+                        </button>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2 text-sm">
+                        <p className="flex items-center gap-2 text-slate-700 font-medium"><Phone size={16} className="text-green-500"/> {c.whatsapp || 'Nao informado'}</p>
+                        {c.data_aniversario && <p className="flex items-center gap-2 text-slate-700 font-medium"><Cake size={16} className="text-pink-400"/> Niver: {new Date(c.data_aniversario).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</p>}
+                        <p className="flex items-start gap-2 font-black text-slate-800">
+                          <MapPin size={16} className="text-pink-500 mt-0.5 shrink-0"/>
+                          <span>
+                            {enderecoSemPonto}, {c.numero}
+                          </span>
+                        </p>
+                        <p className="text-xs text-slate-500 font-medium">Ponto de referencia: <span className="text-slate-700">{pontoReferenciaExibicao || 'Nao informado'}</span></p>
+                        <p className="text-xs text-slate-500 font-medium">Bairro: <span className="text-slate-700">{c.bairro || '-'}</span></p>
+                        <p className="text-xs text-slate-500 font-medium">Cidade: <span className="text-slate-700">{c.cidade || 'Navegantes'}</span></p>
+                        <p className="text-xs text-slate-500 font-medium">CEP: <span className="text-slate-700">{c.cep || 'Nao informado'}</span></p>
+                      </div>
+                      <div className="mt-3 bg-white border border-slate-100 rounded-2xl p-3">
+                        <div>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Historico de Compras</p>
+                            <p className="text-sm font-black text-slate-800">{historicoCliente.length} pedido(s) • R$ {totalHistorico.toFixed(2)}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setClienteHistoricoAbertoId(historicoAberto ? null : c.id)}
+                            className="px-3 py-2 rounded-xl bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors text-xs font-bold uppercase"
+                          >
+                            {historicoAberto ? 'Ocultar' : 'Historico'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void limparHistoricoCliente(c)}
+                            className="px-3 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-xs font-bold uppercase"
+                          >
+                            Limpar Historico
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => marcarTodosPedidosCliente(c.id, historicoCliente)}
+                            className="px-3 py-2 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors text-xs font-bold uppercase"
+                          >
+                            Marcar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => desmarcarPedidosCliente(c.id)}
+                            className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors text-xs font-bold uppercase"
+                          >
+                            Desmarcar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => imprimirHistoricoCliente(c, true)}
+                            className="px-3 py-2 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors text-xs font-bold uppercase"
+                          >
+                            Imprimir c/ Cadastro
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => imprimirHistoricoCliente(c, false)}
+                            className="px-3 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-600 transition-colors text-xs font-bold uppercase"
+                          >
+                            Imprimir s/ Cadastro
+                          </button>
+                        </div>
+                        {historicoAberto && (
+                          <div className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
+                            {historicoCliente.length > 0 ? historicoCliente.map((pedido, index) => (
+                              <div key={pedido.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                <div className="flex items-center justify-between gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={pedidosSelecionados.includes(pedido.id)}
+                                      onChange={() => alternarSelecaoPedidoCliente(c.id, pedido.id)}
+                                      className="accent-pink-600"
+                                    />
+                                    <p className="text-[11px] font-bold uppercase text-slate-500 tracking-widest">
+                                      {pedido.created_at ? new Date(pedido.created_at).toLocaleDateString('pt-BR') : 'Data nao informada'}
+                                    </p>
+                                  </label>
+                                  {index === 0 && (
+                                    <span className="text-[10px] px-2 py-1 rounded-full bg-pink-50 text-pink-600 font-black uppercase">
+                                      Ultimo pedido
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-sm font-black text-green-600">R$ {Number(pedido.total || 0).toFixed(2)}</p>
+                              </div>
+                            )) : (
+                              <p className="text-xs italic text-slate-400 text-center py-2">Sem historico de compras.</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {c.observacao && <div className="bg-pink-50/50 p-4 rounded-2xl border border-pink-100 mt-3"><p className="flex items-start gap-2 text-pink-700 text-xs italic font-medium"><MessageSquare size={14} className="mt-0.5 shrink-0"/> "{c.observacao}"</p></div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {activeTab === 'vendas' && (
+          <div className="space-y-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <h2 className="text-xl font-black text-slate-500 uppercase tracking-widest">Vendas de {nomesMeses[mesVigente]} / {anoVigente}</h2>
+              <div className="flex items-center gap-2">
+                <button onClick={marcarVendasVisiveis} className="bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all">Marcar</button>
+                <button onClick={desmarcarVendasSelecionadas} className="bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all">Desmarcar</button>
+                <button onClick={imprimirVendasSelecionadas} className="bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all"><Printer size={18} /> Imprimir Vendas</button>
+                <button onClick={() => void limparRelatorioDefinitivo()} className="bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all"><Trash2 size={18} /> Limpar Relatorio (Definitivo)</button>
+                <button onClick={limparRelatorio} className="bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"><RotateCcw size={18} /> Resetar Marcacoes</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className={`p-5 rounded-[2rem] border transition-all ${filtrosRelatorio.dia ? 'bg-pink-50 border-pink-200' : 'bg-white border-slate-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-black text-slate-700 uppercase tracking-widest text-xs">Vendas do Dia</p>
+                  <input type="checkbox" className="w-4 h-4 accent-pink-600" checked={filtrosRelatorio.dia} onChange={() => alternarFiltroRelatorio('dia')} />
+                </div>
+                <p className="text-2xl font-black text-slate-800">{pedidosDoDia.length} pedidos</p>
+                <p className="text-lg font-black text-green-600 mt-1">R$ {faturamentoDia.toFixed(2)}</p>
+              </div>
+              <div className={`p-5 rounded-[2rem] border transition-all ${filtrosRelatorio.semana ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-black text-slate-700 uppercase tracking-widest text-xs">Vendas da Semana</p>
+                  <input type="checkbox" className="w-4 h-4 accent-pink-600" checked={filtrosRelatorio.semana} onChange={() => alternarFiltroRelatorio('semana')} />
+                </div>
+                <p className="text-2xl font-black text-slate-800">{pedidosDaSemana.length} pedidos</p>
+                <p className="text-lg font-black text-green-600 mt-1">R$ {faturamentoSemana.toFixed(2)}</p>
+              </div>
+              <div className={`p-5 rounded-[2rem] border transition-all ${filtrosRelatorio.aniversariantes ? 'bg-yellow-50 border-yellow-200' : 'bg-white border-slate-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-black text-slate-700 uppercase tracking-widest text-xs">Aniversariantes do Mês</p>
+                  <input type="checkbox" className="w-4 h-4 accent-pink-600" checked={filtrosRelatorio.aniversariantes} onChange={() => alternarFiltroRelatorio('aniversariantes')} />
+                </div>
+                <p className="text-2xl font-black text-slate-800">{aniversariantesDoMesVigente.length} clientes</p>
+                <p className="text-xs font-bold text-slate-500 mt-2">Marque para incluir no relatório</p>
+              </div>
+            </div>
+            {(filtrosRelatorio.dia || filtrosRelatorio.semana || filtrosRelatorio.aniversariantes) ? (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {filtrosRelatorio.dia && (
+                  <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+                    <h3 className="font-black text-base text-slate-800 mb-3">Vendas do Dia</h3>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {pedidosDoDia.length > 0 ? pedidosDoDia.map((pedido) => (
+                        <div key={pedido.id} className="w-full p-3 rounded-xl border border-slate-100 bg-slate-50">
+                          <div className="flex items-start justify-between gap-2">
+                            <button type="button" onClick={() => irParaCadastroCliente(pedido.whatsapp, pedido.cliente_nome)} className="text-left flex-1 hover:opacity-80 transition-opacity">
+                              <p className="text-sm font-black text-slate-800 leading-tight">{pedido.cliente_nome || 'Cliente sem nome'}</p>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{pedido.whatsapp || 'sem número'}</p>
+                              <p className="text-sm font-black text-green-600 mt-1">R$ {Number(pedido.total || 0).toFixed(2)}</p>
+                            </button>
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 accent-pink-600 mt-1"
+                              checked={pedidosSelecionadosVendas.includes(pedido.id)}
+                              onChange={() => alternarSelecaoVenda(pedido.id)}
+                            />
+                          </div>
+                        </div>
+                      )) : <p className="text-slate-400 italic text-sm text-center py-6">Sem vendas hoje.</p>}
+                    </div>
+                  </div>
+                )}
+                {filtrosRelatorio.semana && (
+                  <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+                    <h3 className="font-black text-base text-slate-800 mb-3">Vendas da Semana</h3>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {ultimasVendasSemana.length > 0 ? ultimasVendasSemana.map((pedido) => (
+                        <div key={pedido.id} className="w-full p-3 rounded-xl border border-slate-100 bg-slate-50">
+                          <div className="flex items-start justify-between gap-2">
+                            <button type="button" onClick={() => irParaCadastroCliente(pedido.whatsapp, pedido.cliente_nome)} className="text-left flex-1 hover:opacity-80 transition-opacity">
+                              <p className="text-sm font-black text-slate-800 leading-tight">{pedido.cliente_nome || 'Cliente sem nome'}</p>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{pedido.whatsapp || 'sem número'}</p>
+                              <p className="text-sm font-black text-green-600 mt-1">R$ {Number(pedido.total || 0).toFixed(2)}</p>
+                            </button>
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 accent-pink-600 mt-1"
+                              checked={pedidosSelecionadosVendas.includes(pedido.id)}
+                              onChange={() => alternarSelecaoVenda(pedido.id)}
+                            />
+                          </div>
+                        </div>
+                      )) : <p className="text-slate-400 italic text-sm text-center py-6">Sem vendas na semana.</p>}
+                    </div>
+                  </div>
+                )}
+                {filtrosRelatorio.aniversariantes && (
+                  <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+                    <h3 className="font-black text-base text-slate-800 mb-3">Aniversariantes do Mês</h3>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {aniversariantesDoMesVigente.length > 0 ? aniversariantesDoMesVigente.map((cliente) => (
+                        <div key={cliente.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50">
+                          <p className="text-sm font-black text-slate-800 leading-tight">{cliente.nome || 'Cliente sem nome'}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{cliente.whatsapp || 'sem número'}</p>
+                          <p className="text-xs font-bold text-pink-600 mt-1">Niver: {new Date(`${String(cliente.data_aniversario).slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</p>
+                        </div>
+                      )) : <p className="text-slate-400 italic text-sm text-center py-6">Sem aniversariantes neste mês.</p>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-white p-6 rounded-[2rem] border border-dashed border-slate-300 text-center text-slate-400 font-medium">
+                Marque pelo menos uma caixa para gerar o relatório.
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'relatorios' && (
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <h2 className="text-xl font-black text-slate-500 uppercase tracking-widest print:text-black">Resumo de {nomesMeses[mesAtual]} / {anoAtual}</h2>
-              <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-slate-700 transition-all print:hidden"><Printer size={20} /> Imprimir Relatório</button>
+              <h2 className="text-xl font-black text-slate-500 uppercase tracking-widest print:text-black">Resumo de {nomesMeses[mesRelatorio]} / {anoRelatorio}</h2>
+              <div className="flex items-center gap-2 print:hidden">
+                <select
+                  value={mesRelatorio}
+                  onChange={(e) => setMesRelatorio(Number(e.target.value))}
+                  className="bg-white border border-slate-200 px-3 py-2 rounded-xl font-bold text-slate-600 text-xs uppercase"
+                >
+                  {nomesMeses.map((nome, idx) => (
+                    <option key={nome} value={idx}>{nome}</option>
+                  ))}
+                </select>
+                <select
+                  value={anoRelatorio}
+                  onChange={(e) => setAnoRelatorio(Number(e.target.value))}
+                  className="bg-white border border-slate-200 px-3 py-2 rounded-xl font-bold text-slate-600 text-xs uppercase"
+                >
+                  {[anoVigente - 2, anoVigente - 1, anoVigente, anoVigente + 1].map((ano) => (
+                    <option key={ano} value={ano}>{ano}</option>
+                  ))}
+                </select>
+                <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-slate-700 transition-all"><Printer size={20} /> Imprimir Relatorio</button>
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-gradient-to-br from-pink-500 to-pink-600 p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden print:shadow-none print:border print:border-slate-300 print:text-black print:from-white print:to-white">
                 <DollarSign size={100} className="absolute -right-4 -bottom-4 text-white/10 rotate-12 print:hidden" />
                 <p className="font-bold text-pink-100 uppercase tracking-widest text-sm mb-2 print:text-slate-500">Faturamento Total</p>
@@ -290,33 +1745,39 @@ export default function AdminPage() {
               <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden print:shadow-none print:border-slate-300">
                 <ShoppingBag size={100} className="absolute -right-4 -bottom-4 text-slate-50 rotate-12 print:hidden" />
                 <p className="font-bold text-slate-400 uppercase tracking-widest text-sm mb-2">Pedidos Realizados</p>
-                <p className="text-5xl font-black text-slate-800">{pedidosDoMes.length}</p>
+                <p className="text-5xl font-black text-slate-800">{pedidosDoMesRelatorio.length}</p>
+              </div>
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden print:shadow-none print:border-slate-300">
+                <TrendingUp size={100} className="absolute -right-4 -bottom-4 text-slate-50 rotate-12 print:hidden" />
+                <p className="font-bold text-slate-400 uppercase tracking-widest text-sm mb-2">Vendas da Semana</p>
+                <p className="text-3xl font-black text-slate-800">{pedidosDaSemana.length} pedidos</p>
+                <p className="text-xl font-black text-green-600 mt-2">R$ {faturamentoSemana.toFixed(2)}</p>
               </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 print:shadow-none print:border-slate-300">
+              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 print:shadow-none print:border-slate-300">
                  <h3 className="font-black text-xl text-slate-800 mb-6 flex items-center gap-3"><TrendingUp className="text-pink-500 print:text-black"/> Produtos Mais Vendidos</h3>
                  {rankingProdutos.length > 0 ? (
-                   <div className="space-y-4">
+                   <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
                      {rankingProdutos.map((prod, index) => (
-                       <div key={index} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 print:bg-white print:border-b print:rounded-none">
-                         <div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0 print:bg-transparent print:border print:border-slate-300 print:text-black ${index === 0 ? 'bg-yellow-100 text-yellow-600' : index === 1 ? 'bg-slate-200 text-slate-600' : index === 2 ? 'bg-orange-100 text-orange-600' : 'bg-white text-slate-400'}`}>{index + 1}º</div><div><p className="font-black text-slate-800 text-[15px] leading-tight">{prod.nome}</p><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{prod.qtd} unidades</p></div></div>
+                       <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 print:bg-white print:border-b print:rounded-none">
+                         <div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0 print:bg-transparent print:border print:border-slate-300 print:text-black ${index === 0 ? 'bg-yellow-100 text-yellow-600' : index === 1 ? 'bg-slate-200 text-slate-600' : index === 2 ? 'bg-orange-100 text-orange-600' : 'bg-white text-slate-400'}`}>{index + 1}?</div><div><p className="font-black text-slate-800 text-[15px] leading-tight">{prod.nome}</p><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{prod.qtd} unidades</p></div></div>
                          <div className="text-right"><p className="font-black text-green-600 text-[15px] print:text-black">R$ {prod.valor.toFixed(2)}</p></div>
                        </div>
                      ))}
                    </div>
                  ) : <p className="text-slate-400 italic text-center py-6 text-sm">Nenhuma venda registrada ainda.</p>}
               </div>
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 print:shadow-none print:border-slate-300">
+              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 print:shadow-none print:border-slate-300">
                  <h3 className="font-black text-xl text-slate-800 mb-6 flex items-center gap-3"><Award className="text-yellow-500 print:text-black"/> Clientes VIP (Mês)</h3>
                  {rankingClientes.length > 0 ? (
-                   <div className="space-y-4">
+                   <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
                      {rankingClientes.map((cliente, index) => (
-                       <div key={index} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 print:bg-white print:border-b print:rounded-none">
-                         <div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0 print:bg-transparent print:border print:border-slate-300 print:text-black ${index === 0 ? 'bg-yellow-100 text-yellow-600' : index === 1 ? 'bg-slate-200 text-slate-600' : index === 2 ? 'bg-orange-100 text-orange-600' : 'bg-white text-slate-400'}`}>{index + 1}º</div><div><p className="font-black text-slate-800 text-[15px] leading-tight">{cliente.nome}</p><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{cliente.qtdPedidos} pedido(s)</p></div></div>
+                        <button type="button" key={index} onClick={() => irParaCadastroCliente(cliente.whatsapp, cliente.nome)} className="w-full text-left flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 print:bg-white print:border-b print:rounded-none hover:bg-slate-100 transition-colors">
+                         <div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0 print:bg-transparent print:border print:border-slate-300 print:text-black ${index === 0 ? 'bg-yellow-100 text-yellow-600' : index === 1 ? 'bg-slate-200 text-slate-600' : index === 2 ? 'bg-orange-100 text-orange-600' : 'bg-white text-slate-400'}`}>{index + 1}?</div><div><p className="font-black text-slate-800 text-[15px] leading-tight">{cliente.nome}</p><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{cliente.qtdPedidos} pedido(s)</p></div></div>
                          <div className="text-right"><p className="font-black text-green-600 text-[15px] print:text-black">R$ {cliente.valorGasto.toFixed(2)}</p></div>
-                       </div>
-                     ))}
+                       </button>
+                      ))}
                    </div>
                  ) : <p className="text-slate-400 italic text-center py-6 text-sm">Nenhum cliente registrado neste mês.</p>}
               </div>
@@ -339,7 +1800,7 @@ export default function AdminPage() {
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Categoria</label>
                 <select className="w-full p-4 rounded-2xl bg-slate-100 border-none font-bold text-slate-700 focus:ring-2 focus:ring-pink-500 outline-none" value={novoItem.categoria} onChange={e => setNovoItem({...novoItem, categoria: e.target.value})}>
-                  <option value="Doces">🍬 Doces</option><option value="Bolos">🎂 Bolos</option><option value="Salgados">🥟 Salgados</option><option value="Bebidas">🥤 Bebidas</option>
+                  <option value="Doces">?? Doces</option><option value="Bolos">?? Bolos</option><option value="Salgados">?? Salgados</option><option value="Bebidas">?? Bebidas</option>
                 </select>
               </div>
               <textarea placeholder="Descrição (Ex: Massa de chocolate com recheio de ninho)" className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 font-medium text-slate-700" rows={2} value={novoItem.descricao} onChange={e => setNovoItem({...novoItem, descricao: e.target.value})} />
@@ -348,7 +1809,252 @@ export default function AdminPage() {
                 <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 ml-2 uppercase">Preço R$</label><input type="number" step="0.01" className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 font-medium text-slate-700" required value={novoItem.preco} onChange={e => setNovoItem({...novoItem, preco: Number(e.target.value)})} /></div>
               </div>
               <button type="submit" disabled={uploading} className="w-full bg-pink-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg shadow-pink-100 disabled:opacity-50 mt-4 transition-transform active:scale-95">{editandoId ? 'Salvar Alterações' : 'Salvar no Cardápio'}</button>
+              <button type="button" onClick={limparFormularioProduto} className="w-full bg-slate-100 text-slate-600 p-4 rounded-[1.5rem] font-bold uppercase text-xs flex items-center justify-center gap-2"><RotateCcw size={16}/> Limpar</button>
               <button type="button" onClick={fecharModal} className="w-full text-slate-400 font-bold text-[10px] uppercase p-2">Cancelar</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {mostrarModalPromocao && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
+          <div className="bg-white p-8 rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-2xl font-black mb-6 italic text-slate-800">{editandoPromocaoId ? 'Editar Promocao' : 'Nova Promocao'}</h2>
+            <form onSubmit={salvarPromocao} className="space-y-4">
+              <input
+                placeholder="Titulo da promocao"
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                required
+                value={novaPromocao.titulo}
+                onChange={e => setNovaPromocao({ ...novaPromocao, titulo: e.target.value })}
+              />
+              <textarea
+                placeholder="Descricao"
+                rows={2}
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                value={novaPromocao.descricao}
+                onChange={e => setNovaPromocao({ ...novaPromocao, descricao: e.target.value })}
+              />
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Produto Vinculado</label>
+                <select
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-bold text-slate-700 outline-none"
+                  value={novaPromocao.produto_id}
+                  onChange={e => setNovaPromocao({ ...novaPromocao, produto_id: e.target.value })}
+                >
+                  <option value="">Nenhum produto</option>
+                  {estoque.map((item) => (
+                    <option key={item.id} value={String(item.id)}>{item.nome}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Tipo de Regra</label>
+                <select
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-bold text-slate-700 outline-none"
+                  value={novaPromocao.tipo}
+                  onChange={e => setNovaPromocao({ ...novaPromocao, tipo: e.target.value })}
+                >
+                  {TIPOS_PROMO.map((tipo) => (
+                    <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
+                  ))}
+                </select>
+              </div>
+              {(novaPromocao.tipo === 'percentual' || novaPromocao.tipo === 'aniversariante') && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Desconto (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                    required
+                    value={novaPromocao.valor_promocional}
+                    onChange={e => setNovaPromocao({ ...novaPromocao, valor_promocional: Number(e.target.value) })}
+                  />
+                </div>
+              )}
+              {novaPromocao.tipo === 'desconto_fixo' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Desconto Fixo (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                    required
+                    value={novaPromocao.valor_promocional}
+                    onChange={e => setNovaPromocao({ ...novaPromocao, valor_promocional: Number(e.target.value) })}
+                  />
+                </div>
+              )}
+              {novaPromocao.tipo === 'leve_mais_um' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Compre</label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                      required
+                      value={novaPromocao.qtd_minima}
+                      onChange={e => setNovaPromocao({ ...novaPromocao, qtd_minima: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Leve +</label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                      required
+                      value={novaPromocao.qtd_bonus}
+                      onChange={e => setNovaPromocao({ ...novaPromocao, qtd_bonus: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+              )}
+              {novaPromocao.tipo === 'frete_gratis' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Valor Minimo Pedido (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                    value={novaPromocao.valor_minimo_pedido}
+                    onChange={e => setNovaPromocao({ ...novaPromocao, valor_minimo_pedido: Number(e.target.value) })}
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Inicio</label>
+                  <input
+                    type="date"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                    value={novaPromocao.data_inicio}
+                    onChange={e => setNovaPromocao({ ...novaPromocao, data_inicio: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Fim</label>
+                  <input
+                    type="date"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                    value={novaPromocao.data_fim}
+                    onChange={e => setNovaPromocao({ ...novaPromocao, data_fim: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                Regra: {resumoRegraPromocao(novaPromocao)}
+              </div>
+              <label className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <input
+                  type="checkbox"
+                  checked={novaPromocao.ativa}
+                  onChange={e => setNovaPromocao({ ...novaPromocao, ativa: e.target.checked })}
+                />
+                <span className="text-xs font-bold uppercase text-slate-600 tracking-wide">Promocao Ativa</span>
+              </label>
+              <button type="submit" className="w-full bg-pink-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg shadow-pink-100 mt-4 transition-transform active:scale-95">{editandoPromocaoId ? 'Salvar Alteracoes' : 'Cadastrar Promocao'}</button>
+              <button type="button" onClick={limparFormularioPromocao} className="w-full bg-slate-100 text-slate-600 p-4 rounded-[1.5rem] font-bold uppercase text-xs flex items-center justify-center gap-2"><RotateCcw size={16}/> Limpar</button>
+              <button type="button" onClick={fecharModalPromocao} className="w-full text-slate-400 font-bold text-[10px] uppercase p-2">Cancelar</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {mostrarModalPropaganda && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
+          <div className="bg-white p-8 rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-2xl font-black mb-6 italic text-slate-800">{editandoPropagandaId ? 'Editar Propaganda' : 'Nova Propaganda'}</h2>
+            <form onSubmit={salvarPropaganda} className="space-y-4">
+              <label className="w-full h-40 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer overflow-hidden hover:bg-slate-100 transition-all">
+                {novaPropaganda.imagem_url ? (
+                  <img src={novaPropaganda.imagem_url} alt="Preview propaganda" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="text-center">
+                    {uploadingPropaganda ? (
+                      <Loader2 className="animate-spin text-pink-500 mx-auto" />
+                    ) : (
+                      <>
+                        <Camera className="mx-auto text-slate-400 mb-2" size={32}/>
+                        <span className="text-xs font-bold text-slate-400 uppercase">Subir Banner</span>
+                      </>
+                    )}
+                  </div>
+                )}
+                <input type="file" className="hidden" accept="image/*" onChange={handleUploadPropaganda} disabled={uploadingPropaganda} />
+              </label>
+
+              <input
+                placeholder="Titulo da propaganda"
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                required
+                value={novaPropaganda.titulo}
+                onChange={e => setNovaPropaganda({ ...novaPropaganda, titulo: e.target.value })}
+              />
+              <textarea
+                placeholder="Descricao"
+                rows={2}
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                value={novaPropaganda.descricao}
+                onChange={e => setNovaPropaganda({ ...novaPropaganda, descricao: e.target.value })}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  placeholder="Texto do botao"
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                  value={novaPropaganda.botao_texto}
+                  onChange={e => setNovaPropaganda({ ...novaPropaganda, botao_texto: e.target.value })}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Ordem"
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                  value={novaPropaganda.ordem}
+                  onChange={e => setNovaPropaganda({ ...novaPropaganda, ordem: Number(e.target.value) })}
+                />
+              </div>
+              <input
+                placeholder="Link do botao (https://...)"
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                value={novaPropaganda.botao_link}
+                onChange={e => setNovaPropaganda({ ...novaPropaganda, botao_link: e.target.value })}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Inicio</label>
+                  <input
+                    type="date"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                    value={novaPropaganda.data_inicio}
+                    onChange={e => setNovaPropaganda({ ...novaPropaganda, data_inicio: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Fim</label>
+                  <input
+                    type="date"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                    value={novaPropaganda.data_fim}
+                    onChange={e => setNovaPropaganda({ ...novaPropaganda, data_fim: e.target.value })}
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <input
+                  type="checkbox"
+                  checked={novaPropaganda.ativa}
+                  onChange={e => setNovaPropaganda({ ...novaPropaganda, ativa: e.target.checked })}
+                />
+                <span className="text-xs font-bold uppercase text-slate-600 tracking-wide">Propaganda Ativa</span>
+              </label>
+
+              <button type="submit" disabled={uploadingPropaganda} className="w-full bg-pink-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg shadow-pink-100 mt-4 transition-transform active:scale-95 disabled:opacity-50">{editandoPropagandaId ? 'Salvar Alteracoes' : 'Cadastrar Propaganda'}</button>
+              <button type="button" onClick={limparFormularioPropaganda} className="w-full bg-slate-100 text-slate-600 p-4 rounded-[1.5rem] font-bold uppercase text-xs flex items-center justify-center gap-2"><RotateCcw size={16}/> Limpar</button>
+              <button type="button" onClick={fecharModalPropaganda} className="w-full text-slate-400 font-bold text-[10px] uppercase p-2">Cancelar</button>
             </form>
           </div>
         </div>
@@ -368,17 +2074,17 @@ export default function AdminPage() {
                   value={novaTaxa.bairro} 
                   onChange={e => setNovaTaxa({...novaTaxa, bairro: e.target.value})}
                 >
-                  <option value="Até 2km">📍 Até 2 km</option>
-                  <option value="Até 4km">📍 Até 4 km</option>
-                  <option value="Até 6km">📍 Até 6 km</option>
-                  <option value="Até 8km">📍 Até 8 km</option>
-                  <option value="Até 10km">📍 Até 10 km</option>
-                  <option value="Até 12km">📍 Até 12 km</option>
-                  <option value="Até 14km">📍 Até 14 km</option>
-                  <option value="Até 16km">📍 Até 16 km</option>
-                  <option value="Até 18km">📍 Até 18 km</option>
-                  <option value="Até 20km">📍 Até 20 km</option>
-                  <option value="Acima de 20km">📍 Acima de 20 km (Sob Consulta)</option>
+                  <option value="Até 2km">?? Até 2 km</option>
+                  <option value="Até 4km">?? Até 4 km</option>
+                  <option value="Até 6km">?? Até 6 km</option>
+                  <option value="Até 8km">?? Até 8 km</option>
+                  <option value="Até 10km">?? Até 10 km</option>
+                  <option value="Até 12km">?? Até 12 km</option>
+                  <option value="Até 14km">?? Até 14 km</option>
+                  <option value="Até 16km">?? Até 16 km</option>
+                  <option value="Até 18km">?? Até 18 km</option>
+                  <option value="Até 20km">?? Até 20 km</option>
+                  <option value="Acima de 20km">?? Acima de 20 km (Sob Consulta)</option>
                 </select>
               </div>
 
@@ -388,6 +2094,7 @@ export default function AdminPage() {
               </div>
 
               <button type="submit" className="w-full bg-pink-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg shadow-pink-100 mt-4 transition-transform active:scale-95">{editandoTaxaId ? 'Salvar Alterações' : 'Cadastrar Taxa'}</button>
+              <button type="button" onClick={limparFormularioTaxa} className="w-full bg-slate-100 text-slate-600 p-4 rounded-[1.5rem] font-bold uppercase text-xs flex items-center justify-center gap-2"><RotateCcw size={16}/> Limpar</button>
               <button type="button" onClick={fecharModalTaxa} className="w-full text-slate-400 font-bold text-[10px] uppercase p-2">Cancelar</button>
             </form>
           </div>
