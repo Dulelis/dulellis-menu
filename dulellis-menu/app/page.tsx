@@ -832,6 +832,106 @@ export default function ClientePage() {
       setLoading(false);
     }
   }, [atualizarQuantidadeEstoque, carregarDadosIniciais, carrinho, setItemEstoqueProcessando]);
+
+  const salvarOuAtualizarCliente = useCallback(async (clienteBase: Cliente) => {
+    const whatsappLimpo = normalizarNumero(clienteBase.whatsapp);
+    const payloadCliente = {
+      ...clienteBase,
+      whatsapp: whatsappLimpo,
+      cep: normalizarNumero(clienteBase.cep).slice(0, 8),
+      data_aniversario: String(clienteBase.data_aniversario || "").slice(0, 10),
+    };
+    const payloadClienteComEnderecoReferencia = {
+      ...payloadCliente,
+      endereco: montarEnderecoComReferencia(
+        payloadCliente.endereco,
+        payloadCliente.ponto_referencia,
+      ),
+    };
+    const payloadClienteSemPontoReferencia = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
+    delete payloadClienteSemPontoReferencia.ponto_referencia;
+    const payloadClienteSemDataAniversario = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
+    delete payloadClienteSemDataAniversario.data_aniversario;
+    const payloadClienteLegado = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
+    delete payloadClienteLegado.ponto_referencia;
+    delete payloadClienteLegado.data_aniversario;
+    const payloadsClienteTentativa: Array<Record<string, unknown>> = [
+      payloadCliente as unknown as Record<string, unknown>,
+      payloadClienteComEnderecoReferencia as unknown as Record<string, unknown>,
+      payloadClienteSemPontoReferencia,
+      payloadClienteSemDataAniversario,
+      payloadClienteLegado,
+    ];
+
+    const { data: clienteExistente, error: erroBuscaCliente } = await supabase
+      .from("clientes")
+      .select("id")
+      .eq("whatsapp", whatsappLimpo)
+      .maybeSingle();
+
+    if (erroBuscaCliente) throw erroBuscaCliente;
+
+    let erroSalvarCliente: unknown = null;
+    for (const payloadTentativa of payloadsClienteTentativa) {
+      if (!clienteExistente) {
+        const { error } = await supabase.from("clientes").insert([payloadTentativa]);
+        if (!error) {
+          erroSalvarCliente = null;
+          break;
+        }
+        const msgErro = obterMensagemErro(error).toLowerCase();
+        const erroSchema =
+          msgErro.includes("schema cache") ||
+          msgErro.includes("column") ||
+          msgErro.includes("does not exist");
+        if (!erroSchema && !erroDePontoReferencia(error)) throw error;
+        erroSalvarCliente = error;
+      } else {
+        const { error } = await supabase
+          .from("clientes")
+          .update(payloadTentativa)
+          .eq("whatsapp", whatsappLimpo);
+        if (!error) {
+          erroSalvarCliente = null;
+          break;
+        }
+        const msgErro = obterMensagemErro(error).toLowerCase();
+        const erroSchema =
+          msgErro.includes("schema cache") ||
+          msgErro.includes("column") ||
+          msgErro.includes("does not exist");
+        if (!erroSchema && !erroDePontoReferencia(error)) throw error;
+        erroSalvarCliente = error;
+      }
+    }
+    if (erroSalvarCliente) throw erroSalvarCliente;
+
+    return payloadCliente;
+  }, []);
+
+  const avancarParaResumo = useCallback(async () => {
+    const cadastroOk = Boolean(
+      cliente.nome &&
+        normalizarNumero(cliente.whatsapp).length >= 10 &&
+        cliente.cep &&
+        cliente.endereco &&
+        cliente.numero &&
+        cliente.ponto_referencia.trim(),
+    );
+    if (!cadastroOk) return;
+    setLoading(true);
+    try {
+      await salvarOuAtualizarCliente(cliente);
+      setPasso(2);
+    } catch (error) {
+      const mensagem = obterMensagemErro(error) || "Nao foi possivel salvar seu cadastro.";
+      console.error("Erro ao salvar cliente antes do resumo:", error);
+      alert(mensagem);
+    } finally {
+      setLoading(false);
+    }
+  }, [cliente, salvarOuAtualizarCliente]);
+
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
 
@@ -874,77 +974,7 @@ export default function ClientePage() {
 
     setLoading(true);
     try {
-      const whatsappLimpo = normalizarNumero(cliente.whatsapp);
-      const payloadCliente = {
-        ...cliente,
-        whatsapp: whatsappLimpo,
-        cep: normalizarNumero(cliente.cep).slice(0, 8),
-        data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
-      };
-      const payloadClienteComEnderecoReferencia = {
-        ...payloadCliente,
-        endereco: montarEnderecoComReferencia(
-          payloadCliente.endereco,
-          payloadCliente.ponto_referencia,
-        ),
-      };
-      const payloadClienteSemPontoReferencia = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
-      delete payloadClienteSemPontoReferencia.ponto_referencia;
-      const payloadClienteSemDataAniversario = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
-      delete payloadClienteSemDataAniversario.data_aniversario;
-      const payloadClienteLegado = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
-      delete payloadClienteLegado.ponto_referencia;
-      delete payloadClienteLegado.data_aniversario;
-      const payloadsClienteTentativa: Array<Record<string, unknown>> = [
-        payloadCliente as unknown as Record<string, unknown>,
-        payloadClienteComEnderecoReferencia as unknown as Record<string, unknown>,
-        payloadClienteSemPontoReferencia,
-        payloadClienteSemDataAniversario,
-        payloadClienteLegado,
-      ];
-
-      const { data: clienteExistente, error: erroBuscaCliente } = await supabase
-        .from("clientes")
-        .select("id")
-        .eq("whatsapp", whatsappLimpo)
-        .maybeSingle();
-
-      if (erroBuscaCliente) throw erroBuscaCliente;
-
-      let erroSalvarCliente: unknown = null;
-      for (const payloadTentativa of payloadsClienteTentativa) {
-        if (!clienteExistente) {
-          const { error } = await supabase.from("clientes").insert([payloadTentativa]);
-          if (!error) {
-            erroSalvarCliente = null;
-            break;
-          }
-          const msgErro = obterMensagemErro(error).toLowerCase();
-          const erroSchema =
-            msgErro.includes("schema cache") ||
-            msgErro.includes("column") ||
-            msgErro.includes("does not exist");
-          if (!erroSchema && !erroDePontoReferencia(error)) throw error;
-          erroSalvarCliente = error;
-        } else {
-          const { error } = await supabase
-            .from("clientes")
-            .update(payloadTentativa)
-            .eq("whatsapp", whatsappLimpo);
-          if (!error) {
-            erroSalvarCliente = null;
-            break;
-          }
-          const msgErro = obterMensagemErro(error).toLowerCase();
-          const erroSchema =
-            msgErro.includes("schema cache") ||
-            msgErro.includes("column") ||
-            msgErro.includes("does not exist");
-          if (!erroSchema && !erroDePontoReferencia(error)) throw error;
-          erroSalvarCliente = error;
-        }
-      }
-      if (erroSalvarCliente) throw erroSalvarCliente;
+      const payloadCliente = await salvarOuAtualizarCliente(cliente);
 
       const pagamentoTexto = formaPagamento;
       const pedidoPayload = {
@@ -1027,7 +1057,7 @@ export default function ClientePage() {
     } finally {
       setLoading(false);
     }
-  }, [carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, totalGeral]);
+  }, [carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, totalGeral]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -1690,8 +1720,8 @@ export default function ClientePage() {
 
                 <button
                   type="button"
-                  onClick={() => setPasso(2)}
-                  disabled={!formOk}
+                  onClick={() => void avancarParaResumo()}
+                  disabled={!formOk || loading}
                   className={`w-full p-6 rounded-[2.2rem] font-black uppercase text-xl mt-4 flex items-center justify-center gap-3 transition-all ${formOk ? "bg-pink-600 text-white shadow-xl shadow-pink-100" : "bg-slate-100 text-slate-300"}`}
                 >
                   Próximo Passo <ChevronRight size={24} />
