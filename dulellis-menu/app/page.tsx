@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   Clock3,
   ChevronRight,
-  Hash,
   Loader2,
   Minus,
   Phone,
@@ -142,6 +141,21 @@ function normalizarNumero(valor: string) {
   return valor.replace(/\D/g, "");
 }
 
+function whatsappEquivalente(a: string, b: string) {
+  const na = normalizarNumero(a);
+  const nb = normalizarNumero(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  // Compatibilidade com números salvos com/sem DDI 55.
+  return (na.length >= 10 && nb.endsWith(na)) || (nb.length >= 10 && na.endsWith(nb));
+}
+
+function formatarCep(cep: string) {
+  const digitos = normalizarNumero(String(cep || "")).slice(0, 8);
+  if (digitos.length <= 5) return digitos;
+  return `${digitos.slice(0, 5)}-${digitos.slice(5)}`;
+}
+
 function normalizarTexto(valor: string) {
   return valor
     .normalize("NFD")
@@ -192,24 +206,19 @@ function montarEnderecoComReferencia(endereco: string, pontoReferencia: string) 
   const enderecoBase = String(endereco || "").trim();
   const referencia = String(pontoReferencia || "").trim();
   if (!referencia) return enderecoBase;
-  if (enderecoBase.toLowerCase().includes("ponto de referencia:")) return enderecoBase;
+  if (/ponto de refer(?:e|ê)ncia\s*:/i.test(enderecoBase)) return enderecoBase;
   return `${enderecoBase} - Ponto de referencia: ${referencia}`;
 }
 
 function extrairPontoReferenciaDeEndereco(endereco: string) {
   const texto = String(endereco || "");
-  const marcador = "ponto de referencia:";
-  const idx = texto.toLowerCase().indexOf(marcador);
-  if (idx < 0) return "";
-  return texto.slice(idx + marcador.length).trim();
+  const match = texto.match(/ponto de refer(?:e|ê)ncia\s*:\s*(.+)$/i);
+  return String(match?.[1] || "").trim();
 }
 
 function limparEnderecoDePontoReferencia(endereco: string) {
   const texto = String(endereco || "");
-  const marcador = "ponto de referencia:";
-  const idx = texto.toLowerCase().indexOf(marcador);
-  if (idx < 0) return texto;
-  return texto.slice(0, idx).replace(/\-\s*$/g, "").trim();
+  return texto.replace(/\s*-\s*ponto de refer(?:e|ê)ncia\s*:.*$/i, "").trim();
 }
 
 function dataHojeISO() {
@@ -588,7 +597,7 @@ export default function ClientePage() {
 
           clienteEncontradoDb =
             ((candidatos as ClienteRow[] | null) ?? []).find(
-              (c) => normalizarNumero(String(c.whatsapp ?? "")) === zap,
+              (c) => whatsappEquivalente(String(c.whatsapp ?? ""), zap),
             ) ?? null;
         }
 
@@ -603,6 +612,8 @@ export default function ClientePage() {
         const pontoExtraido = extrairPontoReferenciaDeEndereco(enderecoBruto);
         const pontoFinal = pontoDireto || pontoExtraido;
         const enderecoFinal = limparEnderecoDePontoReferencia(enderecoBruto);
+        const aniversarioRaw = String(clienteEncontradoDb.data_aniversario ?? "").trim();
+        const aniversarioNormalizado = aniversarioRaw ? aniversarioRaw.slice(0, 10) : "";
 
         setCliente((prev) => ({
           ...prev,
@@ -614,7 +625,7 @@ export default function ClientePage() {
           bairro: String(clienteEncontradoDb.bairro ?? ""),
           cidade: String(clienteEncontradoDb.cidade ?? DEFAULT_CITY),
           ponto_referencia: pontoFinal,
-          data_aniversario: String(clienteEncontradoDb.data_aniversario ?? ""),
+          data_aniversario: aniversarioNormalizado,
         }));
         setClienteEncontrado(true);
 
@@ -864,52 +875,76 @@ export default function ClientePage() {
     setLoading(true);
     try {
       const whatsappLimpo = normalizarNumero(cliente.whatsapp);
-      const payloadCliente = { ...cliente, whatsapp: whatsappLimpo };
-      const {
-        ponto_referencia: _pontoReferencia,
-        ...payloadClienteSemPontoReferencia
-      } = payloadCliente;
-      const payloadClienteFallback = {
-        ...payloadClienteSemPontoReferencia,
+      const payloadCliente = {
+        ...cliente,
+        whatsapp: whatsappLimpo,
+        cep: normalizarNumero(cliente.cep).slice(0, 8),
+        data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
+      };
+      const payloadClienteComEnderecoReferencia = {
+        ...payloadCliente,
         endereco: montarEnderecoComReferencia(
-          payloadClienteSemPontoReferencia.endereco,
+          payloadCliente.endereco,
           payloadCliente.ponto_referencia,
         ),
       };
+      const payloadClienteSemPontoReferencia = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
+      delete payloadClienteSemPontoReferencia.ponto_referencia;
+      const payloadClienteSemDataAniversario = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
+      delete payloadClienteSemDataAniversario.data_aniversario;
+      const payloadClienteLegado = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
+      delete payloadClienteLegado.ponto_referencia;
+      delete payloadClienteLegado.data_aniversario;
+      const payloadsClienteTentativa: Array<Record<string, unknown>> = [
+        payloadCliente as unknown as Record<string, unknown>,
+        payloadClienteComEnderecoReferencia as unknown as Record<string, unknown>,
+        payloadClienteSemPontoReferencia,
+        payloadClienteSemDataAniversario,
+        payloadClienteLegado,
+      ];
 
       const { data: clienteExistente, error: erroBuscaCliente } = await supabase
         .from("clientes")
         .select("id")
         .eq("whatsapp", whatsappLimpo)
-        .single();
+        .maybeSingle();
 
-      if (erroBuscaCliente && erroBuscaCliente.code !== "PGRST116") {
-        throw erroBuscaCliente;
-      }
+      if (erroBuscaCliente) throw erroBuscaCliente;
 
-      if (!clienteExistente) {
-        const { error: erroInsertCliente } = await supabase.from("clientes").insert([payloadCliente]);
-        if (erroInsertCliente) {
-          if (!erroDePontoReferencia(erroInsertCliente)) throw erroInsertCliente;
-          const { error: erroRetryInsert } = await supabase
+      let erroSalvarCliente: unknown = null;
+      for (const payloadTentativa of payloadsClienteTentativa) {
+        if (!clienteExistente) {
+          const { error } = await supabase.from("clientes").insert([payloadTentativa]);
+          if (!error) {
+            erroSalvarCliente = null;
+            break;
+          }
+          const msgErro = obterMensagemErro(error).toLowerCase();
+          const erroSchema =
+            msgErro.includes("schema cache") ||
+            msgErro.includes("column") ||
+            msgErro.includes("does not exist");
+          if (!erroSchema && !erroDePontoReferencia(error)) throw error;
+          erroSalvarCliente = error;
+        } else {
+          const { error } = await supabase
             .from("clientes")
-            .insert([payloadClienteFallback]);
-          if (erroRetryInsert) throw erroRetryInsert;
-        }
-      } else {
-        const { error: erroUpdateCliente } = await supabase
-          .from("clientes")
-          .update(payloadCliente)
-          .eq("whatsapp", whatsappLimpo);
-        if (erroUpdateCliente) {
-          if (!erroDePontoReferencia(erroUpdateCliente)) throw erroUpdateCliente;
-          const { error: erroRetryUpdate } = await supabase
-            .from("clientes")
-            .update(payloadClienteFallback)
+            .update(payloadTentativa)
             .eq("whatsapp", whatsappLimpo);
-          if (erroRetryUpdate) throw erroRetryUpdate;
+          if (!error) {
+            erroSalvarCliente = null;
+            break;
+          }
+          const msgErro = obterMensagemErro(error).toLowerCase();
+          const erroSchema =
+            msgErro.includes("schema cache") ||
+            msgErro.includes("column") ||
+            msgErro.includes("does not exist");
+          if (!erroSchema && !erroDePontoReferencia(error)) throw error;
+          erroSalvarCliente = error;
         }
       }
+      if (erroSalvarCliente) throw erroSalvarCliente;
 
       const pagamentoTexto = formaPagamento;
       const pedidoPayload = {
@@ -1564,15 +1599,13 @@ export default function ClientePage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="relative">
                     <label htmlFor="cep" className="sr-only">CEP</label>
-                    <div className="absolute inset-y-0 left-5 flex items-center text-slate-300">
-                      <Hash size={18} />
-                    </div>
                     <input
                       placeholder="CEP *"
                       id="cep"
-                      maxLength={8}
-                      value={cliente.cep}
-                      className="w-full p-5 pl-14 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
+                      maxLength={9}
+                      inputMode="numeric"
+                      value={formatarCep(cliente.cep)}
+                      className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                       onChange={(e) => executarBuscaCep(e.target.value)}
                     />
                     {buscandoCep && (

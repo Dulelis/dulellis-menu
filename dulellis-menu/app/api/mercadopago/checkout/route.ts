@@ -28,12 +28,21 @@ export async function POST(request: Request) {
     const siteEnv = process.env.NEXT_PUBLIC_SITE_URL;
     const baseUrlRaw = siteEnv || originHeader || "http://localhost:3000";
     const baseUrl = baseUrlRaw.replace(/\/+$/, "");
-    const backUrlSuccess = `${baseUrl}/retorno-pagamento`;
-    const backUrlFailure = `${baseUrl}/retorno-pagamento`;
-    const backUrlPending = `${baseUrl}/retorno-pagamento`;
     const baseEhPublico = /^https:\/\//i.test(baseUrl) && !/localhost|127\.0\.0\.1/i.test(baseUrl);
 
     const referencia = String(body.referencia || `dulelis-${Date.now()}`);
+    const clienteNome = String(body.cliente_nome || "").trim();
+    const retornoSuccessUrl = new URL(`${baseUrl}/retorno-pagamento`);
+    const retornoFailureUrl = new URL(`${baseUrl}/retorno-pagamento`);
+    const retornoPendingUrl = new URL(`${baseUrl}/retorno-pagamento`);
+    retornoSuccessUrl.searchParams.set("ref", referencia);
+    retornoFailureUrl.searchParams.set("ref", referencia);
+    retornoPendingUrl.searchParams.set("ref", referencia);
+    if (clienteNome) {
+      retornoSuccessUrl.searchParams.set("cliente_nome", clienteNome);
+      retornoFailureUrl.searchParams.set("cliente_nome", clienteNome);
+      retornoPendingUrl.searchParams.set("cliente_nome", clienteNome);
+    }
     const payload: Record<string, unknown> = {
       items: [
         {
@@ -51,9 +60,9 @@ export async function POST(request: Request) {
         itens: body.itens || [],
       },
       back_urls: {
-        success: backUrlSuccess,
-        failure: backUrlFailure,
-        pending: backUrlPending,
+        success: retornoSuccessUrl.toString(),
+        failure: retornoFailureUrl.toString(),
+        pending: retornoPendingUrl.toString(),
       },
     };
     if (baseEhPublico) {

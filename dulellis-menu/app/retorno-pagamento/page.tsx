@@ -49,6 +49,8 @@ type RetornoPagamentoPageProps = {
   searchParams: Promise<{
     transaction_id?: string;
     status?: string;
+    ref?: string;
+    cliente_nome?: string;
   }>;
 };
 
@@ -56,11 +58,15 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const params = await searchParams;
   const transactionId = params.transaction_id ?? "";
   const status = params.status ?? "";
+  const referencia = params.ref ?? "";
+  const clienteNome = String(params.cliente_nome || "").trim();
   const info = getStatusInfo(status);
   const mensagemWhatsapp = [
-    `Ola! ${info.titulo}.`,
+    clienteNome ? `Ola! Sou ${clienteNome}.` : "Ola!",
+    `${info.titulo}.`,
     `Status: ${status || "nao informado"}.`,
     transactionId ? `Transacao: ${transactionId}.` : "",
+    referencia ? `Referencia do pedido: ${referencia}.` : "",
     "Pode confirmar meu pedido, por favor?",
   ]
     .filter(Boolean)
