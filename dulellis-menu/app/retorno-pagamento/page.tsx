@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { CheckCircle2, Clock3, CreditCard, XCircle } from "lucide-react";
 
+const WHATSAPP_LOJA = "5547988347100";
+
 function getStatusInfo(status: string) {
   const normalizado = status.trim().toLowerCase();
 
@@ -55,6 +57,15 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const transactionId = params.transaction_id ?? "";
   const status = params.status ?? "";
   const info = getStatusInfo(status);
+  const mensagemWhatsapp = [
+    `Ola! ${info.titulo}.`,
+    `Status: ${status || "nao informado"}.`,
+    transactionId ? `Transacao: ${transactionId}.` : "",
+    "Pode confirmar meu pedido, por favor?",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const whatsappLink = `https://wa.me/${WHATSAPP_LOJA}?text=${encodeURIComponent(mensagemWhatsapp)}`;
 
   return (
     <main className="min-h-screen bg-[#FDFCFD] text-slate-900 flex items-center justify-center p-6">
@@ -73,15 +84,26 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
             <p className="text-sm font-mono break-all text-slate-700">{transactionId}</p>
           </div>
         ) : null}
-
-        <Link
-          href="/"
+        <a
+          href={whatsappLink}
+          target="_blank"
+          rel="noopener noreferrer"
           className="block w-full text-center bg-pink-600 text-white py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
         >
-          Voltar para o cardápio
+          Confirmar no WhatsApp
+        </a>
+        <p className="text-[11px] text-slate-600 mt-3 mb-3">
+          Voce recebera atualizacoes: pedido confirmado, em producao e saiu para entrega.
+        </p>
+        <Link
+          href="/"
+          className="block w-full text-center bg-white border border-slate-200 text-slate-700 py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
+        >
+          Voltar para o cardapio
         </Link>
       </section>
     </main>
   );
 }
+
 
