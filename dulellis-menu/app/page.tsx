@@ -287,8 +287,23 @@ function normalizarDiasSemana(dias?: string[] | null) {
     .filter((d): d is (typeof DIAS_SEMANA_CHAVES)[number] =>
       (DIAS_SEMANA_CHAVES as readonly string[]).includes(d),
     );
-  const unicos = Array.from(new Set(validos));
-  return unicos.length > 0 ? unicos : [...DIAS_SEMANA_CHAVES];
+  const unicosOrdenados = Array.from(new Set(validos)).sort(
+    (a, b) => DIAS_SEMANA_CHAVES.indexOf(a) - DIAS_SEMANA_CHAVES.indexOf(b),
+  );
+  return unicosOrdenados.length > 0 ? unicosOrdenados : [...DIAS_SEMANA_CHAVES];
+}
+
+function normalizarLinkExterno(link: string) {
+  const bruto = String(link || "").trim();
+  if (!bruto) return "";
+  if (bruto.startsWith("@")) {
+    const usuario = bruto.slice(1).trim().replace(/^@+/, "");
+    if (!usuario) return "";
+    return `https://instagram.com/${usuario}`;
+  }
+  if (/^https?:\/\//i.test(bruto)) return bruto;
+  if (/^www\./i.test(bruto)) return `https://${bruto}`;
+  return `https://${bruto}`;
 }
 
 function aniversarioEhHoje(dataAniversario?: string) {
@@ -1021,17 +1036,31 @@ export default function ClientePage() {
         }
       }
 
-      const msg =
+      const itensFormatados = carrinho.map((i) => `- ${i.qtd}x ${i.nome}`).join("\n");
+      const enderecoCompleto = `${payloadCliente.endereco}, ${payloadCliente.numero}`.trim();
+      const pontoReferencia = String(payloadCliente.ponto_referencia || "").trim();
+
+      const msgDinheiro =
         `Pedido Dulelis\n\n` +
         `Cliente: ${payloadCliente.nome}\n` +
-        `Endereco: ${payloadCliente.endereco}, ${payloadCliente.numero}\n\n` +
-        (payloadCliente.ponto_referencia
-          ? `Ponto de Referencia: ${payloadCliente.ponto_referencia}\n\n`
-          : "") +
+        `Endereco: ${enderecoCompleto}\n` +
+        `Ponto de Referencia: ${pontoReferencia || "Nao informado"}\n` +
         `Pagamento: ${pagamentoTexto}\n\n` +
-        `Itens:\n${carrinho.map((i) => `${i.qtd}x ${i.nome}`).join("\n")}\n\n` +
+        `Itens:\n${itensFormatados}\n\n` +
         (descontoPromocoes > 0 ? `Descontos: R$ ${descontoPromocoes.toFixed(2)}\n` : "") +
         `Total: R$ ${totalGeral.toFixed(2)}`;
+
+      const msgPadrao =
+        `Pedido Dulelis\n\n` +
+        `Cliente: ${payloadCliente.nome}\n` +
+        `Endereco: ${enderecoCompleto}\n` +
+        (pontoReferencia ? `Ponto de Referencia: ${pontoReferencia}\n` : "") +
+        `Pagamento: ${pagamentoTexto}\n\n` +
+        `Itens:\n${itensFormatados}\n\n` +
+        (descontoPromocoes > 0 ? `Descontos: R$ ${descontoPromocoes.toFixed(2)}\n` : "") +
+        `Total: R$ ${totalGeral.toFixed(2)}`;
+
+      const msg = pagamentoTexto === FORMA_DINHEIRO ? msgDinheiro : msgPadrao;
 
       window.open(
         `https://wa.me/5547988347100?text=${encodeURIComponent(msg)}`,
@@ -1116,7 +1145,7 @@ export default function ClientePage() {
     const mensagensPropaganda = propagandasAtivasHoje.slice(0, 8).map((item) => ({
       id: item.id,
       titulo: String(item.titulo || "Destaque"),
-      descricao: String(item.descricao || "").trim() || "Confira essa novidade da Dulelis.",
+      descricao: String(item.descricao || "").trim(),
       imagem_url: String(item.imagem_url || "").trim(),
       botao_texto: String(item.botao_texto || "").trim(),
       botao_link: String(item.botao_link || "").trim(),
@@ -1364,14 +1393,14 @@ export default function ClientePage() {
                 </div>
               )}
             </div>
-            <div className="relative mt-1 rounded-xl overflow-hidden border border-white/20 p-[1px] h-52 sm:h-56 bg-white/10">
+            <div className="relative mt-1 rounded-xl overflow-hidden border border-white/10 h-60 sm:h-64 bg-white/5">
               {slideAtualVitrine?.imagem_url ? (
                 <Image
                   src={slideAtualVitrine.imagem_url}
                   alt={slideAtualVitrine?.titulo || "Banner"}
                   width={640}
                   height={260}
-                  className="w-full h-full object-cover rounded-[10px]"
+                  className="w-full h-full object-cover rounded-xl"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-pink-100/80">
@@ -1382,24 +1411,25 @@ export default function ClientePage() {
                 <h3 className="font-black text-sm leading-tight line-clamp-1 text-white drop-shadow-sm">
                   {slideAtualVitrine?.titulo}
                 </h3>
-                <p className="mt-1 inline-block max-w-full rounded-full border border-white/30 bg-black/30 px-2 py-0.5 text-[10px] font-bold text-white line-clamp-1">
-                  {slideAtualVitrine?.descricao}
-                </p>
+                {slideAtualVitrine?.descricao ? (
+                  <p className="mt-1 inline-block max-w-full rounded-full border border-white/30 bg-black/30 px-2 py-0.5 text-[10px] font-bold text-white line-clamp-1">
+                    {slideAtualVitrine.descricao}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="h-7 mt-2">
-              {slideAtualVitrine?.botao_texto && (
+              {slideAtualVitrine?.botao_link && (
                 <button
                   type="button"
                   onClick={() => {
-                    const link = String(slideAtualVitrine?.botao_link || "");
-                    if (/^https?:\/\//i.test(link)) {
-                      window.open(link, "_blank", "noopener,noreferrer");
-                    }
+                    const link = normalizarLinkExterno(String(slideAtualVitrine?.botao_link || ""));
+                    if (!link) return;
+                    window.open(link, "_blank", "noopener,noreferrer");
                   }}
                   className="rounded-xl bg-white/20 hover:bg-white/30 transition-colors px-3 py-1.5 text-[10px] font-black uppercase tracking-wider"
                 >
-                  {slideAtualVitrine.botao_texto}
+                  {String(slideAtualVitrine?.botao_texto || "").trim() || "Abrir link"}
                 </button>
               )}
             </div>
@@ -1523,6 +1553,17 @@ export default function ClientePage() {
           })
         )}
       </main>
+
+      <footer className="max-w-xl mx-auto px-4 pb-6 sm:px-6">
+        <div className="rounded-2xl border border-pink-100 bg-gradient-to-r from-[#fff7fa] via-white to-[#fff7fa] px-4 py-4 text-center">
+          <p className="text-sm font-black text-pink-700 tracking-tight">
+            Dulelis Confeitaria - desde 2014
+          </p>
+          <p className="mt-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            A pausa perfeita para adocar seu dia.
+          </p>
+        </div>
+      </footer>
 
       {carrinho.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[94%] max-w-md bg-slate-900 text-white p-5 rounded-[3rem] shadow-2xl flex justify-between items-center z-50">

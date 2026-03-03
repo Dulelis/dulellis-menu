@@ -61,10 +61,11 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const referencia = params.ref ?? "";
   const clienteNome = String(params.cliente_nome || "").trim();
   const info = getStatusInfo(status);
+  const statusNormalizado = status.trim();
   const mensagemWhatsapp = [
-    clienteNome ? `Ola! Sou ${clienteNome}.` : "Ola!",
+    clienteNome ? `Ola, sou ${clienteNome.replace(/\+/g, " ").trim()}.` : "Ola!",
     `${info.titulo}.`,
-    `Status: ${status || "nao informado"}.`,
+    statusNormalizado ? `Status do pagamento: ${statusNormalizado}.` : "",
     transactionId ? `Transacao: ${transactionId}.` : "",
     referencia ? `Referencia do pedido: ${referencia}.` : "",
     "Pode confirmar meu pedido, por favor?",
