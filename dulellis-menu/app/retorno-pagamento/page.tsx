@@ -65,15 +65,14 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
         </div>
 
         <p className="text-sm text-slate-700 mb-5">{info.descricao}</p>
-
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-5">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">
-            Código da transação
-          </p>
-          <p className="text-sm font-mono break-all text-slate-700">
-            {transactionId || "Não informado"}
-          </p>
-        </div>
+        {transactionId ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-5">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">
+              Código da transação
+            </p>
+            <p className="text-sm font-mono break-all text-slate-700">{transactionId}</p>
+          </div>
+        ) : null}
 
         <Link
           href="/"
@@ -85,3 +84,4 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
     </main>
   );
 }
+

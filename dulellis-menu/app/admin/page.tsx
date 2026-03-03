@@ -22,6 +22,7 @@ const CATEGORIAS_ESTOQUE = ['Bolos', 'Doces', 'Salgados', 'Bebidas'] as const;
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('estoque');
   const [loading, setLoading] = useState(false);
+  const [saindo, setSaindo] = useState(false);
   const [estoque, setEstoque] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
@@ -1122,6 +1123,15 @@ export default function AdminPage() {
     setClienteExpandidoId(match?.id ?? null);
   }, [activeTab, clienteEmFoco, clientes]);
 
+  const sairAdmin = useCallback(async () => {
+    setSaindo(true);
+    try {
+      await fetch('/api/admin/logout', { method: 'POST' });
+    } finally {
+      window.location.href = '/admin/login';
+    }
+  }, []);
+
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans print:bg-white">
       <aside className="w-64 bg-slate-900 text-white p-6 hidden lg:block print:hidden">
@@ -1150,29 +1160,40 @@ export default function AdminPage() {
             {activeTab === 'vendas' && 'Vendas'}
             {activeTab === 'relatorios' && 'Relatorios'}
           </h1>
-          
-          {activeTab === 'estoque' && (
-            <button onClick={() => { fecharModal(); setMostrarModalEstoque(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+
+          <div className="flex items-center gap-3">
+            {activeTab === 'estoque' && (
+              <button onClick={() => { fecharModal(); setMostrarModalEstoque(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Adicionar
-            </button>
-          )}
+              </button>
+            )}
 
-          {activeTab === 'taxas' && (
-            <button onClick={() => { fecharModalTaxa(); setMostrarModalTaxa(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+            {activeTab === 'taxas' && (
+              <button onClick={() => { fecharModalTaxa(); setMostrarModalTaxa(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Adicionar Raio 
-            </button>
-          )}
+              </button>
+            )}
 
-          {activeTab === 'promocoes' && (
-            <button onClick={() => { fecharModalPromocao(); setMostrarModalPromocao(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+            {activeTab === 'promocoes' && (
+              <button onClick={() => { fecharModalPromocao(); setMostrarModalPromocao(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Nova Promocao 
-            </button>
-          )}
-          {activeTab === 'propagandas' && (
-            <button onClick={() => { fecharModalPropaganda(); setMostrarModalPropaganda(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+              </button>
+            )}
+            {activeTab === 'propagandas' && (
+              <button onClick={() => { fecharModalPropaganda(); setMostrarModalPropaganda(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Nova Propaganda
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => { void sairAdmin(); }}
+              disabled={saindo}
+              className="bg-slate-200 text-slate-700 px-4 py-3 rounded-2xl font-bold text-sm hover:bg-slate-300 transition-all disabled:opacity-60"
+            >
+              {saindo ? 'Saindo...' : 'Sair'}
             </button>
-          )}
+          </div>
         </header>
 
         {activeTab === 'estoque' && (

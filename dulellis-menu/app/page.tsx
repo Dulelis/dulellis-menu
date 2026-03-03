@@ -37,8 +37,9 @@ const DIAS_SEMANA_LABELS: Record<(typeof DIAS_SEMANA_CHAVES)[number], string> = 
   sexta: "Sexta",
   sabado: "Sabado",
 };
-const FORMAS_PAGAMENTO = ["Pix", "Dinheiro", "Cartao na Entrega"];
-const CHAVE_PIX = "fa91d87d-289a-46b1-8e06-0c13ca292325";
+const FORMA_DINHEIRO = "Dinheiro";
+const FORMA_PIX_CARTAO = "Pix/Cartao";
+const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_PIX_CARTAO];
 const VITRINE_MODAL_SLIDE_MS = 6000;
 
 type Cliente = {
@@ -335,7 +336,6 @@ export default function ClientePage() {
   const [msgTaxa, setMsgTaxa] = useState("Aguardando endereço...");
   const [cliente, setCliente] = useState<Cliente>(CLIENTE_INICIAL);
   const [formaPagamento, setFormaPagamento] = useState("");
-  const [pixCopiado, setPixCopiado] = useState(false);
   const [referenciaPagamento, setReferenciaPagamento] = useState("");
   const [vitrineSlideIndex, setVitrineSlideIndex] = useState(0);
 
@@ -812,7 +812,6 @@ export default function ClientePage() {
       setAbaCarrinho(false);
       setPasso(1);
       setFormaPagamento("");
-      setPixCopiado(false);
     } catch (error) {
       const mensagem = obterMensagemErro(error) || "Erro ao limpar carrinho.";
       console.error("Erro ao limpar carrinho:", error);
@@ -825,8 +824,7 @@ export default function ClientePage() {
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
 
-    if (forma === "Cartao na Entrega") {
-      setPixCopiado(false);
+    if (forma === FORMA_PIX_CARTAO) {
       const referencia =
         referenciaPagamento ||
         (typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -857,20 +855,6 @@ export default function ClientePage() {
         alert(mensagem);
       }
       return;
-    }
-
-    if (forma !== "Pix") {
-      setPixCopiado(false);
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(CHAVE_PIX);
-      setPixCopiado(true);
-      setTimeout(() => setPixCopiado(false), 1800);
-    } catch {
-      setPixCopiado(false);
-      alert("Nao foi possivel copiar a chave Pix automaticamente.");
     }
   }, [carrinho, cliente.nome, cliente.whatsapp, referenciaPagamento, totalGeral]);
 
@@ -935,7 +919,7 @@ export default function ClientePage() {
         total: totalGeral,
         forma_pagamento: pagamentoTexto,
         pagamento_referencia: referenciaPagamento || null,
-        status_pagamento: formaPagamento === "Cartao na Entrega" ? "pending" : null,
+        status_pagamento: formaPagamento === FORMA_PIX_CARTAO ? "pending" : null,
       };
       const pedidoPayloadComForma = {
         cliente_nome: payloadCliente.nome,
@@ -985,7 +969,7 @@ export default function ClientePage() {
         `Total: R$ ${totalGeral.toFixed(2)}`;
 
       window.open(
-        `https://wa.me/5547988400002?text=${encodeURIComponent(msg)}`,
+        `https://wa.me/5547988347100?text=${encodeURIComponent(msg)}`,
         "_blank",
       );
 
@@ -998,7 +982,6 @@ export default function ClientePage() {
       setTaxaEntrega(0);
       setMsgTaxa("Aguardando endereço...");
       setFormaPagamento("");
-      setPixCopiado(false);
       setReferenciaPagamento("");
 
       await carregarDadosIniciais();
@@ -1364,7 +1347,7 @@ export default function ClientePage() {
             key={cat}
             type="button"
             onClick={() => setCategoriaAtiva(cat)}
-            className={`px-1 py-2 rounded-full font-black text-[9px] text-center whitespace-nowrap transition-all uppercase tracking-wide border-2 sm:px-7 sm:py-2.5 sm:text-[10px] sm:tracking-widest ${categoriaAtiva === cat ? "bg-pink-600 border-pink-600 text-white shadow-lg" : "bg-white border-slate-100 text-slate-400"}`}
+            className={`px-1 py-2 rounded-full font-black text-[9px] text-center whitespace-nowrap transition-all uppercase tracking-wide border-2 sm:px-7 sm:py-2.5 sm:text-[10px] sm:tracking-widest ${categoriaAtiva === cat ? "bg-pink-600 border-pink-600 text-white shadow-lg" : "bg-[#fff8fb] border-[#efe4ea] text-slate-500"}`}
           >
             {cat}
           </button>
@@ -1379,7 +1362,7 @@ export default function ClientePage() {
         }
       `}</style>
 
-      <main className="max-w-xl mx-auto p-6 grid gap-5">
+      <main className="max-w-xl mx-auto px-4 py-5 sm:px-6 sm:py-6 grid gap-4">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Image src="/logo.png" alt="Carregando" width={60} height={60} className="object-contain animate-pulse" />
@@ -1399,8 +1382,8 @@ export default function ClientePage() {
                     <div className="h-px flex-1 bg-black/40" />
                   </div>
                 )}
-                <div className="group flex items-center gap-5 p-4 rounded-[2.5rem] border bg-white border-pink-50 shadow-sm transition-all active:scale-[0.98]">
-                  <div className="w-24 h-24 rounded-[1.8rem] bg-slate-50 overflow-hidden shrink-0 border border-pink-50/50">
+                <div className="group flex items-center gap-3 p-3 rounded-[1.8rem] border bg-[#fffafc] border-[#f3e8ee] shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition-all active:scale-[0.98]">
+                  <div className="w-16 h-16 rounded-[1.1rem] bg-[#fff5f9] overflow-hidden shrink-0 border border-[#f6eaf0]">
                     {prod.imagem_url ? (
                       <Image
                         src={prod.imagem_url}
@@ -1411,7 +1394,7 @@ export default function ClientePage() {
                         sizes="96px"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-white p-2">
+                      <div className="w-full h-full flex items-center justify-center bg-[#fffafc] p-2">
                         <Image
                           src="/logo.png"
                           alt="Dulelis"
@@ -1422,46 +1405,52 @@ export default function ClientePage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex-1">
-                    <span className="text-[8px] font-black text-pink-400 uppercase tracking-widest bg-pink-50 px-2 py-0.5 rounded-full">
-                      {prod.categoria}
-                    </span>
-                    {resumoPromocaoProduto(prod.id) && (
-                      <span className="ml-2 text-[8px] font-black text-green-700 uppercase tracking-widest bg-green-50 px-2 py-0.5 rounded-full">
-                        {resumoPromocaoProduto(prod.id)}
+                  <div className="flex-1 min-w-0">
+                    <div className="min-w-0">
+                      <span className="text-[7px] font-black text-pink-500 uppercase tracking-[0.22em] bg-pink-50/80 px-2 py-0.5 rounded-full">
+                        {prod.categoria}
                       </span>
-                    )}
-                    <h3 className="font-black text-slate-800 text-lg mt-1">{prod.nome}</h3>
-                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                      {String(prod.descricao || "").trim() || "Confira essa delicia da Dulelis."}
-                    </p>
-                    {Number(prod.quantidade ?? 0) <= 2 && (
-                      <p className="text-[10px] font-black uppercase tracking-wider text-orange-500 mt-1">
-                        Esta acabando
+                      {resumoPromocaoProduto(prod.id) && (
+                        <span className="ml-1.5 text-[7px] font-black text-emerald-700 uppercase tracking-[0.2em] bg-emerald-50 px-2 py-0.5 rounded-full">
+                          {resumoPromocaoProduto(prod.id)}
+                        </span>
+                      )}
+                      <h3 className="font-black text-slate-800 text-[clamp(0.86rem,3vw,1.2rem)] leading-[1.08] mt-1 tracking-[-0.01em] whitespace-nowrap">
+                        {prod.nome}
+                      </h3>
+                      <p className="text-[11px] leading-[1.25] text-slate-500 mt-1 line-clamp-2">
+                        {String(prod.descricao || "").trim() || "Confira essa delicia da Dulelis."}
                       </p>
-                    )}
-                    <p className="text-pink-600 font-black text-xl">R$ {Number(prod.preco).toFixed(2)}</p>
-                  </div>
-                  <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => void removerDoCarrinho(prod.id)}
-                      disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
-                      className="text-pink-600 p-2"
-                    >
-                      <Minus size={18} />
-                    </button>
-                    <span className="font-black text-sm w-6 text-center">
-                      {quantidadesCarrinho[prod.id] ?? 0}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void adicionarAoCarrinho(prod)}
-                      disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
-                      className="bg-pink-600 text-white p-2 rounded-xl shadow-lg shadow-pink-100"
-                    >
-                      <Plus size={18} />
-                    </button>
+                      {Number(prod.quantidade ?? 0) <= 2 && (
+                        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-500 mt-1">
+                          Esta acabando
+                        </p>
+                      )}
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <p className="text-pink-600 font-black text-[1.65rem] leading-none">R$ {Number(prod.preco).toFixed(2)}</p>
+                        <div className="flex items-center gap-1.5 bg-[#f8f5f7] p-1 rounded-xl border border-[#eee5ea] shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => void removerDoCarrinho(prod.id)}
+                            disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
+                            className="text-pink-600 p-1.5"
+                          >
+                            <Minus size={14} />
+                          </button>
+                          <span className="font-black text-[12px] w-5 text-center text-slate-700">
+                            {quantidadesCarrinho[prod.id] ?? 0}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void adicionarAoCarrinho(prod)}
+                            disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
+                            className="bg-pink-600 text-white p-1.5 rounded-[9px] shadow-md shadow-pink-200/60"
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </React.Fragment>
@@ -1752,11 +1741,7 @@ export default function ClientePage() {
                         onClick={() => void selecionarFormaPagamento(forma)}
                         className={`p-3 rounded-2xl text-xs font-black uppercase tracking-wide border-2 transition-all ${formaPagamento === forma ? "bg-pink-600 border-pink-600 text-white" : "bg-slate-50 border-slate-100 text-slate-500"}`}
                       >
-                        {forma === "Pix"
-                          ? pixCopiado
-                            ? "Pix Copiado!"
-                            : "Pix Copia e Cola"
-                          : forma}
+                        {forma === FORMA_PIX_CARTAO ? "Pix/Cartao" : forma}
                       </button>
                     ))}
                   </div>
