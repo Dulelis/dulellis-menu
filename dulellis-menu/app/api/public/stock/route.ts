@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
+import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
+import { enforceSameOriginForWrite, getClientIp } from "@/lib/request-security";
 
 type StockBody = {
   id?: number;
@@ -7,6 +9,23 @@ type StockBody = {
 };
 
 export async function POST(request: Request) {
+  const originError = enforceSameOriginForWrite(request);
+  if (originError) return originError;
+
+  cleanupExpiredBuckets();
+  const ip = getClientIp(request);
+  const rate = checkRateLimit({
+    key: `public-stock-post:${ip}`,
+    limit: 180,
+    windowMs: 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Limite de atualizacoes excedido. Tente novamente em instantes." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
+    );
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });

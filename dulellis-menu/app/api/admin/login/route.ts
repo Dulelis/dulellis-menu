@@ -5,8 +5,24 @@ import {
   getAdminSessionCookie,
   verifyAdminPassword,
 } from "@/lib/admin-auth";
+import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request-security";
 
 export async function POST(request: Request) {
+  cleanupExpiredBuckets();
+  const ip = getClientIp(request);
+  const rate = checkRateLimit({
+    key: `admin-login:${ip}`,
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Muitas tentativas. Tente novamente em instantes." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
+    );
+  }
+
   if (!getAdminAuthEnabled()) {
     return NextResponse.json(
       { ok: false, error: "ADMIN_PASSWORD nao configurada no ambiente." },

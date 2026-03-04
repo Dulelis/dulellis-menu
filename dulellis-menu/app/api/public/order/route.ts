@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
+import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
+import { enforceSameOriginForWrite, getClientIp } from "@/lib/request-security";
 
 type ItemInput = { id?: number; qtd?: number };
 type ClienteInput = {
@@ -86,6 +88,23 @@ function calcularDescontoPromocoes(
 }
 
 export async function POST(request: Request) {
+  const originError = enforceSameOriginForWrite(request);
+  if (originError) return originError;
+
+  cleanupExpiredBuckets();
+  const ip = getClientIp(request);
+  const rate = checkRateLimit({
+    key: `public-order-post:${ip}`,
+    limit: 25,
+    windowMs: 5 * 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Muitas tentativas de pedido. Aguarde alguns minutos." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
+    );
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });

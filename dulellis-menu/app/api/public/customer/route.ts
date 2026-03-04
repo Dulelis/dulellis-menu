@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
+import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
+import { enforceSameOriginForWrite, getClientIp } from "@/lib/request-security";
 
 type ClientePayload = {
   nome?: string;
@@ -46,6 +48,20 @@ function whatsappEquivalente(a: string, b: string): boolean {
 }
 
 export async function GET(request: Request) {
+  cleanupExpiredBuckets();
+  const ip = getClientIp(request);
+  const rate = checkRateLimit({
+    key: `public-customer-get:${ip}`,
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Muitas consultas. Aguarde um momento." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
+    );
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
@@ -108,6 +124,23 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const originError = enforceSameOriginForWrite(request);
+  if (originError) return originError;
+
+  cleanupExpiredBuckets();
+  const ip = getClientIp(request);
+  const rate = checkRateLimit({
+    key: `public-customer-post:${ip}`,
+    limit: 40,
+    windowMs: 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Muitas tentativas. Aguarde um momento." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
+    );
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });

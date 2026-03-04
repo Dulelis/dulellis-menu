@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
+import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
+import { enforceSameOriginForWrite, getClientIp } from "@/lib/request-security";
 
 type CheckoutBody = {
   total?: number;
@@ -12,6 +14,23 @@ type CheckoutBody = {
 
 export async function POST(request: Request) {
   try {
+    const originError = enforceSameOriginForWrite(request);
+    if (originError) return originError;
+
+    cleanupExpiredBuckets();
+    const ip = getClientIp(request);
+    const rate = checkRateLimit({
+      key: `mp-checkout-post:${ip}`,
+      limit: 20,
+      windowMs: 5 * 60_000,
+    });
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Muitas tentativas de checkout. Tente novamente em alguns minutos." },
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
+      );
+    }
+
     const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
     if (!accessToken) {
       return NextResponse.json(
