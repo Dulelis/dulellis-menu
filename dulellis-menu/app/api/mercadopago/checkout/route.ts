@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { getServiceSupabase } from "@/lib/server-supabase";
 
 type CheckoutBody = {
   total?: number;
   cliente_nome?: string;
   whatsapp?: string;
   referencia?: string;
+  pedido_id?: number;
   itens?: Array<{ nome?: string; qtd?: number; preco?: number }>;
 };
 
@@ -19,7 +21,31 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as CheckoutBody;
-    const total = Number(body.total || 0);
+    let total = Number(body.total || 0);
+    let referencia = String(body.referencia || `dulelis-${Date.now()}`);
+    let clienteNome = String(body.cliente_nome || "").trim();
+    let whatsapp = String(body.whatsapp || "");
+
+    const pedidoId = Number(body.pedido_id || 0);
+    if (Number.isInteger(pedidoId) && pedidoId > 0) {
+      const supabase = getServiceSupabase();
+      if (!supabase) {
+        return NextResponse.json({ error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
+      }
+      const { data: pedido, error: erroPedido } = await supabase
+        .from("pedidos")
+        .select("id,total,cliente_nome,whatsapp,pagamento_referencia")
+        .eq("id", pedidoId)
+        .maybeSingle();
+      if (erroPedido || !pedido) {
+        return NextResponse.json({ error: erroPedido?.message || "Pedido nao encontrado." }, { status: 404 });
+      }
+      total = Number(pedido.total || 0);
+      referencia = String(pedido.pagamento_referencia || referencia);
+      clienteNome = String(pedido.cliente_nome || clienteNome);
+      whatsapp = String(pedido.whatsapp || whatsapp);
+    }
+
     if (!Number.isFinite(total) || total <= 0) {
       return NextResponse.json({ error: "Total invalido." }, { status: 400 });
     }
@@ -30,8 +56,6 @@ export async function POST(request: Request) {
     const baseUrl = baseUrlRaw.replace(/\/+$/, "");
     const baseEhPublico = /^https:\/\//i.test(baseUrl) && !/localhost|127\.0\.0\.1/i.test(baseUrl);
 
-    const referencia = String(body.referencia || `dulelis-${Date.now()}`);
-    const clienteNome = String(body.cliente_nome || "").trim();
     const retornoSuccessUrl = new URL(`${baseUrl}/retorno-pagamento`);
     const retornoFailureUrl = new URL(`${baseUrl}/retorno-pagamento`);
     const retornoPendingUrl = new URL(`${baseUrl}/retorno-pagamento`);
@@ -55,8 +79,9 @@ export async function POST(request: Request) {
       external_reference: referencia,
       statement_descriptor: "DULELIS",
       metadata: {
-        cliente_nome: String(body.cliente_nome || ""),
-        whatsapp: String(body.whatsapp || ""),
+        cliente_nome: clienteNome,
+        whatsapp,
+        pedido_id: pedidoId || null,
         itens: body.itens || [],
       },
       back_urls: {
@@ -67,7 +92,10 @@ export async function POST(request: Request) {
     };
     if (baseEhPublico) {
       payload.auto_return = "approved";
-      payload.notification_url = `${baseUrl}/api/mercadopago/webhook`;
+      const webhookToken = process.env.MERCADOPAGO_WEBHOOK_TOKEN;
+      payload.notification_url = webhookToken
+        ? `${baseUrl}/api/mercadopago/webhook?token=${encodeURIComponent(webhookToken)}`
+        : `${baseUrl}/api/mercadopago/webhook`;
     }
 
     const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {

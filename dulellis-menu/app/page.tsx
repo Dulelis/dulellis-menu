@@ -141,15 +141,6 @@ function normalizarNumero(valor: string) {
   return valor.replace(/\D/g, "");
 }
 
-function whatsappEquivalente(a: string, b: string) {
-  const na = normalizarNumero(a);
-  const nb = normalizarNumero(b);
-  if (!na || !nb) return false;
-  if (na === nb) return true;
-  // Compatibilidade com números salvos com/sem DDI 55.
-  return (na.length >= 10 && nb.endsWith(na)) || (nb.length >= 10 && na.endsWith(nb));
-}
-
 function formatarCep(cep: string) {
   const digitos = normalizarNumero(String(cep || "")).slice(0, 8);
   if (digitos.length <= 5) return digitos;
@@ -196,18 +187,6 @@ function obterMensagemErro(error: unknown) {
     }
   }
   return "";
-}
-
-function erroDePontoReferencia(error: unknown) {
-  return obterMensagemErro(error).toLowerCase().includes("ponto_referencia");
-}
-
-function montarEnderecoComReferencia(endereco: string, pontoReferencia: string) {
-  const enderecoBase = String(endereco || "").trim();
-  const referencia = String(pontoReferencia || "").trim();
-  if (!referencia) return enderecoBase;
-  if (/ponto de refer(?:e|ê)ncia\s*:/i.test(enderecoBase)) return enderecoBase;
-  return `${enderecoBase} - Ponto de referencia: ${referencia}`;
 }
 
 function extrairPontoReferenciaDeEndereco(endereco: string) {
@@ -587,34 +566,18 @@ export default function ClientePage() {
     async (zap: string) => {
       setBuscandoCliente(true);
       try {
-        // Primeiro tenta busca exata (rápida) pelo número normalizado.
-        const { data: exato, error: erroExato } = await supabase
-          .from("clientes")
-          .select("*")
-          .eq("whatsapp", zap)
-          .maybeSingle();
-
-        if (erroExato) throw erroExato;
-
-        let clienteEncontradoDb: ClienteRow | null = exato as ClienteRow | null;
-
-        // Fallback para dados antigos salvos com máscara de telefone.
-        if (!clienteEncontradoDb) {
-          const sufixo = zap.slice(-8);
-          const { data: candidatos, error: erroCandidatos } = await supabase
-            .from("clientes")
-            .select("*")
-            .ilike("whatsapp", `%${sufixo}%`)
-            .order("created_at", { ascending: false })
-            .limit(30);
-
-          if (erroCandidatos) throw erroCandidatos;
-
-          clienteEncontradoDb =
-            ((candidatos as ClienteRow[] | null) ?? []).find(
-              (c) => whatsappEquivalente(String(c.whatsapp ?? ""), zap),
-            ) ?? null;
+        const res = await fetch(`/api/public/customer?whatsapp=${encodeURIComponent(zap)}`, {
+          cache: "no-store",
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          data?: ClienteRow | null;
+          error?: string;
+        };
+        if (!res.ok || json.ok === false) {
+          throw new Error(json.error || "Falha ao buscar cliente.");
         }
+        const clienteEncontradoDb: ClienteRow | null = (json.data || null) as ClienteRow | null;
 
         if (!clienteEncontradoDb) {
           setClienteEncontrado(false);
@@ -687,43 +650,23 @@ export default function ClientePage() {
   const atualizarQuantidadeEstoque = useCallback(
     async (id: number, delta: number) => {
       if (delta === 0) return true;
-
-      const tentativasMaximas = 5;
-      for (let tentativa = 0; tentativa < tentativasMaximas; tentativa += 1) {
-        const { data: itemAtual, error: erroBusca } = await supabase
-          .from("estoque")
-          .select("id, quantidade")
-          .eq("id", id)
-          .maybeSingle();
-
-        if (erroBusca) throw erroBusca;
-        if (!itemAtual) return false;
-
-        const quantidadeAtualBruta = itemAtual.quantidade;
-        const quantidadeAtual = Number(quantidadeAtualBruta ?? 0);
-        if (!Number.isFinite(quantidadeAtual)) {
-          throw new Error("Quantidade inválida no estoque para este item.");
-        }
-        if (delta < 0 && quantidadeAtual < Math.abs(delta)) {
-          return false;
-        }
-
-        const novaQuantidade = quantidadeAtual + delta;
-        const { data: atualizado, error: erroUpdate } = await supabase
-          .from("estoque")
-          .update({ quantidade: novaQuantidade })
-          .eq("id", id)
-          .eq("quantidade", quantidadeAtualBruta as string | number | null)
-          .select("id")
-          .maybeSingle();
-
-        if (erroUpdate) throw erroUpdate;
-        if (atualizado) {
-          ajustarQuantidadeProdutoLocal(id, delta);
-          return true;
-        }
+      const res = await fetch("/api/public/stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, delta }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        updated?: boolean;
+        error?: string;
+      };
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || "Falha ao atualizar estoque.");
       }
-
+      if (json.updated) {
+        ajustarQuantidadeProdutoLocal(id, delta);
+        return true;
+      }
       return false;
     },
     [ajustarQuantidadeProdutoLocal],
@@ -849,79 +792,26 @@ export default function ClientePage() {
   }, [atualizarQuantidadeEstoque, carregarDadosIniciais, carrinho, setItemEstoqueProcessando]);
 
   const salvarOuAtualizarCliente = useCallback(async (clienteBase: Cliente) => {
-    const whatsappLimpo = normalizarNumero(clienteBase.whatsapp);
     const payloadCliente = {
       ...clienteBase,
-      whatsapp: whatsappLimpo,
+      whatsapp: normalizarNumero(clienteBase.whatsapp),
       cep: normalizarNumero(clienteBase.cep).slice(0, 8),
       data_aniversario: String(clienteBase.data_aniversario || "").slice(0, 10),
     };
-    const payloadClienteComEnderecoReferencia = {
-      ...payloadCliente,
-      endereco: montarEnderecoComReferencia(
-        payloadCliente.endereco,
-        payloadCliente.ponto_referencia,
-      ),
+    const res = await fetch("/api/public/customer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payloadCliente),
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      data?: Cliente;
+      error?: string;
     };
-    const payloadClienteSemPontoReferencia = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
-    delete payloadClienteSemPontoReferencia.ponto_referencia;
-    const payloadClienteSemDataAniversario = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
-    delete payloadClienteSemDataAniversario.data_aniversario;
-    const payloadClienteLegado = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
-    delete payloadClienteLegado.ponto_referencia;
-    delete payloadClienteLegado.data_aniversario;
-    const payloadsClienteTentativa: Array<Record<string, unknown>> = [
-      payloadCliente as unknown as Record<string, unknown>,
-      payloadClienteComEnderecoReferencia as unknown as Record<string, unknown>,
-      payloadClienteSemPontoReferencia,
-      payloadClienteSemDataAniversario,
-      payloadClienteLegado,
-    ];
-
-    const { data: clienteExistente, error: erroBuscaCliente } = await supabase
-      .from("clientes")
-      .select("id")
-      .eq("whatsapp", whatsappLimpo)
-      .maybeSingle();
-
-    if (erroBuscaCliente) throw erroBuscaCliente;
-
-    let erroSalvarCliente: unknown = null;
-    for (const payloadTentativa of payloadsClienteTentativa) {
-      if (!clienteExistente) {
-        const { error } = await supabase.from("clientes").insert([payloadTentativa]);
-        if (!error) {
-          erroSalvarCliente = null;
-          break;
-        }
-        const msgErro = obterMensagemErro(error).toLowerCase();
-        const erroSchema =
-          msgErro.includes("schema cache") ||
-          msgErro.includes("column") ||
-          msgErro.includes("does not exist");
-        if (!erroSchema && !erroDePontoReferencia(error)) throw error;
-        erroSalvarCliente = error;
-      } else {
-        const { error } = await supabase
-          .from("clientes")
-          .update(payloadTentativa)
-          .eq("whatsapp", whatsappLimpo);
-        if (!error) {
-          erroSalvarCliente = null;
-          break;
-        }
-        const msgErro = obterMensagemErro(error).toLowerCase();
-        const erroSchema =
-          msgErro.includes("schema cache") ||
-          msgErro.includes("column") ||
-          msgErro.includes("does not exist");
-        if (!erroSchema && !erroDePontoReferencia(error)) throw error;
-        erroSalvarCliente = error;
-      }
+    if (!res.ok || json.ok === false) {
+      throw new Error(json.error || "Falha ao salvar cliente.");
     }
-    if (erroSalvarCliente) throw erroSalvarCliente;
-
-    return payloadCliente;
+    return (json.data || payloadCliente) as Cliente;
   }, []);
 
   const avancarParaResumo = useCallback(async () => {
@@ -957,32 +847,8 @@ export default function ClientePage() {
           ? crypto.randomUUID()
           : `ref-${Date.now()}`);
       setReferenciaPagamento(referencia);
-      try {
-        const res = await fetch("/api/mercadopago/checkout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            total: totalGeral,
-            cliente_nome: cliente.nome,
-            whatsapp: normalizarNumero(cliente.whatsapp),
-            referencia,
-            itens: carrinho.map((i) => ({ nome: i.nome, qtd: i.qtd, preco: i.preco })),
-          }),
-        });
-
-        const data = (await res.json()) as { url?: string; error?: string };
-        if (!res.ok) throw new Error(data.error || "Falha ao criar pagamento no Mercado Pago");
-        if (!data.url) throw new Error("Link de pagamento indisponivel");
-        window.open(data.url, "_blank");
-      } catch (error) {
-        const mensagem =
-          (error instanceof Error && error.message) ||
-          "Nao foi possivel abrir o Checkout do Mercado Pago.";
-        alert(mensagem);
-      }
-      return;
     }
-  }, [carrinho, cliente.nome, cliente.whatsapp, referenciaPagamento, totalGeral]);
+  }, [referenciaPagamento]);
 
   const finalizarPedido = useCallback(async () => {
     if (!carrinho.length) return;
@@ -990,50 +856,47 @@ export default function ClientePage() {
     setLoading(true);
     try {
       const payloadCliente = await salvarOuAtualizarCliente(cliente);
-
       const pagamentoTexto = formaPagamento;
-      const pedidoPayload = {
-        cliente_nome: payloadCliente.nome,
-        whatsapp: payloadCliente.whatsapp,
-        itens: carrinho,
-        total: totalGeral,
-        forma_pagamento: pagamentoTexto,
-        pagamento_referencia: referenciaPagamento || null,
-        status_pagamento: formaPagamento === FORMA_PIX_CARTAO ? "pending" : null,
+      const resPedido = await fetch("/api/public/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente: payloadCliente,
+          itens: carrinho.map((i) => ({ id: i.id, qtd: i.qtd })),
+          forma_pagamento: pagamentoTexto,
+          taxa_entrega: taxaEntrega,
+          referencia: referenciaPagamento || undefined,
+        }),
+      });
+      const jsonPedido = (await resPedido.json().catch(() => ({}))) as {
+        ok?: boolean;
+        data?: { pedido_id?: number; total?: number; referencia?: string };
+        error?: string;
       };
-      const pedidoPayloadComForma = {
-        cliente_nome: payloadCliente.nome,
-        whatsapp: payloadCliente.whatsapp,
-        itens: carrinho,
-        total: totalGeral,
-        forma_pagamento: pagamentoTexto,
-      };
-      const pedidoPayloadLegado = {
-        cliente_nome: payloadCliente.nome,
-        whatsapp: payloadCliente.whatsapp,
-        itens: carrinho,
-        total: totalGeral,
-      };
+      if (!resPedido.ok || jsonPedido.ok === false || !jsonPedido.data?.pedido_id) {
+        throw new Error(jsonPedido.error || "Falha ao registrar pedido.");
+      }
+      const pedidoId = Number(jsonPedido.data.pedido_id);
+      const referenciaFinal = String(jsonPedido.data.referencia || referenciaPagamento || "");
+      const totalPedido = Number(jsonPedido.data.total || totalGeral);
 
-      const { error: erroPedidoCompleto } = await supabase.from("pedidos").insert([pedidoPayload]);
-      if (erroPedidoCompleto) {
-        const msgErroPedido = obterMensagemErro(erroPedidoCompleto).toLowerCase();
-        const erroSchema = msgErroPedido.includes("schema cache") || msgErroPedido.includes("column");
-        if (!erroSchema) throw erroPedidoCompleto;
-
-        const { error: erroPedidoComForma } = await supabase
-          .from("pedidos")
-          .insert([pedidoPayloadComForma]);
-        if (erroPedidoComForma) {
-          const msgErroForma = obterMensagemErro(erroPedidoComForma).toLowerCase();
-          const erroFormaSchema = msgErroForma.includes("forma_pagamento") || msgErroForma.includes("schema cache") || msgErroForma.includes("column");
-          if (!erroFormaSchema) throw erroPedidoComForma;
-
-          const { error: erroPedidoLegado } = await supabase
-            .from("pedidos")
-            .insert([pedidoPayloadLegado]);
-          if (erroPedidoLegado) throw erroPedidoLegado;
+      if (formaPagamento === FORMA_PIX_CARTAO) {
+        const resCheckout = await fetch("/api/mercadopago/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pedido_id: pedidoId,
+            referencia: referenciaFinal,
+          }),
+        });
+        const dataCheckout = (await resCheckout.json().catch(() => ({}))) as { url?: string; error?: string };
+        if (!resCheckout.ok) {
+          throw new Error(dataCheckout.error || "Falha ao criar pagamento no Mercado Pago");
         }
+        if (!dataCheckout.url) {
+          throw new Error("Link de pagamento indisponivel");
+        }
+        window.open(dataCheckout.url, "_blank");
       }
 
       const itensFormatados = carrinho.map((i) => `- ${i.qtd}x ${i.nome}`).join("\n");
@@ -1048,7 +911,7 @@ export default function ClientePage() {
         `Pagamento: ${pagamentoTexto}\n\n` +
         `Itens:\n${itensFormatados}\n\n` +
         (descontoPromocoes > 0 ? `Descontos: R$ ${descontoPromocoes.toFixed(2)}\n` : "") +
-        `Total: R$ ${totalGeral.toFixed(2)}`;
+        `Total: R$ ${totalPedido.toFixed(2)}`;
 
       const msgPadrao =
         `Pedido Dulelis\n\n` +
@@ -1058,7 +921,7 @@ export default function ClientePage() {
         `Pagamento: ${pagamentoTexto}\n\n` +
         `Itens:\n${itensFormatados}\n\n` +
         (descontoPromocoes > 0 ? `Descontos: R$ ${descontoPromocoes.toFixed(2)}\n` : "") +
-        `Total: R$ ${totalGeral.toFixed(2)}`;
+        `Total: R$ ${totalPedido.toFixed(2)}`;
 
       const msg = pagamentoTexto === FORMA_DINHEIRO ? msgDinheiro : msgPadrao;
 
@@ -1086,7 +949,7 @@ export default function ClientePage() {
     } finally {
       setLoading(false);
     }
-  }, [carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, totalGeral]);
+  }, [carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, taxaEntrega, totalGeral]);
 
   const quantidadesCarrinho = useMemo(
     () =>

@@ -1,13 +1,26 @@
 'use client'
+/* eslint-disable @next/next/no-img-element */
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
+type Produto = {
+  id?: number | string
+  nome?: string
+  descricao?: string
+  imagem_url?: string
+  preco?: number
+  valor?: number
+  Preco?: number
+  Valor?: number
+  [key: string]: unknown
+}
+
 interface ProductListProps {
-  onAdicionar: (produto: any) => void
+  onAdicionar: (produto: Produto) => void
 }
 
 export default function ProductList({ onAdicionar }: ProductListProps) {
-  const [produtos, setProdutos] = useState<any[]>([])
+  const [produtos, setProdutos] = useState<Produto[]>([])
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
@@ -43,7 +56,7 @@ export default function ProductList({ onAdicionar }: ProductListProps) {
       {produtos.length === 0 ? (
         <p className="text-center col-span-full text-gray-400">Nenhum doce encontrado no card\u00E1pio.</p>
       ) : (
-        produtos.map((item: any, index: number) => {
+        produtos.map((item, index: number) => {
           // LOGICA DE DETECCAO AUTOMATICA DE PRECO
           // Ele tenta encontrar o valor em qualquer uma dessas colunas:
           const precoEncontrado = item.preco ?? item.valor ?? item.Preco ?? item.Valor ?? 0;

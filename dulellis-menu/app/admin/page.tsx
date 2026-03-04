@@ -1,10 +1,12 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @next/next/no-img-element */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   Package, Users, PlusCircle, Minus, Plus, 
-  Trash2, Pencil, X, Loader2, Camera, Image as ImageIcon, 
+  Trash2, Pencil, Loader2, Camera, Image as ImageIcon, 
   Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map, RotateCcw, ChevronDown, ChevronUp, BadgePercent, Megaphone, Clock3
 } from 'lucide-react';
 
@@ -21,7 +23,6 @@ const CATEGORIAS_ESTOQUE = ['Bolos', 'Doces', 'Salgados', 'Bebidas'] as const;
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('estoque');
-  const [loading, setLoading] = useState(false);
   const [saindo, setSaindo] = useState(false);
   const [estoque, setEstoque] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
@@ -124,41 +125,59 @@ export default function AdminPage() {
     return unicos.length > 0 ? unicos : DIAS_SEMANA.map((d) => d.key);
   };
 
+  const adminDb = useCallback(async (body: Record<string, unknown>) => {
+    const res = await fetch('/api/admin/db', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!res.ok || json.ok === false) {
+      throw new Error(json.error || 'Falha na operacao administrativa.');
+    }
+    return json;
+  }, []);
+
   const carregarDados = useCallback(async () => {
-    setLoading(true);
-    const resEst = await supabase.from('estoque').select('*').order('nome');
-    const resCli = await supabase.from('clientes').select('*').order('created_at', { ascending: false });
-    const resPed = await supabase.from('pedidos').select('*').order('created_at', { ascending: false });
-    
-    // Carrega as taxas ordenadas pelo valor para ficar bonito na tela
-    const resTaxas = await supabase.from('taxas_entrega').select('*').order('taxa'); 
-    const resProm = await supabase.from('promocoes').select('*').order('created_at', { ascending: false });
-    const resPropagandas = await supabase.from('propagandas').select('*').order('ordem').order('created_at', { ascending: false });
-    const resHorario = await supabase
-      .from('configuracoes_loja')
-      .select('id,hora_abertura,hora_fechamento,ativo,dias_semana')
-      .order('id', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    
-    setEstoque(resEst.data || []);
-    setClientes(resCli.data || []);
-    setPedidos(resPed.data || []);
-    setTaxas(resTaxas.data || []);
-    setPromocoes(resProm.data || []);
-    setPropagandas(resPropagandas.data || []);
-    if (resHorario.error) {
-      console.warn('Falha ao carregar configuracao de horario:', resHorario.error.message);
-    } else if (resHorario.data) {
+    const res = await fetch('/api/admin/data', { cache: 'no-store' });
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+      data?: {
+        estoque?: any[];
+        clientes?: any[];
+        pedidos?: any[];
+        taxas?: any[];
+        promocoes?: any[];
+        propagandas?: any[];
+        horario?: {
+          id?: number;
+          hora_abertura?: string;
+          hora_fechamento?: string;
+          ativo?: boolean;
+          dias_semana?: string[];
+        } | null;
+      };
+    };
+    if (!res.ok || json.ok === false) {
+      throw new Error(json.error || 'Falha ao carregar dados administrativos.');
+    }
+
+    setEstoque(json.data?.estoque || []);
+    setClientes(json.data?.clientes || []);
+    setPedidos(json.data?.pedidos || []);
+    setTaxas(json.data?.taxas || []);
+    setPromocoes(json.data?.promocoes || []);
+    setPropagandas(json.data?.propagandas || []);
+    if (json.data?.horario) {
       setHorarioFuncionamento({
-        id: Number(resHorario.data.id),
-        hora_abertura: normalizarHorarioInput(resHorario.data.hora_abertura) || '08:00',
-        hora_fechamento: normalizarHorarioInput(resHorario.data.hora_fechamento) || '18:00',
-        ativo: resHorario.data.ativo !== false,
-        dias_semana: normalizarDiasSemana(resHorario.data.dias_semana),
+        id: Number(json.data.horario.id),
+        hora_abertura: normalizarHorarioInput(json.data.horario.hora_abertura) || '08:00',
+        hora_fechamento: normalizarHorarioInput(json.data.horario.hora_fechamento) || '18:00',
+        ativo: json.data.horario.ativo !== false,
+        dias_semana: normalizarDiasSemana(json.data.horario.dias_semana),
       });
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -166,38 +185,12 @@ export default function AdminPage() {
   }, [carregarDados]);
 
   useEffect(() => {
-    const channel = supabase
-      .channel('admin-live-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'estoque' }, () => {
-        void carregarDados();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
-        void carregarDados();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
-        void carregarDados();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'taxas_entrega' }, () => {
-        void carregarDados();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'promocoes' }, () => {
-        void carregarDados();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'propagandas' }, () => {
-        void carregarDados();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes_loja' }, () => {
-        void carregarDados();
-      })
-      .subscribe();
-
     const timer = window.setInterval(() => {
       void carregarDados();
     }, 8000);
 
     return () => {
       window.clearInterval(timer);
-      void supabase.removeChannel(channel);
     };
   }, [carregarDados]);
 
@@ -221,9 +214,9 @@ export default function AdminPage() {
   const salvarProduto = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editandoId) {
-      await supabase.from('estoque').update(novoItem).eq('id', editandoId);
+      await adminDb({ action: 'update_eq', table: 'estoque', payload: novoItem, eq: { column: 'id', value: editandoId } });
     } else {
-      await supabase.from('estoque').insert([novoItem]);
+      await adminDb({ action: 'insert', table: 'estoque', values: [novoItem] });
     }
     fecharModal();
     carregarDados();
@@ -247,13 +240,18 @@ export default function AdminPage() {
   };
 
   const mudarQtd = async (id: number, atual: number, mudanca: number) => {
-    await supabase.from('estoque').update({ quantidade: Math.max(0, atual + mudanca) }).eq('id', id);
+    await adminDb({
+      action: 'update_eq',
+      table: 'estoque',
+      payload: { quantidade: Math.max(0, atual + mudanca) },
+      eq: { column: 'id', value: id },
+    });
     carregarDados();
   };
 
   const excluir = async (tabela: string, id: number) => {
     if(confirm("Deseja excluir permanentemente?")) {
-      await supabase.from(tabela).delete().eq('id', id);
+      await adminDb({ action: 'delete_eq', table: tabela, eq: { column: 'id', value: id } });
       carregarDados();
     }
   };
@@ -262,9 +260,9 @@ export default function AdminPage() {
   const salvarTaxa = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editandoTaxaId) {
-      await supabase.from('taxas_entrega').update(novaTaxa).eq('id', editandoTaxaId);
+      await adminDb({ action: 'update_eq', table: 'taxas_entrega', payload: novaTaxa, eq: { column: 'id', value: editandoTaxaId } });
     } else {
-      await supabase.from('taxas_entrega').insert([novaTaxa]);
+      await adminDb({ action: 'insert', table: 'taxas_entrega', values: [novaTaxa] });
     }
     fecharModalTaxa();
     carregarDados();
@@ -326,7 +324,12 @@ export default function AdminPage() {
     const promocaoAtual = promocoes.find((p) => Number(p.produto_id) === Number(item.id) && p.ativa !== false);
     if (promocaoAtual) {
       if (confirm('Este item ja esta em promocao. Deseja remover da promocao?')) {
-        void supabase.from('promocoes').update({ ativa: false }).eq('id', promocaoAtual.id).then(() => carregarDados());
+        void adminDb({
+          action: 'update_eq',
+          table: 'promocoes',
+          payload: { ativa: false },
+          eq: { column: 'id', value: promocaoAtual.id },
+        }).then(() => carregarDados());
       }
       return;
     }
@@ -399,19 +402,36 @@ export default function AdminPage() {
         mensagem.includes("valor_promocional") ||
         mensagem.includes("tipo");
 
-    if (editandoPromocaoId) {
-      const res = await supabase.from('promocoes').update(payload).eq('id', editandoPromocaoId);
-      error = res.error;
-      if (error && ehErroSchemaPromocao(String(error.message || '').toLowerCase())) {
-        const retry = await supabase.from('promocoes').update(payloadLegado).eq('id', editandoPromocaoId);
-        error = retry.error;
+    try {
+      if (editandoPromocaoId) {
+        await adminDb({
+          action: 'update_eq',
+          table: 'promocoes',
+          payload,
+          eq: { column: 'id', value: editandoPromocaoId },
+        });
+      } else {
+        await adminDb({ action: 'insert', table: 'promocoes', values: [payload] });
       }
-    } else {
-      const res = await supabase.from('promocoes').insert([payload]);
-      error = res.error;
+      error = null;
+    } catch (err: any) {
+      error = err;
       if (error && ehErroSchemaPromocao(String(error.message || '').toLowerCase())) {
-        const retry = await supabase.from('promocoes').insert([payloadLegado]);
-        error = retry.error;
+        try {
+          if (editandoPromocaoId) {
+            await adminDb({
+              action: 'update_eq',
+              table: 'promocoes',
+              payload: payloadLegado,
+              eq: { column: 'id', value: editandoPromocaoId },
+            });
+          } else {
+            await adminDb({ action: 'insert', table: 'promocoes', values: [payloadLegado] });
+          }
+          error = null;
+        } catch (retryError: any) {
+          error = retryError;
+        }
       }
     }
 
@@ -432,7 +452,12 @@ export default function AdminPage() {
   };
 
   const alternarStatusPromocao = async (promo: any) => {
-    await supabase.from('promocoes').update({ ativa: !(promo.ativa !== false) }).eq('id', promo.id);
+    await adminDb({
+      action: 'update_eq',
+      table: 'promocoes',
+      payload: { ativa: !(promo.ativa !== false) },
+      eq: { column: 'id', value: promo.id },
+    });
     carregarDados();
   };
 
@@ -516,12 +541,20 @@ export default function AdminPage() {
     };
 
     let error: any = null;
-    if (editandoPropagandaId) {
-      const res = await supabase.from('propagandas').update(payload).eq('id', editandoPropagandaId);
-      error = res.error;
-    } else {
-      const res = await supabase.from('propagandas').insert([payload]);
-      error = res.error;
+    try {
+      if (editandoPropagandaId) {
+        await adminDb({
+          action: 'update_eq',
+          table: 'propagandas',
+          payload,
+          eq: { column: 'id', value: editandoPropagandaId },
+        });
+      } else {
+        await adminDb({ action: 'insert', table: 'propagandas', values: [payload] });
+      }
+      error = null;
+    } catch (err: any) {
+      error = err;
     }
 
     if (error) {
@@ -534,10 +567,12 @@ export default function AdminPage() {
   };
 
   const alternarStatusPropaganda = async (propaganda: any) => {
-    await supabase
-      .from('propagandas')
-      .update({ ativa: !(propaganda.ativa !== false) })
-      .eq('id', propaganda.id);
+    await adminDb({
+      action: 'update_eq',
+      table: 'propagandas',
+      payload: { ativa: !(propaganda.ativa !== false) },
+      eq: { column: 'id', value: propaganda.id },
+    });
     carregarDados();
   };
 
@@ -558,12 +593,20 @@ export default function AdminPage() {
     };
 
     let error: any = null;
-    if (horarioFuncionamento.id) {
-      const res = await supabase.from('configuracoes_loja').update(payload).eq('id', horarioFuncionamento.id);
-      error = res.error;
-    } else {
-      const res = await supabase.from('configuracoes_loja').insert([payload]);
-      error = res.error;
+    try {
+      if (horarioFuncionamento.id) {
+        await adminDb({
+          action: 'update_eq',
+          table: 'configuracoes_loja',
+          payload,
+          eq: { column: 'id', value: horarioFuncionamento.id },
+        });
+      } else {
+        await adminDb({ action: 'insert', table: 'configuracoes_loja', values: [payload] });
+      }
+      error = null;
+    } catch (err: any) {
+      error = err;
     }
 
     if (error) {
@@ -587,12 +630,20 @@ export default function AdminPage() {
     };
 
     let error: any = null;
-    if (horarioFuncionamento.id) {
-      const res = await supabase.from('configuracoes_loja').update(payload).eq('id', horarioFuncionamento.id);
-      error = res.error;
-    } else {
-      const res = await supabase.from('configuracoes_loja').insert([payload]);
-      error = res.error;
+    try {
+      if (horarioFuncionamento.id) {
+        await adminDb({
+          action: 'update_eq',
+          table: 'configuracoes_loja',
+          payload,
+          eq: { column: 'id', value: horarioFuncionamento.id },
+        });
+      } else {
+        await adminDb({ action: 'insert', table: 'configuracoes_loja', values: [payload] });
+      }
+      error = null;
+    } catch (err: any) {
+      error = err;
     }
 
     if (error) {
@@ -672,8 +723,13 @@ export default function AdminPage() {
     if (!confirmar) return;
 
     if (idsPedidos.size > 0) {
-      const { error } = await supabase.from('pedidos').delete().in('id', Array.from(idsPedidos));
-      if (error) {
+      try {
+        await adminDb({
+          action: 'delete_in',
+          table: 'pedidos',
+          in: { column: 'id', values: Array.from(idsPedidos) },
+        });
+      } catch (error: any) {
         alert(`Erro ao limpar pedidos: ${error.message}`);
         return;
       }
@@ -810,7 +866,7 @@ export default function AdminPage() {
   pedidosDoMesRelatorio.forEach(pedido => {
     let itensArray = pedido.itens;
     if (typeof itensArray === 'string') {
-      try { itensArray = JSON.parse(itensArray); } catch (e) { itensArray = []; }
+      try { itensArray = JSON.parse(itensArray); } catch { itensArray = []; }
     }
     if (Array.isArray(itensArray)) {
       itensArray.forEach(item => {
@@ -876,8 +932,13 @@ export default function AdminPage() {
 
     if (!confirm(`Apagar definitivamente ${ids.length} compra(s) deste cliente?`)) return;
 
-    const { error } = await supabase.from('pedidos').delete().in('id', ids);
-    if (error) {
+    try {
+      await adminDb({
+        action: 'delete_in',
+        table: 'pedidos',
+        in: { column: 'id', values: ids },
+      });
+    } catch (error: any) {
       alert(`Erro ao limpar historico: ${error.message}`);
       return;
     }
@@ -1133,24 +1194,24 @@ export default function AdminPage() {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans print:bg-white">
-      <aside className="w-64 bg-slate-900 text-white p-6 hidden lg:block print:hidden">
-        <h2 className="text-2xl font-black text-pink-500 italic mb-10 text-center tracking-tighter">DULELIS</h2>
-        <nav className="space-y-2">
-          <button onClick={() => setActiveTab('estoque')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'estoque' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Package size={20}/> Estoque / Cardápio </button>
-          <button onClick={() => setActiveTab('promocoes')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'promocoes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <BadgePercent size={20}/> Promocoes </button>
-          <button onClick={() => setActiveTab('propagandas')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'propagandas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Megaphone size={20}/> Propaganda </button>
-          <button onClick={() => setActiveTab('horario')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'horario' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Clock3 size={20}/> Horario </button>
-          <button onClick={() => setActiveTab('clientes')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'clientes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Users size={20}/> Lista de Clientes </button>
-          <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'taxas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Map size={20}/> Taxas de Entrega </button>
-          <button onClick={() => setActiveTab('vendas')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'vendas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <ShoppingBag size={20}/> Vendas </button>
-          <button onClick={() => setActiveTab('relatorios')} className={`flex items-center gap-3 w-full p-4 rounded-2xl transition-all ${activeTab === 'relatorios' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <TrendingUp size={20}/> Relatorios </button>
+    <div className="flex min-h-screen flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
+      <aside className="w-full bg-slate-900 text-white p-4 lg:w-64 lg:p-6 print:hidden">
+        <h2 className="text-xl font-black text-pink-500 italic mb-4 text-center tracking-tighter lg:text-2xl lg:mb-10">DULELIS</h2>
+        <nav className="flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button onClick={() => setActiveTab('estoque')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'estoque' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Package size={20}/> Estoque / Cardápio </button>
+          <button onClick={() => setActiveTab('promocoes')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'promocoes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <BadgePercent size={20}/> Promocoes </button>
+          <button onClick={() => setActiveTab('propagandas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'propagandas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Megaphone size={20}/> Propaganda </button>
+          <button onClick={() => setActiveTab('horario')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'horario' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Clock3 size={20}/> Horario </button>
+          <button onClick={() => setActiveTab('clientes')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'clientes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Users size={20}/> Lista de Clientes </button>
+          <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'taxas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Map size={20}/> Taxas de Entrega </button>
+          <button onClick={() => setActiveTab('vendas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'vendas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <ShoppingBag size={20}/> Vendas </button>
+          <button onClick={() => setActiveTab('relatorios')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'relatorios' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <TrendingUp size={20}/> Relatorios </button>
         </nav>
       </aside>
 
-      <main className="flex-1 p-8 overflow-y-auto h-screen print:h-auto print:p-0 print:overflow-visible">
-        <header className="flex justify-between items-center mb-8 print:hidden">
-          <h1 className="text-3xl font-black text-slate-800">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto h-auto lg:h-screen print:h-auto print:p-0 print:overflow-visible">
+        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6 sm:mb-8 print:hidden">
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-800">
             {activeTab === 'estoque' && 'Produtos'}
             {activeTab === 'promocoes' && 'Promocoes'}
             {activeTab === 'propagandas' && 'Propaganda'}
@@ -1161,26 +1222,26 @@ export default function AdminPage() {
             {activeTab === 'relatorios' && 'Relatorios'}
           </h1>
 
-          <div className="flex items-center gap-3">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:gap-3 md:w-auto">
             {activeTab === 'estoque' && (
-              <button onClick={() => { fecharModal(); setMostrarModalEstoque(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+              <button onClick={() => { fecharModal(); setMostrarModalEstoque(true); }} className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Adicionar
               </button>
             )}
 
             {activeTab === 'taxas' && (
-              <button onClick={() => { fecharModalTaxa(); setMostrarModalTaxa(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+              <button onClick={() => { fecharModalTaxa(); setMostrarModalTaxa(true); }} className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Adicionar Raio 
               </button>
             )}
 
             {activeTab === 'promocoes' && (
-              <button onClick={() => { fecharModalPromocao(); setMostrarModalPromocao(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+              <button onClick={() => { fecharModalPromocao(); setMostrarModalPromocao(true); }} className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Nova Promocao 
               </button>
             )}
             {activeTab === 'propagandas' && (
-              <button onClick={() => { fecharModalPropaganda(); setMostrarModalPropaganda(true); }} className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
+              <button onClick={() => { fecharModalPropaganda(); setMostrarModalPropaganda(true); }} className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Nova Propaganda
               </button>
             )}
@@ -1189,7 +1250,7 @@ export default function AdminPage() {
               type="button"
               onClick={() => { void sairAdmin(); }}
               disabled={saindo}
-              className="bg-slate-200 text-slate-700 px-4 py-3 rounded-2xl font-bold text-sm hover:bg-slate-300 transition-all disabled:opacity-60"
+              className="w-full sm:w-auto bg-slate-200 text-slate-700 px-4 py-3 rounded-2xl font-bold text-sm hover:bg-slate-300 transition-all disabled:opacity-60"
             >
               {saindo ? 'Saindo...' : 'Sair'}
             </button>
@@ -1225,9 +1286,9 @@ export default function AdminPage() {
                     </div>
                   )}
                   {itens.map(item => (
-                    <div key={item.id} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div key={item.id} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col sm:flex-row sm:items-center gap-4">
                       <div className="w-20 h-20 rounded-2xl bg-slate-100 overflow-hidden flex-shrink-0">
-                        {item.imagem_url ? <img src={item.imagem_url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={24}/></div>}
+                        {item.imagem_url ? <img src={item.imagem_url} alt={item.nome || 'Produto'} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={24}/></div>}
                       </div>
                       <div className="flex-1">
                         <h3 className="font-black text-slate-800">{item.nome}</h3>
@@ -1237,12 +1298,12 @@ export default function AdminPage() {
                         )}
                         <p className="text-pink-600 font-bold">R$ {Number(item.preco).toFixed(2)}</p>
                       </div>
-                      <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                      <div className="flex items-center justify-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100 w-full sm:w-auto">
                         <button onClick={() => mudarQtd(item.id, item.quantidade, -1)} className="p-1 hover:text-red-500"><Minus size={18}/></button>
                         <span className="font-black text-lg w-8 text-center">{item.quantidade}</span>
                         <button onClick={() => mudarQtd(item.id, item.quantidade, 1)} className="p-1 hover:text-green-500"><Plus size={18}/></button>
                       </div>
-                      <div className="flex items-center gap-2 ml-4 border-l border-slate-100 pl-4">
+                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-4 sm:border-l border-slate-100 sm:pl-4 pt-2 sm:pt-0">
                         <button onClick={() => abrirEdicao(item)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors text-xs font-bold flex items-center gap-1" title="Editar Produto"><Pencil size={14}/> Editar</button>
                         <button onClick={() => excluir('estoque', item.id)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs font-bold flex items-center gap-1" title="Limpar Produto"><Trash2 size={14}/> Limpar</button>
                         <button onClick={() => abrirModalPromocaoParaProduto(item)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors text-xs font-bold flex items-center gap-1" title="Marcar Promocao"><BadgePercent size={14}/> Promo</button>
@@ -1261,9 +1322,9 @@ export default function AdminPage() {
                 </div>
                 <div className="grid gap-4">
                   {estoqueOutros.map(item => (
-                    <div key={item.id} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div key={item.id} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col sm:flex-row sm:items-center gap-4">
                       <div className="w-20 h-20 rounded-2xl bg-slate-100 overflow-hidden flex-shrink-0">
-                        {item.imagem_url ? <img src={item.imagem_url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={24}/></div>}
+                        {item.imagem_url ? <img src={item.imagem_url} alt={item.nome || 'Produto'} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={24}/></div>}
                       </div>
                       <div className="flex-1">
                         <h3 className="font-black text-slate-800">{item.nome}</h3>
@@ -1273,12 +1334,12 @@ export default function AdminPage() {
                         )}
                         <p className="text-pink-600 font-bold">R$ {Number(item.preco).toFixed(2)}</p>
                       </div>
-                      <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                      <div className="flex items-center justify-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100 w-full sm:w-auto">
                         <button onClick={() => mudarQtd(item.id, item.quantidade, -1)} className="p-1 hover:text-red-500"><Minus size={18}/></button>
                         <span className="font-black text-lg w-8 text-center">{item.quantidade}</span>
                         <button onClick={() => mudarQtd(item.id, item.quantidade, 1)} className="p-1 hover:text-green-500"><Plus size={18}/></button>
                       </div>
-                      <div className="flex items-center gap-2 ml-4 border-l border-slate-100 pl-4">
+                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-4 sm:border-l border-slate-100 sm:pl-4 pt-2 sm:pt-0">
                         <button onClick={() => abrirEdicao(item)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors text-xs font-bold flex items-center gap-1" title="Editar Produto"><Pencil size={14}/> Editar</button>
                         <button onClick={() => excluir('estoque', item.id)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs font-bold flex items-center gap-1" title="Limpar Produto"><Trash2 size={14}/> Limpar</button>
                         <button onClick={() => abrirModalPromocaoParaProduto(item)} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors text-xs font-bold flex items-center gap-1" title="Marcar Promocao"><BadgePercent size={14}/> Promo</button>
@@ -1296,14 +1357,14 @@ export default function AdminPage() {
             {promocoes.map((promo) => {
               const produto = estoque.find((e) => Number(e.id) === Number(promo.produto_id));
               return (
-                <div key={promo.id} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between gap-4">
+                <div key={promo.id} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
                     <h3 className="font-black text-slate-800">{promo.titulo || 'Promocao sem titulo'}</h3>
                     <p className="text-xs text-slate-500 font-medium mt-1">{promo.descricao || 'Sem descricao'}</p>
                     <p className="text-[11px] text-slate-400 font-bold mt-2 uppercase">Produto: {produto?.nome || 'Nao vinculado'}</p>
                     <p className="text-green-600 font-black mt-1">{resumoRegraPromocao(promo)}</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     <button onClick={() => alternarStatusPromocao(promo)} className={`px-3 py-2 rounded-xl text-xs font-black uppercase ${promo.ativa !== false ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                       {promo.ativa !== false ? 'Ativa' : 'Inativa'}
                     </button>
@@ -1325,7 +1386,7 @@ export default function AdminPage() {
         {activeTab === 'propagandas' && (
           <div className="grid gap-4">
             {propagandas.map((propaganda) => (
-              <div key={propaganda.id} className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
+              <div key={propaganda.id} className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4">
                 <div className="w-28 h-20 rounded-2xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
                   {propaganda.imagem_url ? (
                     <img src={propaganda.imagem_url} alt={propaganda.titulo || 'Propaganda'} className="w-full h-full object-cover" />
@@ -1350,7 +1411,7 @@ export default function AdminPage() {
                     <p className="text-[10px] text-blue-600 font-bold mt-1 truncate">{propaganda.botao_link}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   <button onClick={() => alternarStatusPropaganda(propaganda)} className={`px-3 py-2 rounded-xl text-xs font-black uppercase ${propaganda.ativa !== false ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                     {propaganda.ativa !== false ? 'Ativa' : 'Inativa'}
                   </button>
@@ -1370,14 +1431,14 @@ export default function AdminPage() {
         {activeTab === 'taxas' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {taxas.map(t => (
-              <div key={t.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm relative flex items-center justify-between">
+              <div key={t.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                  <div className="flex-1">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Valor da Taxa</p>
                     <p className="text-pink-600 font-black text-2xl">R$ {Number(t.taxa).toFixed(2)}</p>
                  </div>
                  
                  {/* A MÁGICA VISUAL ESTÁ AQUI: DIST?NCIA + BOTÕES */}
-                 <div className="flex items-center gap-2 border-l border-slate-100 pl-4">
+                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:border-l border-slate-100 sm:pl-4 pt-3 sm:pt-0">
                     <span className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl font-black text-xs whitespace-nowrap mr-1 flex items-center gap-1">
                       <MapPin size={14} className="text-pink-500" /> {t.bairro}
                     </span>
@@ -1397,7 +1458,7 @@ export default function AdminPage() {
         {activeTab === 'horario' && (
           <div className="max-w-2xl">
             <form onSubmit={salvarHorarioFuncionamento} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-5">
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Controle da Vitrine</p>
                   <h3 className="text-xl font-black text-slate-800 mt-1">Horario de Funcionamento</h3>
@@ -1405,7 +1466,7 @@ export default function AdminPage() {
                     A vitrine exibira status de aberto/fechado e alerta nos ultimos 5 minutos antes de fechar.
                   </p>
                 </div>
-                <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-col items-start gap-2 sm:items-end">
                   <span className={`text-xs font-black uppercase tracking-wide ${horarioFuncionamento.ativo ? 'text-green-600' : 'text-red-600'}`}>
                     {horarioFuncionamento.ativo ? 'Loja Aberta' : 'Loja Fechada'}
                   </span>
@@ -1537,7 +1598,7 @@ export default function AdminPage() {
                             <p className="text-sm font-black text-slate-800">{historicoCliente.length} pedido(s) • R$ {totalHistorico.toFixed(2)}</p>
                           </div>
                         </div>
-                        <div className="mt-3 flex items-center gap-2">
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => setClienteHistoricoAbertoId(historicoAberto ? null : c.id)}
@@ -1611,7 +1672,7 @@ export default function AdminPage() {
                           </div>
                         )}
                       </div>
-                      {c.observacao && <div className="bg-pink-50/50 p-4 rounded-2xl border border-pink-100 mt-3"><p className="flex items-start gap-2 text-pink-700 text-xs italic font-medium"><MessageSquare size={14} className="mt-0.5 shrink-0"/> "{c.observacao}"</p></div>}
+                      {c.observacao && <div className="bg-pink-50/50 p-4 rounded-2xl border border-pink-100 mt-3"><p className="flex items-start gap-2 text-pink-700 text-xs italic font-medium"><MessageSquare size={14} className="mt-0.5 shrink-0"/> &quot;{c.observacao}&quot;</p></div>}
                     </div>
                   )}
                 </div>
@@ -1624,12 +1685,12 @@ export default function AdminPage() {
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <h2 className="text-xl font-black text-slate-500 uppercase tracking-widest">Vendas de {nomesMeses[mesVigente]} / {anoVigente}</h2>
-              <div className="flex items-center gap-2">
-                <button onClick={marcarVendasVisiveis} className="bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all">Marcar</button>
-                <button onClick={desmarcarVendasSelecionadas} className="bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all">Desmarcar</button>
-                <button onClick={imprimirVendasSelecionadas} className="bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all"><Printer size={18} /> Imprimir Vendas</button>
-                <button onClick={() => void limparRelatorioDefinitivo()} className="bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all"><Trash2 size={18} /> Limpar Relatorio (Definitivo)</button>
-                <button onClick={limparRelatorio} className="bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"><RotateCcw size={18} /> Resetar Marcacoes</button>
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <button onClick={marcarVendasVisiveis} className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all">Marcar</button>
+                <button onClick={desmarcarVendasSelecionadas} className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all">Desmarcar</button>
+                <button onClick={imprimirVendasSelecionadas} className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all"><Printer size={18} /> Imprimir Vendas</button>
+                <button onClick={() => void limparRelatorioDefinitivo()} className="w-full sm:w-auto bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all"><Trash2 size={18} /> Limpar Relatorio (Definitivo)</button>
+                <button onClick={limparRelatorio} className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"><RotateCcw size={18} /> Resetar Marcacoes</button>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1735,7 +1796,7 @@ export default function AdminPage() {
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <h2 className="text-xl font-black text-slate-500 uppercase tracking-widest print:text-black">Resumo de {nomesMeses[mesRelatorio]} / {anoRelatorio}</h2>
-              <div className="flex items-center gap-2 print:hidden">
+              <div className="flex w-full flex-wrap items-center gap-2 print:hidden md:w-auto">
                 <select
                   value={mesRelatorio}
                   onChange={(e) => setMesRelatorio(Number(e.target.value))}
@@ -1754,24 +1815,24 @@ export default function AdminPage() {
                     <option key={ano} value={ano}>{ano}</option>
                   ))}
                 </select>
-                <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-slate-700 transition-all"><Printer size={20} /> Imprimir Relatorio</button>
+                <button onClick={() => window.print()} className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-slate-700 transition-all"><Printer size={20} /> Imprimir Relatorio</button>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gradient-to-br from-pink-500 to-pink-600 p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden print:shadow-none print:border print:border-slate-300 print:text-black print:from-white print:to-white">
+              <div className="bg-gradient-to-br from-pink-500 to-pink-600 p-6 sm:p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden print:shadow-none print:border print:border-slate-300 print:text-black print:from-white print:to-white">
                 <DollarSign size={100} className="absolute -right-4 -bottom-4 text-white/10 rotate-12 print:hidden" />
                 <p className="font-bold text-pink-100 uppercase tracking-widest text-sm mb-2 print:text-slate-500">Faturamento Total</p>
                 <p className="text-5xl font-black">R$ {faturamentoTotal.toFixed(2)}</p>
               </div>
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden print:shadow-none print:border-slate-300">
+              <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden print:shadow-none print:border-slate-300">
                 <ShoppingBag size={100} className="absolute -right-4 -bottom-4 text-slate-50 rotate-12 print:hidden" />
                 <p className="font-bold text-slate-400 uppercase tracking-widest text-sm mb-2">Pedidos Realizados</p>
                 <p className="text-5xl font-black text-slate-800">{pedidosDoMesRelatorio.length}</p>
               </div>
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden print:shadow-none print:border-slate-300">
+              <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden print:shadow-none print:border-slate-300">
                 <TrendingUp size={100} className="absolute -right-4 -bottom-4 text-slate-50 rotate-12 print:hidden" />
                 <p className="font-bold text-slate-400 uppercase tracking-widest text-sm mb-2">Vendas da Semana</p>
-                <p className="text-3xl font-black text-slate-800">{pedidosDaSemana.length} pedidos</p>
+                <p className="text-2xl sm:text-3xl font-black text-slate-800">{pedidosDaSemana.length} pedidos</p>
                 <p className="text-xl font-black text-green-600 mt-2">R$ {faturamentoSemana.toFixed(2)}</p>
               </div>
             </div>
@@ -1810,11 +1871,11 @@ export default function AdminPage() {
       {/* MODAL DE PRODUTOS */}
       {mostrarModalEstoque && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
-          <div className="bg-white p-8 rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
+          <div className="bg-white p-5 sm:p-8 rounded-[2rem] sm:rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
             <h2 className="text-2xl font-black mb-6 italic text-slate-800">{editandoId ? 'Editar Produto' : 'Novo Produto'}</h2>
             <form onSubmit={salvarProduto} className="space-y-4">
               <label className="w-full h-40 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer overflow-hidden hover:bg-slate-100 transition-all">
-                {novoItem.imagem_url ? <img src={novoItem.imagem_url} className="w-full h-full object-cover" /> : <div className="text-center">{uploading ? <Loader2 className="animate-spin text-pink-500"/> : <><Camera className="mx-auto text-slate-400 mb-2" size={32}/><span className="text-xs font-bold text-slate-400 uppercase">Subir Foto</span></>}</div>}
+                {novoItem.imagem_url ? <img src={novoItem.imagem_url} alt={novoItem.nome || 'Preview do produto'} className="w-full h-full object-cover" /> : <div className="text-center">{uploading ? <Loader2 className="animate-spin text-pink-500"/> : <><Camera className="mx-auto text-slate-400 mb-2" size={32}/><span className="text-xs font-bold text-slate-400 uppercase">Subir Foto</span></>}</div>}
                 <input type="file" className="hidden" accept="image/*" onChange={handleUpload} disabled={uploading} />
               </label>
               <input placeholder="Nome do Doce" className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700" required value={novoItem.nome} onChange={e => setNovoItem({...novoItem, nome: e.target.value})} />
@@ -1825,7 +1886,7 @@ export default function AdminPage() {
                 </select>
               </div>
               <textarea placeholder="Descrição (Ex: Massa de chocolate com recheio de ninho)" className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 font-medium text-slate-700" rows={2} value={novoItem.descricao} onChange={e => setNovoItem({...novoItem, descricao: e.target.value})} />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 ml-2 uppercase">Qtd Estoque</label><input type="number" className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 font-medium text-slate-700" required value={novoItem.quantidade} onChange={e => setNovoItem({...novoItem, quantidade: Number(e.target.value)})} /></div>
                 <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 ml-2 uppercase">Preço R$</label><input type="number" step="0.01" className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 font-medium text-slate-700" required value={novoItem.preco} onChange={e => setNovoItem({...novoItem, preco: Number(e.target.value)})} /></div>
               </div>
@@ -1839,7 +1900,7 @@ export default function AdminPage() {
 
       {mostrarModalPromocao && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
-          <div className="bg-white p-8 rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
+          <div className="bg-white p-5 sm:p-8 rounded-[2rem] sm:rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
             <h2 className="text-2xl font-black mb-6 italic text-slate-800">{editandoPromocaoId ? 'Editar Promocao' : 'Nova Promocao'}</h2>
             <form onSubmit={salvarPromocao} className="space-y-4">
               <input
@@ -1908,7 +1969,7 @@ export default function AdminPage() {
                 </div>
               )}
               {novaPromocao.tipo === 'leve_mais_um' && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Compre</label>
                     <input
@@ -1946,7 +2007,7 @@ export default function AdminPage() {
                   />
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Inicio</label>
                   <input
@@ -1987,7 +2048,7 @@ export default function AdminPage() {
 
       {mostrarModalPropaganda && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
-          <div className="bg-white p-8 rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
+          <div className="bg-white p-5 sm:p-8 rounded-[2rem] sm:rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
             <h2 className="text-2xl font-black mb-6 italic text-slate-800">{editandoPropagandaId ? 'Editar Propaganda' : 'Nova Propaganda'}</h2>
             <form onSubmit={salvarPropaganda} className="space-y-4">
               <label className="w-full h-40 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer overflow-hidden hover:bg-slate-100 transition-all">
@@ -2022,7 +2083,7 @@ export default function AdminPage() {
                 value={novaPropaganda.descricao}
                 onChange={e => setNovaPropaganda({ ...novaPropaganda, descricao: e.target.value })}
               />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input
                   placeholder="Texto do botao"
                   className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
@@ -2044,7 +2105,7 @@ export default function AdminPage() {
                 value={novaPropaganda.botao_link}
                 onChange={e => setNovaPropaganda({ ...novaPropaganda, botao_link: e.target.value })}
               />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Inicio</label>
                   <input
@@ -2084,7 +2145,7 @@ export default function AdminPage() {
       {/* MODAL DE TAXAS DE ENTREGA (AGORA DE 2 EM 2 KM) */}
       {mostrarModalTaxa && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
-          <div className="bg-white p-8 rounded-[3rem] w-full max-w-md shadow-2xl">
+          <div className="bg-white p-5 sm:p-8 rounded-[2rem] sm:rounded-[3rem] w-full max-w-md shadow-2xl">
             <h2 className="text-2xl font-black mb-6 italic text-slate-800">{editandoTaxaId ? 'Editar Taxa' : 'Nova Taxa'}</h2>
             <form onSubmit={salvarTaxa} className="space-y-4">
               

@@ -12,6 +12,14 @@ function getSupabaseServerClient() {
 
 export async function POST(request: Request) {
   try {
+    const tokenEsperado = process.env.MERCADOPAGO_WEBHOOK_TOKEN;
+    if (tokenEsperado) {
+      const tokenRecebido = new URL(request.url).searchParams.get("token");
+      if (!tokenRecebido || tokenRecebido !== tokenEsperado) {
+        return NextResponse.json({ ok: false, error: "token webhook invalido" }, { status: 401 });
+      }
+    }
+
     const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
     if (!accessToken) {
       return NextResponse.json({ ok: false, error: "token ausente" }, { status: 500 });
@@ -50,8 +58,9 @@ export async function POST(request: Request) {
     const referencia = String(payment?.external_reference || "");
     const status = String(payment?.status || "");
     const total = Number(payment?.transaction_amount || 0);
-    const metadata = (payment?.metadata || {}) as { whatsapp?: string };
+    const metadata = (payment?.metadata || {}) as { whatsapp?: string; pedido_id?: number | string };
     const whatsapp = String(metadata.whatsapp || "");
+    const pedidoIdMetadata = Number(metadata.pedido_id || 0);
 
     const supabase = getSupabaseServerClient();
     if (!supabase) {
@@ -65,6 +74,15 @@ export async function POST(request: Request) {
     };
 
     let atualizado = false;
+
+    if (pedidoIdMetadata > 0) {
+      const { data, error } = await supabase
+        .from("pedidos")
+        .update(payloadStatus)
+        .eq("id", pedidoIdMetadata)
+        .select("id");
+      if (!error && (data?.length || 0) > 0) atualizado = true;
+    }
 
     if (referencia) {
       const { data, error } = await supabase
@@ -84,7 +102,10 @@ export async function POST(request: Request) {
         .limit(10);
 
       if (!erroBusca) {
-        const match = (candidatos || []).find((p: any) => Math.abs(Number(p.total || 0) - total) < 0.01);
+        const match = (candidatos || []).find(
+          (p: { id?: number | string; total?: number | string | null }) =>
+            Math.abs(Number(p.total || 0) - total) < 0.01
+        );
         if (match?.id) {
           const { error: erroUpdate } = await supabase
             .from("pedidos")
