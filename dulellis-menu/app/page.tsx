@@ -854,9 +854,14 @@ export default function ClientePage() {
     if (!carrinho.length) return;
 
     setLoading(true);
+    let janelaPagamento: Window | null = null;
+    if (formaPagamento === FORMA_PIX_CARTAO && typeof window !== "undefined") {
+      janelaPagamento = window.open("about:blank", "_blank");
+    }
     try {
       const payloadCliente = await salvarOuAtualizarCliente(cliente);
       const pagamentoTexto = formaPagamento;
+      const ehPixCartao = pagamentoTexto === FORMA_PIX_CARTAO;
       const resPedido = await fetch("/api/public/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -880,7 +885,7 @@ export default function ClientePage() {
       const referenciaFinal = String(jsonPedido.data.referencia || referenciaPagamento || "");
       const totalPedido = Number(jsonPedido.data.total || totalGeral);
 
-      if (formaPagamento === FORMA_PIX_CARTAO) {
+      if (ehPixCartao) {
         const resCheckout = await fetch("/api/mercadopago/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -896,7 +901,11 @@ export default function ClientePage() {
         if (!dataCheckout.url) {
           throw new Error("Link de pagamento indisponivel");
         }
-        window.open(dataCheckout.url, "_blank");
+        if (janelaPagamento && !janelaPagamento.closed) {
+          janelaPagamento.location.href = dataCheckout.url;
+        } else if (typeof window !== "undefined") {
+          window.location.href = dataCheckout.url;
+        }
       }
 
       const itensFormatados = carrinho.map((i) => `- ${i.qtd}x ${i.nome}`).join("\n");
@@ -924,11 +933,12 @@ export default function ClientePage() {
         `Total: R$ ${totalPedido.toFixed(2)}`;
 
       const msg = pagamentoTexto === FORMA_DINHEIRO ? msgDinheiro : msgPadrao;
-
-      window.open(
-        `https://wa.me/5547988347100?text=${encodeURIComponent(msg)}`,
-        "_blank",
-      );
+      if (!ehPixCartao) {
+        window.open(
+          `https://wa.me/5547988347100?text=${encodeURIComponent(msg)}`,
+          "_blank",
+        );
+      }
 
       setCarrinho([]);
       setAbaCarrinho(false);
@@ -943,6 +953,9 @@ export default function ClientePage() {
 
       await carregarDadosIniciais();
     } catch (error) {
+      if (janelaPagamento && !janelaPagamento.closed) {
+        janelaPagamento.close();
+      }
       const mensagem = obterMensagemErro(error) || "Erro ao finalizar pedido.";
       console.error("Erro ao finalizar pedido:", error);
       alert(mensagem);
