@@ -62,6 +62,18 @@ type PedidoResumo = {
   pontoReferencia: string;
 };
 
+function normalizarNumero(value: string): string {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function whatsappEquivalente(a: string, b: string): boolean {
+  const wa = normalizarNumero(a);
+  const wb = normalizarNumero(b);
+  if (!wa || !wb) return false;
+  if (wa === wb) return true;
+  return wa.slice(-10) === wb.slice(-10);
+}
+
 function limparEnderecoDePontoReferencia(endereco: string) {
   return String(endereco || "")
     .replace(/\s*-\s*ponto\s+de\s+refer(?:e|ê)ncia:\s*.+$/i, "")
@@ -121,20 +133,60 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
 
   let enderecoCompleto = "";
   let pontoReferencia = "";
-  if (whatsapp) {
-    const { data: cliente } = await supabase
+  const whatsappNormalizado = normalizarNumero(whatsapp);
+  if (whatsappNormalizado.length >= 10) {
+    const { data: clienteExato } = await supabase
       .from("clientes")
-      .select("endereco,numero,ponto_referencia")
-      .eq("whatsapp", whatsapp)
+      .select("whatsapp,endereco,numero,ponto_referencia,created_at")
+      .eq("whatsapp", whatsappNormalizado)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
-    const enderecoBruto = String(cliente?.endereco || "").trim();
-    const numero = String(cliente?.numero || "").trim();
-    const pontoDireto = String(cliente?.ponto_referencia || "").trim();
-    const pontoExtraido = extrairPontoReferenciaDeEndereco(enderecoBruto);
-    const enderecoLimpo = limparEnderecoDePontoReferencia(enderecoBruto);
-    enderecoCompleto = [enderecoLimpo, numero].filter(Boolean).join(", ").trim();
-    pontoReferencia = pontoDireto || pontoExtraido;
+    let cliente = clienteExato as
+      | { whatsapp?: string | null; endereco?: string | null; numero?: string | null; ponto_referencia?: string | null }
+      | null;
+
+    if (!cliente) {
+      const sufixo = whatsappNormalizado.slice(-8);
+      const { data: candidatos } = await supabase
+        .from("clientes")
+        .select("whatsapp,endereco,numero,ponto_referencia,created_at")
+        .ilike("whatsapp", `%${sufixo}%`)
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+      cliente =
+        ((candidatos || []) as Array<{
+          whatsapp?: string | null;
+          endereco?: string | null;
+          numero?: string | null;
+          ponto_referencia?: string | null;
+        }>).find((c) => whatsappEquivalente(String(c.whatsapp || ""), whatsappNormalizado)) || null;
+    }
+
+    if (!cliente) {
+      const { data: clienteCru } = await supabase
+        .from("clientes")
+        .select("whatsapp,endereco,numero,ponto_referencia,created_at")
+        .eq("whatsapp", whatsapp)
+        .order("created_at", { ascending: false })
+        .limit(1)
+      .maybeSingle();
+      cliente = (clienteCru || null) as
+        | { whatsapp?: string | null; endereco?: string | null; numero?: string | null; ponto_referencia?: string | null }
+        | null;
+    }
+
+    if (cliente) {
+      const enderecoBruto = String(cliente.endereco || "").trim();
+      const numero = String(cliente.numero || "").trim();
+      const pontoDireto = String(cliente.ponto_referencia || "").trim();
+      const pontoExtraido = extrairPontoReferenciaDeEndereco(enderecoBruto);
+      const enderecoLimpo = limparEnderecoDePontoReferencia(enderecoBruto);
+      enderecoCompleto = [enderecoLimpo, numero].filter(Boolean).join(", ").trim();
+      pontoReferencia = pontoDireto || pontoExtraido;
+    }
   }
 
   return {
