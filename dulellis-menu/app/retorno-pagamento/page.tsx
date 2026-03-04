@@ -62,6 +62,14 @@ type PedidoResumo = {
   pontoReferencia: string;
 };
 
+type ClienteEndereco = {
+  whatsapp?: string | null;
+  endereco?: string | null;
+  numero?: string | null;
+  ponto_referencia?: string | null;
+  created_at?: string | null;
+};
+
 function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
 }
@@ -108,6 +116,41 @@ function parseItensPedido(raw: unknown): PedidoItem[] {
     .filter((item) => item.nome.length > 0);
 }
 
+async function buscarClientesComSchemaFlexivel(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  filtro:
+    | { tipo: "eq"; coluna: "whatsapp"; valor: string }
+    | { tipo: "ilike"; coluna: "whatsapp" | "nome"; valor: string },
+  limite = 30,
+) {
+  const tentativasSelect = [
+    "whatsapp,endereco,numero,ponto_referencia,created_at",
+    "whatsapp,endereco,numero,created_at",
+    "whatsapp,endereco,created_at",
+  ];
+
+  for (const selectCols of tentativasSelect) {
+    let query = supabase
+      .from("clientes")
+      .select(selectCols)
+      .order("created_at", { ascending: false })
+      .limit(limite);
+
+    if (filtro.tipo === "eq") {
+      query = query.eq(filtro.coluna, filtro.valor);
+    } else {
+      query = query.ilike(filtro.coluna, filtro.valor);
+    }
+
+    const { data, error } = await query;
+    if (!error) {
+      return (Array.isArray(data) ? data : []) as ClienteEndereco[];
+    }
+  }
+
+  return [] as ClienteEndereco[];
+}
+
 async function buscarResumoPedidoPorReferencia(referencia: string): Promise<PedidoResumo | null> {
   const ref = String(referencia || "").trim();
   if (!ref) return null;
@@ -135,47 +178,35 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
   let pontoReferencia = "";
   const whatsappNormalizado = normalizarNumero(whatsapp);
   if (whatsappNormalizado.length >= 10) {
-    const { data: clienteExato } = await supabase
-      .from("clientes")
-      .select("whatsapp,endereco,numero,ponto_referencia,created_at")
-      .eq("whatsapp", whatsappNormalizado)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    let cliente = clienteExato as
-      | { whatsapp?: string | null; endereco?: string | null; numero?: string | null; ponto_referencia?: string | null }
-      | null;
+    const exatos = await buscarClientesComSchemaFlexivel(
+      supabase,
+      { tipo: "eq", coluna: "whatsapp", valor: whatsappNormalizado },
+      5,
+    );
+    let cliente: ClienteEndereco | null = exatos[0] || null;
 
     if (!cliente) {
       const sufixo = whatsappNormalizado.slice(-8);
-      const { data: candidatos } = await supabase
-        .from("clientes")
-        .select("whatsapp,endereco,numero,ponto_referencia,created_at")
-        .ilike("whatsapp", `%${sufixo}%`)
-        .order("created_at", { ascending: false })
-        .limit(30);
+      const candidatos = await buscarClientesComSchemaFlexivel(
+        supabase,
+        { tipo: "ilike", coluna: "whatsapp", valor: `%${sufixo}%` },
+        30,
+      );
 
       cliente =
-        ((candidatos || []) as Array<{
-          whatsapp?: string | null;
-          endereco?: string | null;
-          numero?: string | null;
-          ponto_referencia?: string | null;
-        }>).find((c) => whatsappEquivalente(String(c.whatsapp || ""), whatsappNormalizado)) || null;
+        (candidatos || []).find((c) => whatsappEquivalente(String(c.whatsapp || ""), whatsappNormalizado)) || null;
     }
 
     if (!cliente) {
-      const { data: clienteCru } = await supabase
-        .from("clientes")
-        .select("whatsapp,endereco,numero,ponto_referencia,created_at")
-        .eq("whatsapp", whatsapp)
-        .order("created_at", { ascending: false })
-        .limit(1)
-      .maybeSingle();
-      cliente = (clienteCru || null) as
-        | { whatsapp?: string | null; endereco?: string | null; numero?: string | null; ponto_referencia?: string | null }
-        | null;
+      const nomeBusca = String(clienteNome || "").trim();
+      if (nomeBusca) {
+        const porNome = await buscarClientesComSchemaFlexivel(
+          supabase,
+          { tipo: "ilike", coluna: "nome", valor: `%${nomeBusca}%` },
+          10,
+        );
+        cliente = porNome[0] || null;
+      }
     }
 
     if (cliente) {
