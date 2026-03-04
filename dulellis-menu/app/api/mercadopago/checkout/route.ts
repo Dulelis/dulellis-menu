@@ -52,8 +52,12 @@ export async function POST(request: Request) {
 
     const originHeader = request.headers.get("origin");
     const siteEnv = process.env.NEXT_PUBLIC_SITE_URL;
-    const baseUrlRaw = siteEnv || originHeader || "http://localhost:3000";
-    const baseUrl = baseUrlRaw.replace(/\/+$/, "");
+    const baseUrlRaw = originHeader || siteEnv || "http://localhost:3000";
+    const baseUrlNormalizada = baseUrlRaw.replace(/\/+$/, "");
+    const baseUrl =
+      /^http:\/\//i.test(baseUrlNormalizada) && !/localhost|127\.0\.0\.1/i.test(baseUrlNormalizada)
+        ? baseUrlNormalizada.replace(/^http:\/\//i, "https://")
+        : baseUrlNormalizada;
     const baseEhPublico = /^https:\/\//i.test(baseUrl) && !/localhost|127\.0\.0\.1/i.test(baseUrl);
 
     const retornoSuccessUrl = new URL(`${baseUrl}/retorno-pagamento`);

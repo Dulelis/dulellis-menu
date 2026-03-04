@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { CheckCircle2, Clock3, CreditCard, XCircle } from "lucide-react";
+import RetornoActions from "./RetornoActions";
 
 const WHATSAPP_LOJA = "5547988347100";
 
@@ -61,6 +61,7 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const referencia = params.ref ?? "";
   const clienteNome = String(params.cliente_nome || "").trim();
   const info = getStatusInfo(status);
+  const aprovado = ["paid", "approved", "pago", "authorized"].includes(status.trim().toLowerCase());
   const statusNormalizado = status.trim();
   const mensagemWhatsapp = [
     clienteNome ? `Ola, sou ${clienteNome.replace(/\+/g, " ").trim()}.` : "Ola!",
@@ -91,23 +92,11 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
             <p className="text-sm font-mono break-all text-slate-700">{transactionId}</p>
           </div>
         ) : null}
-        <a
-          href={whatsappLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block w-full text-center bg-pink-600 text-white py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
-        >
-          Confirmar no WhatsApp
-        </a>
-        <p className="text-[11px] text-slate-600 mt-3 mb-3">
-          Voce recebera atualizacoes: pedido confirmado, em producao e saiu para entrega.
-        </p>
-        <Link
-          href="/"
-          className="block w-full text-center bg-white border border-slate-200 text-slate-700 py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
-        >
-          Voltar para o cardapio
-        </Link>
+        <RetornoActions
+          whatsappLink={whatsappLink}
+          refCode={referencia}
+          autoRedirect={aprovado}
+        />
       </section>
     </main>
   );
