@@ -1,5 +1,6 @@
 import { CheckCircle2, Clock3, CreditCard, XCircle } from "lucide-react";
 import RetornoActions from "./RetornoActions";
+import { getServiceSupabase } from "@/lib/server-supabase";
 
 const WHATSAPP_LOJA = "5547988347100";
 
@@ -45,6 +46,152 @@ function getStatusInfo(status: string) {
   };
 }
 
+type PedidoItem = {
+  nome: string;
+  qtd: number;
+};
+
+type PedidoResumo = {
+  clienteNome: string;
+  referencia: string;
+  total: number;
+  formaPagamento: string;
+  whatsapp: string;
+  itens: PedidoItem[];
+  enderecoCompleto: string;
+  pontoReferencia: string;
+};
+
+function limparEnderecoDePontoReferencia(endereco: string) {
+  return String(endereco || "")
+    .replace(/\s*-\s*ponto\s+de\s+refer(?:e|ê)ncia:\s*.+$/i, "")
+    .replace(/\s*ponto\s+de\s+refer(?:e|ê)ncia:\s*.+$/i, "")
+    .trim();
+}
+
+function extrairPontoReferenciaDeEndereco(endereco: string) {
+  const texto = String(endereco || "");
+  const match = texto.match(/ponto\s+de\s+refer(?:e|ê)ncia:\s*(.+)$/i);
+  return String(match?.[1] || "").trim();
+}
+
+function parseItensPedido(raw: unknown): PedidoItem[] {
+  let base: unknown = raw;
+  if (typeof base === "string") {
+    try {
+      base = JSON.parse(base);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(base)) return [];
+  return base
+    .map((item) => {
+      const obj = (item || {}) as { nome?: unknown; qtd?: unknown };
+      return {
+        nome: String(obj.nome || "Item").trim() || "Item",
+        qtd: Math.max(1, Number(obj.qtd || 1)),
+      };
+    })
+    .filter((item) => item.nome.length > 0);
+}
+
+async function buscarResumoPedidoPorReferencia(referencia: string): Promise<PedidoResumo | null> {
+  const ref = String(referencia || "").trim();
+  if (!ref) return null;
+
+  const supabase = getServiceSupabase();
+  if (!supabase) return null;
+
+  const { data: pedido, error: erroPedido } = await supabase
+    .from("pedidos")
+    .select("id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,created_at")
+    .eq("pagamento_referencia", ref)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (erroPedido || !pedido) return null;
+
+  const whatsapp = String(pedido.whatsapp || "").trim();
+  const clienteNome = String(pedido.cliente_nome || "").trim();
+  const formaPagamento = String(pedido.forma_pagamento || "Pix/Cartao").trim();
+  const itens = parseItensPedido((pedido as { itens?: unknown }).itens);
+  const total = Number(pedido.total || 0);
+
+  let enderecoCompleto = "";
+  let pontoReferencia = "";
+  if (whatsapp) {
+    const { data: cliente } = await supabase
+      .from("clientes")
+      .select("endereco,numero,ponto_referencia")
+      .eq("whatsapp", whatsapp)
+      .maybeSingle();
+
+    const enderecoBruto = String(cliente?.endereco || "").trim();
+    const numero = String(cliente?.numero || "").trim();
+    const pontoDireto = String(cliente?.ponto_referencia || "").trim();
+    const pontoExtraido = extrairPontoReferenciaDeEndereco(enderecoBruto);
+    const enderecoLimpo = limparEnderecoDePontoReferencia(enderecoBruto);
+    enderecoCompleto = [enderecoLimpo, numero].filter(Boolean).join(", ").trim();
+    pontoReferencia = pontoDireto || pontoExtraido;
+  }
+
+  return {
+    clienteNome,
+    referencia: String(pedido.pagamento_referencia || ref),
+    total: Number.isFinite(total) ? total : 0,
+    formaPagamento,
+    whatsapp,
+    itens,
+    enderecoCompleto,
+    pontoReferencia,
+  };
+}
+
+function montarMensagemWhatsappPadraoPedido(
+  pedido: PedidoResumo | null,
+  fallback: {
+    clienteNome: string;
+    tituloStatus: string;
+    status: string;
+    transactionId: string;
+    referencia: string;
+  },
+) {
+  if (pedido) {
+    const itensFormatados =
+      pedido.itens.length > 0
+        ? pedido.itens.map((i) => `- ${i.qtd}x ${i.nome}`).join("\n")
+        : "- Itens nao informados";
+
+    return (
+      `Pedido Dulelis\n\n` +
+      `Cliente: ${pedido.clienteNome || fallback.clienteNome || "Cliente"}\n` +
+      `Endereco: ${pedido.enderecoCompleto || "Nao informado"}\n` +
+      `Ponto de Referencia: ${pedido.pontoReferencia || "Nao informado"}\n` +
+      `Pagamento: ${pedido.formaPagamento || "Pix/Cartao"}\n\n` +
+      `Itens:\n${itensFormatados}\n\n` +
+      `Total: R$ ${pedido.total.toFixed(2)}\n` +
+      `Referencia do pedido: ${pedido.referencia}\n` +
+      (fallback.transactionId ? `Transacao: ${fallback.transactionId}\n` : "") +
+      `Status do pagamento: ${fallback.status || "indisponivel"}.\n` +
+      `Pode confirmar meu pedido, por favor?`
+    );
+  }
+
+  return [
+    fallback.clienteNome ? `Ola, sou ${fallback.clienteNome.replace(/\+/g, " ").trim()}.` : "Ola!",
+    `${fallback.tituloStatus}.`,
+    fallback.status ? `Status do pagamento: ${fallback.status}.` : "",
+    fallback.transactionId ? `Transacao: ${fallback.transactionId}.` : "",
+    fallback.referencia ? `Referencia do pedido: ${fallback.referencia}.` : "",
+    "Pode confirmar meu pedido, por favor?",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 type RetornoPagamentoPageProps = {
   searchParams: Promise<{
     transaction_id?: string;
@@ -63,16 +210,14 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const info = getStatusInfo(status);
   const aprovado = ["paid", "approved", "pago", "authorized"].includes(status.trim().toLowerCase());
   const statusNormalizado = status.trim();
-  const mensagemWhatsapp = [
-    clienteNome ? `Ola, sou ${clienteNome.replace(/\+/g, " ").trim()}.` : "Ola!",
-    `${info.titulo}.`,
-    statusNormalizado ? `Status do pagamento: ${statusNormalizado}.` : "",
-    transactionId ? `Transacao: ${transactionId}.` : "",
-    referencia ? `Referencia do pedido: ${referencia}.` : "",
-    "Pode confirmar meu pedido, por favor?",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const pedidoResumo = await buscarResumoPedidoPorReferencia(referencia);
+  const mensagemWhatsapp = montarMensagemWhatsappPadraoPedido(pedidoResumo, {
+    clienteNome,
+    tituloStatus: info.titulo,
+    status: statusNormalizado,
+    transactionId,
+    referencia,
+  });
   const whatsappLink = `https://wa.me/${WHATSAPP_LOJA}?text=${encodeURIComponent(mensagemWhatsapp)}`;
 
   return (

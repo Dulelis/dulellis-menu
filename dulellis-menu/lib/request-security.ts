@@ -18,6 +18,17 @@ export function getRequestOrigin(request: Request): string {
   return origin.trim().replace(/\/+$/, "");
 }
 
+function getRefererOrigin(request: Request): string {
+  const referer = request.headers.get("referer") || "";
+  if (!referer) return "";
+  try {
+    const url = new URL(referer);
+    return `${url.protocol}//${url.host}`.trim().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
+}
+
 export function getBaseSiteUrl(): string {
   const base = String(process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/+$/, "");
   return base;
@@ -66,7 +77,9 @@ export function enforceSameOriginForWrite(request: Request): NextResponse | null
   const expectedOrigin = getBaseSiteUrl();
   if (!expectedOrigin) return null;
 
-  const origin = normalizeOrigin(getRequestOrigin(request));
+  const originHeader = getRequestOrigin(request);
+  const refererOrigin = getRefererOrigin(request);
+  const origin = normalizeOrigin(originHeader || refererOrigin);
   if (!origin) {
     return NextResponse.json({ ok: false, error: "Origin ausente." }, { status: 403 });
   }
