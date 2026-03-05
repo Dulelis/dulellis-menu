@@ -1,0 +1,139 @@
+import { NextResponse } from "next/server";
+import { getServiceSupabase } from "@/lib/server-supabase";
+import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/request-security";
+
+type PedidoStatus = {
+  id?: number;
+  cliente_nome?: string | null;
+  whatsapp?: string | null;
+  total?: number | null;
+  forma_pagamento?: string | null;
+  status_pagamento?: string | null;
+  pagamento_referencia?: string | null;
+  pagamento_id?: string | null;
+  created_at?: string | null;
+};
+
+function normalizarNumero(value: string): string {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function whatsappEquivalente(a: string, b: string): boolean {
+  const wa = normalizarNumero(a);
+  const wb = normalizarNumero(b);
+  if (!wa || !wb) return false;
+  if (wa === wb) return true;
+  return wa.slice(-10) === wb.slice(-10);
+}
+
+function statusResumo(pedido: PedidoStatus) {
+  const status = String(pedido.status_pagamento || "").trim().toLowerCase();
+  if (["approved", "paid", "authorized", "pago"].includes(status)) {
+    return { chave: "aprovado", texto: "Pagamento aprovado" };
+  }
+  if (["pending", "in_process", "aguardando", "waiting"].includes(status)) {
+    return { chave: "pendente", texto: "Aguardando pagamento" };
+  }
+  if (["rejected", "cancelled", "canceled", "failed", "negado"].includes(status)) {
+    return { chave: "recusado", texto: "Pagamento nao aprovado" };
+  }
+  return { chave: "recebido", texto: "Pedido recebido" };
+}
+
+export async function GET(request: Request) {
+  cleanupExpiredBuckets();
+  const ip = getClientIp(request);
+  const rate = checkRateLimit({
+    key: `public-order-status-get:${ip}`,
+    limit: 40,
+    windowMs: 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Muitas consultas. Aguarde um momento." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
+    );
+  }
+
+  const supabase = getServiceSupabase();
+  if (!supabase) {
+    return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
+  }
+
+  const url = new URL(request.url);
+  const zap = normalizarNumero(url.searchParams.get("whatsapp") || "");
+  if (zap.length < 10) {
+    return NextResponse.json({ ok: false, error: "WhatsApp invalido." }, { status: 400 });
+  }
+
+  const tentativasSelect = [
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,pagamento_referencia,pagamento_id,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,created_at",
+  ];
+
+  let pedidoFinal: PedidoStatus | null = null;
+  for (const selectCols of tentativasSelect) {
+    const { data: exato, error: erroExato } = await supabase
+      .from("pedidos")
+      .select(selectCols)
+      .eq("whatsapp", zap)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (erroExato) {
+      continue;
+    }
+    if (exato) {
+      pedidoFinal = exato as PedidoStatus;
+      break;
+    }
+
+    const sufixo = zap.slice(-8);
+    const { data: candidatos, error: erroCandidatos } = await supabase
+      .from("pedidos")
+      .select(selectCols)
+      .ilike("whatsapp", `%${sufixo}%`)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    if (erroCandidatos) {
+      continue;
+    }
+
+    const equivalente =
+      ((candidatos || []) as PedidoStatus[]).find((p) =>
+        whatsappEquivalente(String(p.whatsapp || ""), zap),
+      ) || null;
+    if (equivalente) {
+      pedidoFinal = equivalente;
+      break;
+    }
+  }
+
+  if (!pedidoFinal) {
+    return NextResponse.json({ ok: true, data: null });
+  }
+
+  const resumo = statusResumo(pedidoFinal);
+  return NextResponse.json({
+    ok: true,
+    data: {
+      id: Number(pedidoFinal.id || 0),
+      cliente_nome: String(pedidoFinal.cliente_nome || "").trim(),
+      whatsapp: zap,
+      total: Number(pedidoFinal.total || 0),
+      forma_pagamento: String(pedidoFinal.forma_pagamento || "").trim(),
+      status_pagamento: String(pedidoFinal.status_pagamento || "").trim(),
+      pagamento_referencia: String(pedidoFinal.pagamento_referencia || "").trim(),
+      pagamento_id: String(pedidoFinal.pagamento_id || "").trim(),
+      created_at: String(pedidoFinal.created_at || ""),
+      status_chave: resumo.chave,
+      status_texto: resumo.texto,
+    },
+  });
+}
+

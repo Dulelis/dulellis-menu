@@ -2,13 +2,20 @@ import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { enforceSameOriginForWrite, getClientIp } from "@/lib/request-security";
+import { getCustomerSessionFromRequest } from "@/lib/customer-request";
+import type { NextRequest } from "next/server";
 
 type StockBody = {
   id?: number;
   delta?: number;
 };
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const sessao = getCustomerSessionFromRequest(request);
+  if (!sessao) {
+    return NextResponse.json({ ok: false, error: "Login obrigatorio para montar pedido." }, { status: 401 });
+  }
+
   const originError = enforceSameOriginForWrite(request);
   if (originError) return originError;
 

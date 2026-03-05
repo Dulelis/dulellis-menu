@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Clock3,
   ChevronRight,
+  LogIn,
+  LogOut,
   Loader2,
   Minus,
   Phone,
@@ -123,6 +125,33 @@ type CepApiResponse = {
   city?: string;
   lat?: string;
   lng?: string;
+};
+
+type PedidoAcompanhamento = {
+  id: number;
+  cliente_nome: string;
+  whatsapp: string;
+  total: number;
+  forma_pagamento: string;
+  status_pagamento: string;
+  pagamento_referencia: string;
+  pagamento_id: string;
+  created_at: string;
+  status_chave: "aprovado" | "pendente" | "recusado" | "recebido";
+  status_texto: string;
+};
+
+type SessaoCliente = {
+  id: number;
+  nome: string;
+  whatsapp: string;
+  cep: string;
+  endereco: string;
+  numero: string;
+  bairro: string;
+  cidade: string;
+  ponto_referencia: string;
+  data_aniversario: string;
 };
 
 const CLIENTE_INICIAL: Cliente = {
@@ -341,6 +370,17 @@ export default function ClientePage() {
   const [formaPagamento, setFormaPagamento] = useState("");
   const [referenciaPagamento, setReferenciaPagamento] = useState("");
   const [vitrineSlideIndex, setVitrineSlideIndex] = useState(0);
+  const [modalAcompanhamentoAberto, setModalAcompanhamentoAberto] = useState(false);
+  const [whatsappAcompanhamento, setWhatsappAcompanhamento] = useState("");
+  const [carregandoAcompanhamento, setCarregandoAcompanhamento] = useState(false);
+  const [pedidoAcompanhamento, setPedidoAcompanhamento] = useState<PedidoAcompanhamento | null>(null);
+  const [modalAuthAberto, setModalAuthAberto] = useState(false);
+  const [authModoCadastro, setAuthModoCadastro] = useState(false);
+  const [authNome, setAuthNome] = useState("");
+  const [authWhatsapp, setAuthWhatsapp] = useState("");
+  const [authSenha, setAuthSenha] = useState("");
+  const [authCarregando, setAuthCarregando] = useState(false);
+  const [sessaoCliente, setSessaoCliente] = useState<SessaoCliente | null>(null);
 
   const subtotal = useMemo(
     () => carrinho.reduce((acc, i) => acc + i.preco * i.qtd, 0),
@@ -623,6 +663,92 @@ export default function ClientePage() {
     carregarDadosIniciais();
   }, [carregarDadosIniciais]);
 
+  const carregarSessaoCliente = useCallback(async () => {
+    try {
+      const res = await fetch("/api/public/auth/session", { cache: "no-store" });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: SessaoCliente | null };
+      if (!res.ok || json.ok === false || !json.data) {
+        setSessaoCliente(null);
+        return;
+      }
+
+      const dados = json.data;
+      setSessaoCliente(dados);
+      setCliente((prev) => ({
+        ...prev,
+        nome: dados.nome || prev.nome,
+        whatsapp: dados.whatsapp || prev.whatsapp,
+        cep: dados.cep || prev.cep,
+        endereco: dados.endereco || prev.endereco,
+        numero: dados.numero || prev.numero,
+        bairro: dados.bairro || prev.bairro,
+        cidade: dados.cidade || prev.cidade || DEFAULT_CITY,
+        ponto_referencia: dados.ponto_referencia || prev.ponto_referencia,
+        data_aniversario: dados.data_aniversario || prev.data_aniversario,
+      }));
+      setAuthWhatsapp(dados.whatsapp || "");
+    } catch {
+      setSessaoCliente(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregarSessaoCliente();
+  }, [carregarSessaoCliente]);
+
+  const autenticarCliente = useCallback(async () => {
+    const zap = normalizarNumero(authWhatsapp);
+    if (zap.length < 10) {
+      alert("Informe um WhatsApp valido.");
+      return;
+    }
+    if (authSenha.length < 6) {
+      alert("Senha deve ter no minimo 6 caracteres.");
+      return;
+    }
+
+    setAuthCarregando(true);
+    try {
+      const res = await fetch("/api/public/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: authModoCadastro ? "register" : "login",
+          whatsapp: zap,
+          password: authSenha,
+          nome: authNome.trim(),
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || "Falha no login.");
+      }
+      await carregarSessaoCliente();
+      setModalAuthAberto(false);
+      setAuthSenha("");
+    } catch (error) {
+      alert(obterMensagemErro(error) || "Erro ao autenticar.");
+    } finally {
+      setAuthCarregando(false);
+    }
+  }, [authModoCadastro, authNome, authSenha, authWhatsapp, carregarSessaoCliente]);
+
+  const sairSessaoCliente = useCallback(async () => {
+    try {
+      await fetch("/api/public/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "logout" }),
+      });
+    } finally {
+      setSessaoCliente(null);
+      setCarrinho([]);
+      setFormaPagamento("");
+      setAbaCarrinho(false);
+      setPasso(1);
+    }
+  }, []);
+
   useEffect(() => {
     const zapLimpo = normalizarNumero(cliente.whatsapp);
     if (zapLimpo.length >= 10) {
@@ -674,6 +800,10 @@ export default function ClientePage() {
 
   const adicionarAoCarrinho = useCallback(
     async (produto: Produto | ItemCarrinho) => {
+      if (!sessaoCliente) {
+        setModalAuthAberto(true);
+        return;
+      }
       if (loading || estoqueEmAtualizacao[produto.id]) return;
 
       const produtoAtual = produtos.find((i) => i.id === produto.id);
@@ -709,11 +839,15 @@ export default function ClientePage() {
         setItemEstoqueProcessando(produto.id, false);
       }
     },
-    [atualizarQuantidadeEstoque, carregarDadosIniciais, estoqueEmAtualizacao, loading, produtos, setItemEstoqueProcessando],
+    [atualizarQuantidadeEstoque, carregarDadosIniciais, estoqueEmAtualizacao, loading, produtos, sessaoCliente, setItemEstoqueProcessando],
   );
 
   const removerDoCarrinho = useCallback(
     async (id: number) => {
+      if (!sessaoCliente) {
+        setModalAuthAberto(true);
+        return;
+      }
       if (loading || estoqueEmAtualizacao[id]) return;
 
       const item = carrinho.find((i) => i.id === id);
@@ -745,7 +879,7 @@ export default function ClientePage() {
         setItemEstoqueProcessando(id, false);
       }
     },
-    [atualizarQuantidadeEstoque, carregarDadosIniciais, carrinho, estoqueEmAtualizacao, loading, setItemEstoqueProcessando],
+    [atualizarQuantidadeEstoque, carregarDadosIniciais, carrinho, estoqueEmAtualizacao, loading, sessaoCliente, setItemEstoqueProcessando],
   );
   const limparCarrinho = useCallback(async () => {
     if (!carrinho.length) return;
@@ -814,7 +948,40 @@ export default function ClientePage() {
     return (json.data || payloadCliente) as Cliente;
   }, []);
 
+  const consultarAcompanhamentoPedido = useCallback(async () => {
+    const zap = normalizarNumero(whatsappAcompanhamento);
+    if (zap.length < 10) {
+      alert("Informe um WhatsApp valido.");
+      return;
+    }
+
+    setCarregandoAcompanhamento(true);
+    try {
+      const res = await fetch(`/api/public/order-status?whatsapp=${encodeURIComponent(zap)}`, {
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        data?: PedidoAcompanhamento | null;
+        error?: string;
+      };
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || "Falha ao consultar pedido.");
+      }
+      setPedidoAcompanhamento((json.data || null) as PedidoAcompanhamento | null);
+    } catch (error) {
+      const mensagem = obterMensagemErro(error) || "Nao foi possivel consultar o pedido.";
+      alert(mensagem);
+    } finally {
+      setCarregandoAcompanhamento(false);
+    }
+  }, [whatsappAcompanhamento]);
+
   const avancarParaResumo = useCallback(async () => {
+    if (!sessaoCliente) {
+      setModalAuthAberto(true);
+      return;
+    }
     const cadastroOk = Boolean(
       cliente.nome &&
         normalizarNumero(cliente.whatsapp).length >= 10 &&
@@ -835,7 +1002,7 @@ export default function ClientePage() {
     } finally {
       setLoading(false);
     }
-  }, [cliente, salvarOuAtualizarCliente]);
+  }, [cliente, salvarOuAtualizarCliente, sessaoCliente]);
 
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
@@ -851,6 +1018,10 @@ export default function ClientePage() {
   }, [referenciaPagamento]);
 
   const finalizarPedido = useCallback(async () => {
+    if (!sessaoCliente) {
+      setModalAuthAberto(true);
+      return;
+    }
     if (!carrinho.length) return;
 
     setLoading(true);
@@ -962,7 +1133,7 @@ export default function ClientePage() {
     } finally {
       setLoading(false);
     }
-  }, [carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, taxaEntrega, totalGeral]);
+  }, [carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, totalGeral]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -1185,6 +1356,27 @@ export default function ClientePage() {
     <div className="min-h-screen bg-[#FDFCFD] pb-24 font-sans text-slate-900">
       <header className="p-8 text-center bg-white border-b border-pink-50 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-200 via-pink-500 to-pink-200"></div>
+        <div className="absolute top-4 right-4 z-10 flex gap-2">
+          {!sessaoCliente ? (
+            <button
+              type="button"
+              onClick={() => setModalAuthAberto(true)}
+              className="px-3 py-2 rounded-xl bg-slate-900 text-white font-black uppercase text-[9px] tracking-widest flex items-center gap-2"
+            >
+              <LogIn size={14} />
+              Login para pedir
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void sairSessaoCliente()}
+              className="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-black uppercase text-[9px] tracking-widest flex items-center gap-2"
+            >
+              <LogOut size={14} />
+              Sair
+            </button>
+          )}
+        </div>
         <div className="flex items-center justify-center gap-4">
           <Image src="/logo.png" alt="Dulelis" width={80} height={80} className="object-contain" />
           <div className="text-left">
@@ -1198,6 +1390,19 @@ export default function ClientePage() {
               Confeitaria Artesanal
             </p>
           </div>
+        </div>
+        <div className="max-w-xl mx-auto mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              setModalAcompanhamentoAberto(true);
+              setPedidoAcompanhamento(null);
+              setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
+            }}
+            className="px-5 py-3 rounded-2xl bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest shadow-lg"
+          >
+            Acompanhar meu pedido
+          </button>
         </div>
       </header>
 
@@ -1399,27 +1604,37 @@ export default function ClientePage() {
                       )}
                       <div className="mt-1 flex items-center justify-between gap-2">
                         <p className="text-pink-600 font-black text-[1.65rem] leading-none">R$ {Number(prod.preco).toFixed(2)}</p>
-                        <div className="flex items-center gap-1.5 bg-[#f8f5f7] p-1 rounded-xl border border-[#eee5ea] shrink-0">
+                        {sessaoCliente ? (
+                          <div className="flex items-center gap-1.5 bg-[#f8f5f7] p-1 rounded-xl border border-[#eee5ea] shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => void removerDoCarrinho(prod.id)}
+                              disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
+                              className="text-pink-600 p-1.5"
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span className="font-black text-[12px] w-5 text-center text-slate-700">
+                              {quantidadesCarrinho[prod.id] ?? 0}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void adicionarAoCarrinho(prod)}
+                              disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
+                              className="bg-pink-600 text-white p-1.5 rounded-[9px] shadow-md shadow-pink-200/60"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             type="button"
-                            onClick={() => void removerDoCarrinho(prod.id)}
-                            disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
-                            className="text-pink-600 p-1.5"
+                            onClick={() => setModalAuthAberto(true)}
+                            className="text-[10px] font-black uppercase tracking-wider text-slate-500 bg-slate-100 px-3 py-2 rounded-xl"
                           >
-                            <Minus size={14} />
+                            Entrar para pedir
                           </button>
-                          <span className="font-black text-[12px] w-5 text-center text-slate-700">
-                            {quantidadesCarrinho[prod.id] ?? 0}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => void adicionarAoCarrinho(prod)}
-                            disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
-                            className="bg-pink-600 text-white p-1.5 rounded-[9px] shadow-md shadow-pink-200/60"
-                          >
-                            <Plus size={14} />
-                          </button>
-                        </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1441,7 +1656,7 @@ export default function ClientePage() {
         </div>
       </footer>
 
-      {carrinho.length > 0 && (
+      {sessaoCliente && carrinho.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[94%] max-w-md bg-slate-900 text-white p-5 rounded-[3rem] shadow-2xl flex justify-between items-center z-50">
           <div className="flex items-center gap-4 ml-2">
             <div className="bg-pink-600 p-3 rounded-2xl relative">
@@ -1461,6 +1676,133 @@ export default function ClientePage() {
           >
             Finalizar
           </button>
+        </div>
+      )}
+
+      {modalAuthAberto && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[70] flex items-end sm:items-center sm:justify-center">
+          <div className="bg-white w-full max-w-md rounded-t-[3.2rem] sm:rounded-[3.2rem] p-7 shadow-2xl">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-2xl font-black italic text-slate-800">
+                {authModoCadastro ? "Criar conta" : "Entrar"}
+              </h3>
+              <button type="button" onClick={() => setModalAuthAberto(false)} className="bg-slate-50 p-3 rounded-full text-slate-300">
+                <X />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {authModoCadastro && (
+                <input
+                  placeholder="Seu nome"
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                  value={authNome}
+                  onChange={(e) => setAuthNome(e.target.value)}
+                />
+              )}
+              <input
+                placeholder="WhatsApp"
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                value={authWhatsapp}
+                onChange={(e) => setAuthWhatsapp(e.target.value)}
+              />
+              <input
+                type="password"
+                placeholder="Senha (min. 6)"
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                value={authSenha}
+                onChange={(e) => setAuthSenha(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => void autenticarCliente()}
+                disabled={authCarregando}
+                className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
+                {authModoCadastro ? "Criar e entrar" : "Entrar para pedir"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthModoCadastro((prev) => !prev)}
+                className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
+              >
+                {authModoCadastro ? "Ja tenho conta" : "Criar minha conta"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalAcompanhamentoAberto && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[65] flex items-end sm:items-center sm:justify-center">
+          <div className="bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-7 max-h-[92vh] overflow-y-auto shadow-2xl">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-2xl font-black italic text-slate-800">Acompanhar Pedido</h3>
+              <button
+                type="button"
+                onClick={() => setModalAcompanhamentoAberto(false)}
+                className="bg-slate-50 p-3 rounded-full text-slate-300"
+              >
+                <X />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label htmlFor="acompanhamento-whatsapp" className="sr-only">WhatsApp</label>
+              <input
+                id="acompanhamento-whatsapp"
+                placeholder="Digite seu WhatsApp"
+                className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
+                value={whatsappAcompanhamento}
+                onChange={(e) => setWhatsappAcompanhamento(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => void consultarAcompanhamentoPedido()}
+                disabled={carregandoAcompanhamento}
+                className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {carregandoAcompanhamento ? <Loader2 size={16} className="animate-spin" /> : null}
+                Buscar pedido
+              </button>
+            </div>
+
+            {pedidoAcompanhamento ? (
+              <div className="mt-5 rounded-3xl border border-slate-100 bg-slate-50 p-5 space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status atual</p>
+                <p
+                  className={`text-sm font-black ${
+                    pedidoAcompanhamento.status_chave === "aprovado"
+                      ? "text-green-600"
+                      : pedidoAcompanhamento.status_chave === "pendente"
+                        ? "text-amber-600"
+                        : pedidoAcompanhamento.status_chave === "recusado"
+                          ? "text-rose-600"
+                          : "text-slate-700"
+                  }`}
+                >
+                  {pedidoAcompanhamento.status_texto}
+                </p>
+                <p className="text-xs font-bold text-slate-700">Cliente: {pedidoAcompanhamento.cliente_nome || "Nao informado"}</p>
+                <p className="text-xs font-bold text-slate-700">Pedido: #{pedidoAcompanhamento.id}</p>
+                <p className="text-xs font-bold text-slate-700">Pagamento: {pedidoAcompanhamento.forma_pagamento || "Nao informado"}</p>
+                <p className="text-xs font-bold text-slate-700">Total: R$ {Number(pedidoAcompanhamento.total || 0).toFixed(2)}</p>
+                <p className="text-xs font-bold text-slate-700">
+                  Data: {pedidoAcompanhamento.created_at ? new Date(pedidoAcompanhamento.created_at).toLocaleString("pt-BR") : "Nao informada"}
+                </p>
+                {pedidoAcompanhamento.pagamento_referencia ? (
+                  <p className="text-[11px] font-mono break-all text-slate-500">
+                    Ref: {pedidoAcompanhamento.pagamento_referencia}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-5 text-xs font-bold text-slate-500">
+                Informe seu WhatsApp para consultar o ultimo pedido.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -1500,6 +1842,7 @@ export default function ClientePage() {
                     onChange={(e) =>
                       setCliente((prev) => ({ ...prev, whatsapp: e.target.value }))
                     }
+                    disabled={Boolean(sessaoCliente)}
                   />
                   {buscandoCliente && (
                     <Loader2

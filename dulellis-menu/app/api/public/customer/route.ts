@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { enforceSameOriginForWrite, getClientIp } from "@/lib/request-security";
+import { getCustomerSessionFromRequest } from "@/lib/customer-request";
+import type { NextRequest } from "next/server";
 
 type ClientePayload = {
   nome?: string;
@@ -123,7 +125,12 @@ export async function GET(request: Request) {
   });
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const sessao = getCustomerSessionFromRequest(request);
+  if (!sessao) {
+    return NextResponse.json({ ok: false, error: "Login obrigatorio para atualizar cadastro." }, { status: 401 });
+  }
+
   const originError = enforceSameOriginForWrite(request);
   if (originError) return originError;
 
@@ -147,7 +154,7 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => ({}))) as ClientePayload;
-  const whatsapp = normalizarNumero(body.whatsapp || "");
+  const whatsapp = normalizarNumero(String(sessao.whatsapp || body.whatsapp || ""));
   if (whatsapp.length < 10) {
     return NextResponse.json({ ok: false, error: "WhatsApp invalido." }, { status: 400 });
   }
