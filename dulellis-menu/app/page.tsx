@@ -374,6 +374,7 @@ export default function ClientePage() {
   const [whatsappAcompanhamento, setWhatsappAcompanhamento] = useState("");
   const [carregandoAcompanhamento, setCarregandoAcompanhamento] = useState(false);
   const [pedidoAcompanhamento, setPedidoAcompanhamento] = useState<PedidoAcompanhamento | null>(null);
+  const [podeAcompanharPedido, setPodeAcompanharPedido] = useState(false);
   const [modalAuthAberto, setModalAuthAberto] = useState(false);
   const [authModoCadastro, setAuthModoCadastro] = useState(false);
   const [authNome, setAuthNome] = useState("");
@@ -669,6 +670,7 @@ export default function ClientePage() {
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: SessaoCliente | null };
       if (!res.ok || json.ok === false || !json.data) {
         setSessaoCliente(null);
+        setPodeAcompanharPedido(false);
         return;
       }
 
@@ -687,8 +689,10 @@ export default function ClientePage() {
         data_aniversario: dados.data_aniversario || prev.data_aniversario,
       }));
       setAuthWhatsapp(dados.whatsapp || "");
+      await verificarDisponibilidadeAcompanhamento(dados.whatsapp || "");
     } catch {
       setSessaoCliente(null);
+      setPodeAcompanharPedido(false);
     }
   }, []);
 
@@ -746,6 +750,7 @@ export default function ClientePage() {
       setFormaPagamento("");
       setAbaCarrinho(false);
       setPasso(1);
+      setPodeAcompanharPedido(false);
     }
   }, []);
 
@@ -977,6 +982,26 @@ export default function ClientePage() {
     }
   }, [whatsappAcompanhamento]);
 
+  async function verificarDisponibilidadeAcompanhamento(whatsappBase: string) {
+    const zap = normalizarNumero(whatsappBase);
+    if (zap.length < 10) {
+      setPodeAcompanharPedido(false);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/public/order-status?whatsapp=${encodeURIComponent(zap)}`, {
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        data?: PedidoAcompanhamento | null;
+      };
+      setPodeAcompanharPedido(Boolean(res.ok && json.ok !== false && json.data));
+    } catch {
+      setPodeAcompanharPedido(false);
+    }
+  }
+
   const avancarParaResumo = useCallback(async () => {
     if (!sessaoCliente) {
       setModalAuthAberto(true);
@@ -1110,6 +1135,8 @@ export default function ClientePage() {
           "_blank",
         );
       }
+
+      setPodeAcompanharPedido(true);
 
       setCarrinho([]);
       setAbaCarrinho(false);
@@ -1395,15 +1422,26 @@ export default function ClientePage() {
           <button
             type="button"
             onClick={() => {
+              if (!sessaoCliente || !podeAcompanharPedido) return;
               setModalAcompanhamentoAberto(true);
               setPedidoAcompanhamento(null);
               setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
             }}
-            className="px-5 py-3 rounded-2xl bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest shadow-lg"
+            disabled={!sessaoCliente || !podeAcompanharPedido}
+            className={`px-5 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg ${
+              sessaoCliente && podeAcompanharPedido
+                ? "bg-slate-900 text-white"
+                : "bg-slate-200 text-slate-500 shadow-none"
+            }`}
           >
             Acompanhar meu pedido
           </button>
         </div>
+        {!podeAcompanharPedido && (
+          <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Disponivel apos finalizar um pedido.
+          </p>
+        )}
       </header>
 
       <div className="relative z-40 bg-white/90 backdrop-blur-xl border-b border-pink-50/50">

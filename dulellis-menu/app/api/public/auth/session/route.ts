@@ -15,9 +15,55 @@ function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
 }
 
+function whatsappEquivalente(a: string, b: string): boolean {
+  const wa = normalizarNumero(a);
+  const wb = normalizarNumero(b);
+  if (!wa || !wb) return false;
+  if (wa === wb) return true;
+  return wa.slice(-10) === wb.slice(-10);
+}
+
 function isSchemaColumnError(message: string) {
   const lower = String(message || "").toLowerCase();
   return lower.includes("column") || lower.includes("schema cache");
+}
+
+async function buscarClientePorWhatsapp(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  whatsapp: string,
+) {
+  const zap = normalizarNumero(whatsapp);
+  const { data: exato, error: erroExato } = await supabase
+    .from("clientes")
+    .select("id,nome,whatsapp,senha_hash,created_at")
+    .eq("whatsapp", zap)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (erroExato) {
+    if (isSchemaColumnError(erroExato.message)) {
+      return { error: erroExato.message, cliente: null as null };
+    }
+    return { error: erroExato.message, cliente: null as null };
+  }
+  if (exato) return { error: "", cliente: exato };
+
+  const sufixo = zap.slice(-8);
+  const { data: candidatos, error: erroCandidatos } = await supabase
+    .from("clientes")
+    .select("id,nome,whatsapp,senha_hash,created_at")
+    .ilike("whatsapp", `%${sufixo}%`)
+    .order("created_at", { ascending: false })
+    .limit(30);
+  if (erroCandidatos) {
+    return { error: erroCandidatos.message, cliente: null as null };
+  }
+
+  const cliente =
+    ((candidatos || []) as Array<{ id?: number; whatsapp?: string | null }>).find((c) =>
+      whatsappEquivalente(String(c.whatsapp || ""), zap),
+    ) || null;
+  return { error: "", cliente };
 }
 
 export async function GET(request: NextRequest) {
@@ -117,20 +163,17 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "register") {
-    const { data: existente, error: erroBusca } = await supabase
-      .from("clientes")
-      .select("id,nome,whatsapp,senha_hash")
-      .eq("whatsapp", whatsapp)
-      .maybeSingle();
-    if (erroBusca && !isSchemaColumnError(erroBusca.message)) {
-      return NextResponse.json({ ok: false, error: erroBusca.message }, { status: 500 });
-    }
-    if (erroBusca && isSchemaColumnError(erroBusca.message)) {
+    const busca = await buscarClientePorWhatsapp(supabase, whatsapp);
+    if (busca.error && isSchemaColumnError(busca.error)) {
       return NextResponse.json(
         { ok: false, error: "Coluna senha_hash ausente. Rode sql/upgrade_clientes_auth.sql." },
         { status: 500 },
       );
     }
+    if (busca.error) {
+      return NextResponse.json({ ok: false, error: busca.error }, { status: 500 });
+    }
+    const existente = busca.cliente as { id?: number; nome?: string; senha_hash?: string } | null;
 
     let clienteId = 0;
     if (existente?.id) {
@@ -187,21 +230,17 @@ export async function POST(request: NextRequest) {
     return resp;
   }
 
-  const { data: cliente, error: erroCliente } = await supabase
-    .from("clientes")
-    .select("id,nome,whatsapp,senha_hash")
-    .eq("whatsapp", whatsapp)
-    .maybeSingle();
-
-  if (erroCliente) {
-    if (isSchemaColumnError(erroCliente.message)) {
+  const buscaLogin = await buscarClientePorWhatsapp(supabase, whatsapp);
+  if (buscaLogin.error) {
+    if (isSchemaColumnError(buscaLogin.error)) {
       return NextResponse.json(
         { ok: false, error: "Coluna senha_hash ausente. Rode sql/upgrade_clientes_auth.sql." },
         { status: 500 },
       );
     }
-    return NextResponse.json({ ok: false, error: erroCliente.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: buscaLogin.error }, { status: 500 });
   }
+  const cliente = buscaLogin.cliente as { id?: number; senha_hash?: string } | null;
   if (!cliente?.id) {
     return NextResponse.json({ ok: false, error: "Cadastro nao encontrado. Crie sua conta." }, { status: 404 });
   }
@@ -222,4 +261,3 @@ export async function POST(request: NextRequest) {
   resp.cookies.set(getCustomerSessionCookie(token));
   return resp;
 }
-
