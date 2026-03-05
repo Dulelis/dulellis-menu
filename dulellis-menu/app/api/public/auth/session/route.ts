@@ -77,11 +77,33 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
-  const { data: cliente } = await supabase
-    .from("clientes")
-    .select("id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,data_aniversario")
-    .eq("id", sessao.clienteId)
-    .maybeSingle();
+  const tentativasSelect = [
+    "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,data_aniversario",
+    "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,data_aniversario",
+    "id,nome,whatsapp,cep,endereco,bairro,cidade,data_aniversario",
+    "id,nome,whatsapp,cep,endereco,bairro,cidade",
+    "id,nome,whatsapp,endereco",
+  ];
+
+  let cliente: Record<string, unknown> | null = null;
+  let ultimoErro = "";
+  for (const selectCols of tentativasSelect) {
+    const { data, error } = await supabase
+      .from("clientes")
+      .select(selectCols)
+      .eq("id", sessao.clienteId)
+      .maybeSingle();
+    if (!error) {
+      cliente = (data || null) as Record<string, unknown> | null;
+      break;
+    }
+    ultimoErro = error.message;
+    if (!isSchemaColumnError(error.message)) break;
+  }
+
+  if (!cliente && ultimoErro) {
+    return NextResponse.json({ ok: false, error: ultimoErro }, { status: 500 });
+  }
 
   if (!cliente) {
     const resp = NextResponse.json({ ok: true, data: null });
@@ -92,7 +114,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     data: {
-      id: Number(cliente.id),
+      id: Number(cliente.id || 0),
       nome: String(cliente.nome || ""),
       whatsapp: normalizarNumero(String(cliente.whatsapp || "")),
       cep: normalizarNumero(String(cliente.cep || "")).slice(0, 8),
