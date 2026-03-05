@@ -386,6 +386,10 @@ export default function ClientePage() {
   const [authSenha, setAuthSenha] = useState("");
   const [authCarregando, setAuthCarregando] = useState(false);
   const [sessaoCliente, setSessaoCliente] = useState<SessaoCliente | null>(null);
+  const [authEsqueciSenha, setAuthEsqueciSenha] = useState(false);
+  const [resetCodigo, setResetCodigo] = useState("");
+  const [resetNovaSenha, setResetNovaSenha] = useState("");
+  const [resetCodigoEnviado, setResetCodigoEnviado] = useState(false);
 
   const subtotal = useMemo(
     () => carrinho.reduce((acc, i) => acc + i.preco * i.qtd, 0),
@@ -757,6 +761,73 @@ export default function ClientePage() {
       setPodeAcompanharPedido(false);
     }
   }, []);
+
+  const solicitarTokenRecuperacao = useCallback(async () => {
+    const zap = normalizarNumero(authWhatsapp);
+    if (zap.length < 10) {
+      alert("Informe um WhatsApp valido.");
+      return;
+    }
+    setAuthCarregando(true);
+    try {
+      const res = await fetch("/api/public/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ whatsapp: zap }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || "Falha ao solicitar token.");
+      }
+      setResetCodigoEnviado(true);
+      alert(json.message || "Codigo enviado no WhatsApp.");
+    } catch (error) {
+      alert(obterMensagemErro(error) || "Nao foi possivel enviar o codigo.");
+    } finally {
+      setAuthCarregando(false);
+    }
+  }, [authWhatsapp]);
+
+  const redefinirSenhaComToken = useCallback(async () => {
+    const zap = normalizarNumero(authWhatsapp);
+    if (zap.length < 10) {
+      alert("Informe um WhatsApp valido.");
+      return;
+    }
+    if (String(resetCodigo).replace(/\D/g, "").length !== 6) {
+      alert("Informe o codigo de 6 digitos.");
+      return;
+    }
+    if (resetNovaSenha.length < 6) {
+      alert("Nova senha deve ter no minimo 6 caracteres.");
+      return;
+    }
+    setAuthCarregando(true);
+    try {
+      const res = await fetch("/api/public/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          whatsapp: zap,
+          code: resetCodigo,
+          new_password: resetNovaSenha,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || "Falha ao redefinir senha.");
+      }
+      alert(json.message || "Senha redefinida. Faça login.");
+      setAuthEsqueciSenha(false);
+      setResetCodigo("");
+      setResetNovaSenha("");
+      setResetCodigoEnviado(false);
+    } catch (error) {
+      alert(obterMensagemErro(error) || "Nao foi possivel redefinir senha.");
+    } finally {
+      setAuthCarregando(false);
+    }
+  }, [authWhatsapp, resetCodigo, resetNovaSenha]);
 
   useEffect(() => {
     const zapLimpo = normalizarNumero(cliente.whatsapp);
@@ -1448,11 +1519,6 @@ export default function ClientePage() {
             Acompanhar meu pedido
           </button>
         </div>
-        {!podeAcompanharPedido && (
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-            Disponivel apos finalizar um pedido.
-          </p>
-        )}
       </header>
 
       <div className="relative z-40 bg-white/90 backdrop-blur-xl border-b border-pink-50/50">
@@ -1733,15 +1799,25 @@ export default function ClientePage() {
           <div className="bg-white w-full max-w-md rounded-t-[3.2rem] sm:rounded-[3.2rem] p-7 shadow-2xl">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-2xl font-black italic text-slate-800">
-                {authModoCadastro ? "Criar conta" : "Entrar"}
+                {authEsqueciSenha ? "Recuperar senha" : authModoCadastro ? "Criar conta" : "Entrar"}
               </h3>
-              <button type="button" onClick={() => setModalAuthAberto(false)} className="bg-slate-50 p-3 rounded-full text-slate-300">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalAuthAberto(false);
+                  setAuthEsqueciSenha(false);
+                  setResetCodigoEnviado(false);
+                  setResetCodigo("");
+                  setResetNovaSenha("");
+                }}
+                className="bg-slate-50 p-3 rounded-full text-slate-300"
+              >
                 <X />
               </button>
             </div>
 
             <div className="space-y-3">
-              {authModoCadastro && (
+              {!authEsqueciSenha && authModoCadastro && (
                 <input
                   placeholder="Seu nome"
                   className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
@@ -1755,29 +1831,97 @@ export default function ClientePage() {
                 value={authWhatsapp}
                 onChange={(e) => setAuthWhatsapp(e.target.value)}
               />
-              <input
-                type="password"
-                placeholder="Senha (min. 6)"
-                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
-                value={authSenha}
-                onChange={(e) => setAuthSenha(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => void autenticarCliente()}
-                disabled={authCarregando}
-                className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
-                {authModoCadastro ? "Criar e entrar" : "Entrar para pedir"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setAuthModoCadastro((prev) => !prev)}
-                className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
-              >
-                {authModoCadastro ? "Ja tenho conta" : "Criar minha conta"}
-              </button>
+
+              {authEsqueciSenha ? (
+                <>
+                  {resetCodigoEnviado ? (
+                    <>
+                      <input
+                        placeholder="Codigo de 6 digitos"
+                        className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                        value={resetCodigo}
+                        onChange={(e) => setResetCodigo(e.target.value)}
+                      />
+                      <input
+                        type="password"
+                        placeholder="Nova senha (min. 6)"
+                        className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                        value={resetNovaSenha}
+                        onChange={(e) => setResetNovaSenha(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void redefinirSenhaComToken()}
+                        disabled={authCarregando}
+                        className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
+                      >
+                        {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
+                        Redefinir senha
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void solicitarTokenRecuperacao()}
+                      disabled={authCarregando}
+                      className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
+                      Enviar codigo no WhatsApp
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthEsqueciSenha(false);
+                      setResetCodigoEnviado(false);
+                      setResetCodigo("");
+                      setResetNovaSenha("");
+                    }}
+                    className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
+                  >
+                    Voltar para login
+                  </button>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="password"
+                    placeholder="Senha (min. 6)"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                    value={authSenha}
+                    onChange={(e) => setAuthSenha(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void autenticarCliente()}
+                    disabled={authCarregando}
+                    className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
+                    {authModoCadastro ? "Criar e entrar" : "Entrar para pedir"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuthModoCadastro((prev) => !prev)}
+                    className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
+                  >
+                    {authModoCadastro ? "Ja tenho conta" : "Criar minha conta"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthEsqueciSenha(true);
+                      setResetCodigoEnviado(false);
+                      setResetCodigo("");
+                      setResetNovaSenha("");
+                    }}
+                    className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-1"
+                  >
+                    Esqueci minha senha
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

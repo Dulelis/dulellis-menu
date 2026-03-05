@@ -43,6 +43,12 @@ export async function hashCustomerPassword(password: string) {
   return createHmac("sha256", secret).update(password).digest("hex");
 }
 
+export async function hashCustomerOtpToken(token: string) {
+  const secret = getAuthSecret();
+  if (!secret) return "";
+  return createHmac("sha256", secret).update(`otp:${token}`).digest("hex");
+}
+
 export function buildCustomerSessionToken(input: { clienteId: number; whatsapp: string }) {
   const exp = Math.floor(Date.now() / 1000) + CUSTOMER_SESSION_DURATION_SECONDS;
   const payload: CustomerSessionPayload = {
@@ -105,4 +111,3 @@ export function getCustomerLogoutCookie(): CookieOptions {
     maxAge: 0,
   };
 }
-
