@@ -3,7 +3,7 @@ import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { getClientIp, enforceSameOriginForWrite } from "@/lib/request-security";
 import { hashCustomerOtpToken } from "@/lib/customer-auth";
-import { enviarTokenViaWhatsapp, getWhatsappOtpEnabled } from "@/lib/whatsapp-otp";
+import { enviarTokenViaSms, getSmsOtpEnabled } from "@/lib/sms-otp";
 
 function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
@@ -39,9 +39,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!getWhatsappOtpEnabled()) {
+  if (!getSmsOtpEnabled()) {
     return NextResponse.json(
-      { ok: false, error: "Canal de WhatsApp para OTP nao configurado." },
+      { ok: false, error: "Canal de SMS para OTP nao configurado." },
       { status: 500 },
     );
   }
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as { whatsapp?: string };
   const whatsapp = normalizarNumero(body.whatsapp || "");
   if (whatsapp.length < 10) {
-    return NextResponse.json({ ok: false, error: "WhatsApp invalido." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Telefone invalido." }, { status: 400 });
   }
 
   const { data: exato } = await supabase
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       data: { sent: true },
-      message: "Se o telefone estiver cadastrado, voce recebera um codigo no WhatsApp.",
+      message: "Se o telefone estiver cadastrado, voce recebera um codigo por SMS.",
     });
   }
 
@@ -119,12 +119,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await enviarTokenViaWhatsapp({ whatsapp, token: codigo, minutos: 10 });
+  await enviarTokenViaSms({ telefone: whatsapp, token: codigo, minutos: 10 });
 
   return NextResponse.json({
     ok: true,
     data: { sent: true },
-    message: "Codigo enviado no WhatsApp.",
+    message: "Codigo enviado por SMS.",
   });
 }
-

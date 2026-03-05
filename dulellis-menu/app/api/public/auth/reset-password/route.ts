@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
   const newPassword = String(body.new_password || "");
 
   if (whatsapp.length < 10) {
-    return NextResponse.json({ ok: false, error: "WhatsApp invalido." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Telefone invalido." }, { status: 400 });
   }
   if (code.length !== 6) {
     return NextResponse.json({ ok: false, error: "Codigo invalido." }, { status: 400 });
@@ -145,4 +145,3 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ ok: true, message: "Senha redefinida com sucesso." });
 }
-

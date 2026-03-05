@@ -765,7 +765,7 @@ export default function ClientePage() {
   const solicitarTokenRecuperacao = useCallback(async () => {
     const zap = normalizarNumero(authWhatsapp);
     if (zap.length < 10) {
-      alert("Informe um WhatsApp valido.");
+      alert("Informe um telefone valido.");
       return;
     }
     setAuthCarregando(true);
@@ -780,7 +780,7 @@ export default function ClientePage() {
         throw new Error(json.error || "Falha ao solicitar token.");
       }
       setResetCodigoEnviado(true);
-      alert(json.message || "Codigo enviado no WhatsApp.");
+      alert(json.message || "Codigo enviado por SMS.");
     } catch (error) {
       alert(obterMensagemErro(error) || "Nao foi possivel enviar o codigo.");
     } finally {
@@ -791,7 +791,7 @@ export default function ClientePage() {
   const redefinirSenhaComToken = useCallback(async () => {
     const zap = normalizarNumero(authWhatsapp);
     if (zap.length < 10) {
-      alert("Informe um WhatsApp valido.");
+      alert("Informe um telefone valido.");
       return;
     }
     if (String(resetCodigo).replace(/\D/g, "").length !== 6) {
@@ -1867,7 +1867,7 @@ export default function ClientePage() {
                       className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
                     >
                       {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
-                      Enviar codigo no WhatsApp
+                      Enviar codigo por SMS
                     </button>
                   )}
                   <button
