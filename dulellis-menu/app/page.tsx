@@ -170,6 +170,10 @@ function normalizarNumero(valor: string) {
   return valor.replace(/\D/g, "");
 }
 
+function primeiroNome(nome: string) {
+  return String(nome || "").trim().split(/\s+/).filter(Boolean)[0] || "";
+}
+
 function formatarCep(cep: string) {
   const digitos = normalizarNumero(String(cep || "")).slice(0, 8);
   if (digitos.length <= 5) return digitos;
@@ -1416,6 +1420,11 @@ export default function ClientePage() {
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.4em]">
               Confeitaria Artesanal
             </p>
+            {sessaoCliente?.nome ? (
+              <p className="mt-1 text-xs font-black text-slate-700">
+                Ola, {primeiroNome(sessaoCliente.nome)}
+              </p>
+            ) : null}
           </div>
         </div>
         <div className="max-w-xl mx-auto mt-4 flex justify-center">
