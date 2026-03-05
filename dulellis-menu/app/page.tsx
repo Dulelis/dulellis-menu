@@ -1420,14 +1420,16 @@ export default function ClientePage() {
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.4em]">
               Confeitaria Artesanal
             </p>
+          </div>
+        </div>
+        <div className="max-w-xl mx-auto mt-4 flex items-center justify-between gap-3">
+          <div className="text-left min-h-[20px]">
             {sessaoCliente?.nome ? (
-              <p className="mt-1 text-xs font-black text-slate-700">
+              <p className="text-base sm:text-lg font-black text-slate-800 leading-none">
                 Ola, {primeiroNome(sessaoCliente.nome)}
               </p>
             ) : null}
           </div>
-        </div>
-        <div className="max-w-xl mx-auto mt-4 flex justify-center">
           <button
             type="button"
             onClick={() => {
@@ -1437,7 +1439,7 @@ export default function ClientePage() {
               setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
             }}
             disabled={!sessaoCliente || !podeAcompanharPedido}
-            className={`px-5 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg ${
+            className={`px-3 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest ${
               sessaoCliente && podeAcompanharPedido
                 ? "bg-slate-900 text-white"
                 : "bg-slate-200 text-slate-500 shadow-none"

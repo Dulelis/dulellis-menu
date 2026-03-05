@@ -41,6 +41,27 @@ function statusResumo(pedido: PedidoStatus) {
   return { chave: "recebido", texto: "Pedido recebido" };
 }
 
+function dataChaveSaoPaulo(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === "year")?.value || "0000";
+  const month = parts.find((p) => p.type === "month")?.value || "00";
+  const day = parts.find((p) => p.type === "day")?.value || "00";
+  return `${year}-${month}-${day}`;
+}
+
+function pedidoEhDoDiaCorrente(createdAt: string) {
+  const iso = String(createdAt || "").trim();
+  if (!iso) return false;
+  const dataPedido = new Date(iso);
+  if (Number.isNaN(dataPedido.getTime())) return false;
+  return dataChaveSaoPaulo(dataPedido) === dataChaveSaoPaulo(new Date());
+}
+
 export async function GET(request: Request) {
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
@@ -117,6 +138,9 @@ export async function GET(request: Request) {
   if (!pedidoFinal) {
     return NextResponse.json({ ok: true, data: null });
   }
+  if (!pedidoEhDoDiaCorrente(String(pedidoFinal.created_at || ""))) {
+    return NextResponse.json({ ok: true, data: null });
+  }
 
   const resumo = statusResumo(pedidoFinal);
   return NextResponse.json({
@@ -136,4 +160,3 @@ export async function GET(request: Request) {
     },
   });
 }
-
