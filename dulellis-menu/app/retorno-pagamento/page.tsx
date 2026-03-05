@@ -170,7 +170,7 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
 
   const whatsapp = String(pedido.whatsapp || "").trim();
   const clienteNome = String(pedido.cliente_nome || "").trim();
-  const formaPagamento = String(pedido.forma_pagamento || "Pix/Cartao").trim();
+  const formaPagamento = String(pedido.forma_pagamento || "Pix").trim();
   const itens = parseItensPedido((pedido as { itens?: unknown }).itens);
   const total = Number(pedido.total || 0);
 
@@ -253,7 +253,7 @@ function montarMensagemWhatsappPadraoPedido(
       `Cliente: ${pedido.clienteNome || fallback.clienteNome || "Cliente"}\n` +
       `Endereco: ${pedido.enderecoCompleto || "Nao informado"}\n` +
       `Ponto de Referencia: ${pedido.pontoReferencia || "Nao informado"}\n` +
-      `Pagamento: ${pedido.formaPagamento || "Pix/Cartao"}\n\n` +
+      `Pagamento: ${pedido.formaPagamento || "Pix"}\n\n` +
       `Itens:\n${itensFormatados}\n\n` +
       `Total: R$ ${pedido.total.toFixed(2)}\n` +
       `Referencia do pedido: ${pedido.referencia}\n` +

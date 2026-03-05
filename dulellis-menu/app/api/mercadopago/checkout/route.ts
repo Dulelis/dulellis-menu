@@ -112,6 +112,19 @@ export async function POST(request: Request) {
         failure: retornoFailureUrl.toString(),
         pending: retornoPendingUrl.toString(),
       },
+      payment_methods: {
+        default_payment_method_id: "pix",
+        excluded_payment_types: [
+          { id: "credit_card" },
+          { id: "debit_card" },
+          { id: "ticket" },
+          { id: "atm" },
+          { id: "prepaid_card" },
+        ],
+        excluded_payment_methods: [{ id: "account_money" }],
+        installments: 1,
+        default_installments: 1,
+      },
     };
     if (baseEhPublico) {
       payload.auto_return = "approved";

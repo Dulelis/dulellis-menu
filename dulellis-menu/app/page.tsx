@@ -37,7 +37,7 @@ const DIAS_SEMANA_LABELS: Record<(typeof DIAS_SEMANA_CHAVES)[number], string> = 
   sabado: "Sabado",
 };
 const FORMA_DINHEIRO = "Dinheiro";
-const FORMA_PIX_CARTAO = "Pix/Cartao";
+const FORMA_PIX_CARTAO = "Pix";
 const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_PIX_CARTAO];
 const VITRINE_MODAL_SLIDE_MS = 6000;
 
@@ -1721,7 +1721,7 @@ export default function ClientePage() {
                         onClick={() => void selecionarFormaPagamento(forma)}
                         className={`p-3 rounded-2xl text-xs font-black uppercase tracking-wide border-2 transition-all ${formaPagamento === forma ? "bg-pink-600 border-pink-600 text-white" : "bg-slate-50 border-slate-100 text-slate-500"}`}
                       >
-                        {forma === FORMA_PIX_CARTAO ? "Pix/Cartao" : forma}
+                        {forma === FORMA_PIX_CARTAO ? "Pix" : forma}
                       </button>
                     ))}
                   </div>

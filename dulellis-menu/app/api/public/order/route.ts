@@ -205,7 +205,7 @@ export async function POST(request: Request) {
     total,
     forma_pagamento: formaPagamento,
     pagamento_referencia: referencia || null,
-    status_pagamento: formaPagamento === "Pix / Cartao" ? "pending" : null,
+    status_pagamento: formaPagamento === "Pix" ? "pending" : null,
   };
 
   const pedidoPayloadComForma = {
