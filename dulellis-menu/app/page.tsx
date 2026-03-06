@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -364,7 +364,7 @@ function descricaoPromocaoVitrine(promo: Promocao) {
   return "Oferta especial por tempo limitado";
 }
 
-export default function ClientePage() {
+function ClientePageContent() {
   const searchParams = useSearchParams();
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -2325,5 +2325,13 @@ export default function ClientePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ClientePage() {
+  return (
+    <Suspense fallback={null}>
+      <ClientePageContent />
+    </Suspense>
   );
 }
