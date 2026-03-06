@@ -794,9 +794,16 @@ function ClientePageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ whatsapp: zap }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+      const bruto = await res.text();
+      const json = (() => {
+        try {
+          return JSON.parse(bruto) as { ok?: boolean; error?: string; message?: string };
+        } catch {
+          return {} as { ok?: boolean; error?: string; message?: string };
+        }
+      })();
       if (!res.ok || json.ok === false) {
-        throw new Error(json.error || "Falha ao solicitar token.");
+        throw new Error(json.error || json.message || bruto || "Falha ao solicitar token.");
       }
       setResetCodigoEnviado(true);
       alert(json.message || "Link de recuperacao enviado por SMS.");

@@ -123,7 +123,12 @@ export async function POST(request: NextRequest) {
   const siteUrl = baseUrl ? baseUrl.replace(/\/+$/, "") : request.nextUrl.origin;
   const resetUrl = `${siteUrl}/?reset_token=${encodeURIComponent(resetToken.token)}`;
 
-  await enviarTokenViaSms({ telefone: whatsapp, token: "", minutos: 10, resetUrl });
+  try {
+    await enviarTokenViaSms({ telefone: whatsapp, token: "", minutos: 10, resetUrl });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao enviar link de recuperacao.";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 
   return NextResponse.json({
     ok: true,
