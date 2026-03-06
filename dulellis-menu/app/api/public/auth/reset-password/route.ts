@@ -8,18 +8,6 @@ import {
   verifyCustomerPasswordResetToken,
 } from "@/lib/customer-auth";
 
-function normalizarNumero(value: string): string {
-  return String(value || "").replace(/\D/g, "");
-}
-
-function whatsappEquivalente(a: string, b: string): boolean {
-  const wa = normalizarNumero(a);
-  const wb = normalizarNumero(b);
-  if (!wa || !wb) return false;
-  if (wa === wb) return true;
-  return wa.slice(-10) === wb.slice(-10);
-}
-
 export async function POST(request: NextRequest) {
   const originError = enforceSameOriginForWrite(request);
   if (originError) return originError;
@@ -63,12 +51,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Token invalido ou expirado." }, { status: 401 });
   }
 
-  const whatsapp = normalizarNumero(payload.whatsapp);
+  const email = String(payload.email || "").trim().toLowerCase();
 
   const { data: tokenAtual, error: erroToken } = await supabase
     .from("clientes_password_reset_tokens")
-    .select("id,whatsapp,token_hash,tentativas,expira_em,usado_em,created_at")
-    .eq("whatsapp", whatsapp)
+    .select("id,email,token_hash,tentativas,expira_em,usado_em,created_at")
+    .eq("email", email)
     .is("usado_em", null)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -110,27 +98,13 @@ export async function POST(request: NextRequest) {
 
   const { data: exato } = await supabase
     .from("clientes")
-    .select("id,whatsapp")
-    .eq("whatsapp", whatsapp)
+    .select("id,email")
+    .eq("email", email)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  let clienteId = Number(exato?.id || 0);
-  if (!clienteId) {
-    const sufixo = whatsapp.slice(-8);
-    const { data: candidatos } = await supabase
-      .from("clientes")
-      .select("id,whatsapp")
-      .ilike("whatsapp", `%${sufixo}%`)
-      .order("created_at", { ascending: false })
-      .limit(30);
-    const equivalente =
-      ((candidatos || []) as Array<{ id?: number; whatsapp?: string | null }>).find((c) =>
-        whatsappEquivalente(String(c.whatsapp || ""), whatsapp),
-      ) || null;
-    clienteId = Number(equivalente?.id || 0);
-  }
+  const clienteId = Number(exato?.id || 0);
 
   if (!clienteId) {
     return NextResponse.json({ ok: false, error: "Cliente nao encontrado." }, { status: 404 });

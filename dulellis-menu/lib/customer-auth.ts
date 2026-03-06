@@ -23,7 +23,7 @@ type CookieOptions = {
 
 type CustomerPasswordResetPayload = {
   type: "password_reset";
-  whatsapp: string;
+  email: string;
   jti: string;
   iat: number;
   exp: number;
@@ -53,24 +53,26 @@ export async function hashCustomerPassword(password: string) {
   return createHmac("sha256", secret).update(password).digest("hex");
 }
 
-export async function hashCustomerOtpToken(token: string) {
-  const secret = getAuthSecret();
-  if (!secret) return "";
-  return createHmac("sha256", secret).update(`otp:${token}`).digest("hex");
-}
-
 export async function hashCustomerResetTokenId(jti: string) {
   const secret = getAuthSecret();
   if (!secret) return "";
   return createHmac("sha256", secret).update(`reset:${jti}`).digest("hex");
 }
 
-export function buildCustomerPasswordResetToken(input: { whatsapp: string }) {
+function normalizarEmail(email: string) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function emailValido(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+export function buildCustomerPasswordResetToken(input: { email: string }) {
   const secret = getAuthSecret();
   if (!secret) return null;
 
-  const whatsapp = String(input.whatsapp || "").replace(/\D/g, "");
-  if (!whatsapp.match(/^\d{10,13}$/)) return null;
+  const email = normalizarEmail(input.email);
+  if (!emailValido(email)) return null;
 
   const jti = randomUUID();
   const nowSeconds = Math.floor(Date.now() / 1000);
@@ -78,7 +80,7 @@ export function buildCustomerPasswordResetToken(input: { whatsapp: string }) {
   const token = jwt.sign(
     {
       type: "password_reset",
-      whatsapp,
+      email,
       jti,
     },
     secret,
@@ -103,13 +105,13 @@ export function verifyCustomerPasswordResetToken(token: string | undefined): Cus
   try {
     const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] }) as Partial<CustomerPasswordResetPayload>;
     if (!decoded || decoded.type !== "password_reset") return null;
-    if (!String(decoded.whatsapp || "").match(/^\d{10,13}$/)) return null;
+    if (!emailValido(normalizarEmail(String(decoded.email || "")))) return null;
     if (!String(decoded.jti || "").trim()) return null;
     if (!Number.isInteger(decoded.exp) || !Number.isInteger(decoded.iat)) return null;
 
     return {
       type: "password_reset",
-      whatsapp: String(decoded.whatsapp),
+      email: normalizarEmail(String(decoded.email)),
       jti: String(decoded.jti),
       iat: Number(decoded.iat),
       exp: Number(decoded.exp),

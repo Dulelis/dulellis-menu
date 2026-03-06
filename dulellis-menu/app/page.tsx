@@ -145,6 +145,7 @@ type PedidoAcompanhamento = {
 type SessaoCliente = {
   id: number;
   nome: string;
+  email: string;
   whatsapp: string;
   cep: string;
   endereco: string;
@@ -249,6 +250,10 @@ function extrairResetToken(valor: string) {
     const match = texto.match(/[?&]reset_token=([^&#]+)/i);
     return match ? decodeURIComponent(match[1]) : texto;
   }
+}
+
+function emailValido(valor: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(valor || "").trim().toLowerCase());
 }
 
 function dataHojeISO() {
@@ -401,6 +406,7 @@ function ClientePageContent() {
   const [modalAuthAberto, setModalAuthAberto] = useState(false);
   const [authModoCadastro, setAuthModoCadastro] = useState(false);
   const [authNome, setAuthNome] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
   const [authWhatsapp, setAuthWhatsapp] = useState("");
   const [authSenha, setAuthSenha] = useState("");
   const [authCarregando, setAuthCarregando] = useState(false);
@@ -716,6 +722,7 @@ function ClientePageContent() {
         data_aniversario: dados.data_aniversario || prev.data_aniversario,
       }));
       setAuthWhatsapp(dados.whatsapp || "");
+      setAuthEmail(dados.email || "");
       await verificarDisponibilidadeAcompanhamento(dados.whatsapp || "");
     } catch {
       setSessaoCliente(null);
@@ -729,8 +736,13 @@ function ClientePageContent() {
 
   const autenticarCliente = useCallback(async () => {
     const zap = normalizarNumero(authWhatsapp);
+    const email = String(authEmail || "").trim().toLowerCase();
     if (zap.length < 10) {
       alert("Informe um WhatsApp valido.");
+      return;
+    }
+    if (authModoCadastro && !emailValido(email)) {
+      alert("Informe um e-mail valido.");
       return;
     }
     if (authSenha.length < 6) {
@@ -746,6 +758,7 @@ function ClientePageContent() {
         body: JSON.stringify({
           action: authModoCadastro ? "register" : "login",
           whatsapp: zap,
+          email,
           password: authSenha,
           nome: authNome.trim(),
         }),
@@ -762,7 +775,7 @@ function ClientePageContent() {
     } finally {
       setAuthCarregando(false);
     }
-  }, [authModoCadastro, authNome, authSenha, authWhatsapp, carregarSessaoCliente]);
+  }, [authEmail, authModoCadastro, authNome, authSenha, authWhatsapp, carregarSessaoCliente]);
 
   const sairSessaoCliente = useCallback(async () => {
     try {
@@ -782,9 +795,9 @@ function ClientePageContent() {
   }, []);
 
   const solicitarTokenRecuperacao = useCallback(async () => {
-    const zap = normalizarNumero(authWhatsapp);
-    if (zap.length < 10) {
-      alert("Informe um telefone valido.");
+    const email = String(authEmail || "").trim().toLowerCase();
+    if (!emailValido(email)) {
+      alert("Informe um e-mail valido.");
       return;
     }
     setAuthCarregando(true);
@@ -792,7 +805,7 @@ function ClientePageContent() {
       const res = await fetch("/api/public/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ whatsapp: zap }),
+        body: JSON.stringify({ email }),
       });
       const bruto = await res.text();
       const json = (() => {
@@ -806,18 +819,18 @@ function ClientePageContent() {
         throw new Error(json.error || json.message || bruto || "Falha ao solicitar token.");
       }
       setResetCodigoEnviado(true);
-      alert(json.message || "Link de recuperacao enviado por SMS.");
+      alert(json.message || "Link de recuperacao enviado por e-mail.");
     } catch (error) {
       alert(obterMensagemErro(error) || "Nao foi possivel enviar o link.");
     } finally {
       setAuthCarregando(false);
     }
-  }, [authWhatsapp]);
+  }, [authEmail]);
 
   const redefinirSenhaComToken = useCallback(async () => {
     const token = String(resetToken || "").trim();
     if (!token) {
-      alert("Token de recuperacao ausente. Abra o link enviado por SMS.");
+      alert("Token de recuperacao ausente. Abra o link enviado por e-mail.");
       return;
     }
     if (resetNovaSenha.length < 6) {
@@ -1860,12 +1873,22 @@ function ClientePageContent() {
                   onChange={(e) => setAuthNome(e.target.value)}
                 />
               )}
-              <input
-                placeholder="WhatsApp"
-                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
-                value={authWhatsapp}
-                onChange={(e) => setAuthWhatsapp(e.target.value)}
-              />
+              {!authEsqueciSenha && (
+                <input
+                  placeholder="WhatsApp"
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                  value={authWhatsapp}
+                  onChange={(e) => setAuthWhatsapp(e.target.value)}
+                />
+              )}
+              {(authModoCadastro || authEsqueciSenha) && (
+                <input
+                  placeholder="E-mail"
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                />
+              )}
 
               {authEsqueciSenha ? (
                 <>
@@ -1877,7 +1900,7 @@ function ClientePageContent() {
                         </p>
                       ) : (
                         <input
-                          placeholder="Cole o token (ou link) recebido por SMS"
+                          placeholder="Cole o token (ou link) recebido por e-mail"
                           className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
                           value={resetToken}
                           onChange={(e) => setResetToken(extrairResetToken(e.target.value))}
@@ -1908,7 +1931,7 @@ function ClientePageContent() {
                       className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
                     >
                       {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
-                      Enviar link por SMS
+                      Enviar link por e-mail
                     </button>
                   )}
                   <button

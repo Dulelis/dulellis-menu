@@ -3,18 +3,14 @@ import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { getClientIp, enforceSameOriginForWrite } from "@/lib/request-security";
 import { buildCustomerPasswordResetToken, hashCustomerResetTokenId } from "@/lib/customer-auth";
-import { enviarTokenViaSms, getSmsOtpEnabled } from "@/lib/sms-otp";
+import { enviarLinkRecuperacaoPorEmail, getEmailOtpEnabled } from "@/lib/email-otp";
 
-function normalizarNumero(value: string): string {
-  return String(value || "").replace(/\D/g, "");
+function normalizarEmail(value: string): string {
+  return String(value || "").trim().toLowerCase();
 }
 
-function whatsappEquivalente(a: string, b: string): boolean {
-  const wa = normalizarNumero(a);
-  const wb = normalizarNumero(b);
-  if (!wa || !wb) return false;
-  if (wa === wb) return true;
-  return wa.slice(-10) === wb.slice(-10);
+function emailValido(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 export async function POST(request: NextRequest) {
@@ -35,9 +31,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!getSmsOtpEnabled()) {
+  if (!getEmailOtpEnabled()) {
     return NextResponse.json(
-      { ok: false, error: "Canal de SMS para OTP nao configurado." },
+      { ok: false, error: "Canal de e-mail para recuperacao nao configurado." },
       { status: 500 },
     );
   }
@@ -47,44 +43,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as { whatsapp?: string };
-  const whatsapp = normalizarNumero(body.whatsapp || "");
-  if (whatsapp.length < 10) {
-    return NextResponse.json({ ok: false, error: "Telefone invalido." }, { status: 400 });
+  const body = (await request.json().catch(() => ({}))) as { email?: string };
+  const email = normalizarEmail(body.email || "");
+  if (!emailValido(email)) {
+    return NextResponse.json({ ok: false, error: "E-mail invalido." }, { status: 400 });
   }
 
   const { data: exato } = await supabase
     .from("clientes")
-    .select("id,whatsapp,senha_hash,created_at")
-    .eq("whatsapp", whatsapp)
+    .select("id,email,senha_hash,created_at")
+    .eq("email", email)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  let cliente = exato as { id?: number; whatsapp?: string | null; senha_hash?: string | null } | null;
-  if (!cliente) {
-    const sufixo = whatsapp.slice(-8);
-    const { data: candidatos } = await supabase
-      .from("clientes")
-      .select("id,whatsapp,senha_hash,created_at")
-      .ilike("whatsapp", `%${sufixo}%`)
-      .order("created_at", { ascending: false })
-      .limit(30);
-    cliente =
-      ((candidatos || []) as Array<{ id?: number; whatsapp?: string | null; senha_hash?: string | null }>).find((c) =>
-        whatsappEquivalente(String(c.whatsapp || ""), whatsapp),
-      ) || null;
-  }
+  const cliente = exato as { id?: number; email?: string | null; senha_hash?: string | null } | null;
 
   if (!cliente?.id || !String(cliente.senha_hash || "").trim()) {
     return NextResponse.json({
       ok: true,
       data: { sent: true },
-      message: "Se o telefone estiver cadastrado, voce recebera um link por SMS.",
+      message: "Se o e-mail estiver cadastrado, voce recebera um link de recuperacao.",
     });
   }
 
-  const resetToken = buildCustomerPasswordResetToken({ whatsapp });
+  const resetToken = buildCustomerPasswordResetToken({ email });
   if (!resetToken) {
     return NextResponse.json({ ok: false, error: "Falha ao gerar token." }, { status: 500 });
   }
@@ -98,14 +81,14 @@ export async function POST(request: NextRequest) {
   await supabase
     .from("clientes_password_reset_tokens")
     .update({ usado_em: new Date().toISOString() })
-    .eq("whatsapp", whatsapp)
+    .eq("email", email)
     .is("usado_em", null);
 
   const { error: erroInsert } = await supabase
     .from("clientes_password_reset_tokens")
     .insert([
       {
-        whatsapp,
+        email,
         token_hash: tokenHash,
         tentativas: 0,
         expira_em: expiraEm,
@@ -114,7 +97,11 @@ export async function POST(request: NextRequest) {
 
   if (erroInsert) {
     return NextResponse.json(
-      { ok: false, error: "Tabela de reset ausente. Rode sql/upgrade_clientes_password_reset.sql." },
+      {
+        ok: false,
+        error:
+          "Tabela de reset por e-mail ausente. Rode sql/upgrade_clientes_auth_email.sql e sql/upgrade_clientes_password_reset.sql.",
+      },
       { status: 500 },
     );
   }
@@ -124,7 +111,7 @@ export async function POST(request: NextRequest) {
   const resetUrl = `${siteUrl}/?reset_token=${encodeURIComponent(resetToken.token)}`;
 
   try {
-    await enviarTokenViaSms({ telefone: whatsapp, token: "", minutos: 10, resetUrl });
+    await enviarLinkRecuperacaoPorEmail({ email, minutos: 10, resetUrl });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao enviar link de recuperacao.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
@@ -133,6 +120,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     data: { sent: true },
-    message: "Enviamos um link de recuperacao por SMS.",
+    message: "Enviamos um link de recuperacao por e-mail.",
   });
 }

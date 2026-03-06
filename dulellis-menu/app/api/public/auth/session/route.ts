@@ -15,6 +15,14 @@ function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
 }
 
+function normalizarEmail(value: string): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function emailValido(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function whatsappEquivalente(a: string, b: string): boolean {
   const wa = normalizarNumero(a);
   const wb = normalizarNumero(b);
@@ -35,7 +43,7 @@ async function buscarClientePorWhatsapp(
   const zap = normalizarNumero(whatsapp);
   const { data: exato, error: erroExato } = await supabase
     .from("clientes")
-    .select("id,nome,whatsapp,senha_hash,created_at")
+    .select("id,nome,email,whatsapp,senha_hash,created_at")
     .eq("whatsapp", zap)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -51,7 +59,7 @@ async function buscarClientePorWhatsapp(
   const sufixo = zap.slice(-8);
   const { data: candidatos, error: erroCandidatos } = await supabase
     .from("clientes")
-    .select("id,nome,whatsapp,senha_hash,created_at")
+    .select("id,nome,email,whatsapp,senha_hash,created_at")
     .ilike("whatsapp", `%${sufixo}%`)
     .order("created_at", { ascending: false })
     .limit(30);
@@ -66,6 +74,23 @@ async function buscarClientePorWhatsapp(
   return { error: "", cliente };
 }
 
+async function buscarClientePorEmail(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  email: string,
+) {
+  const mail = normalizarEmail(email);
+  const { data, error } = await supabase
+    .from("clientes")
+    .select("id,nome,email,whatsapp,senha_hash,created_at")
+    .eq("email", mail)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return { error: error.message, cliente: null as null };
+  return { error: "", cliente: data || null };
+}
+
 export async function GET(request: NextRequest) {
   const sessao = getCustomerSessionFromRequest(request);
   if (!sessao) {
@@ -78,11 +103,11 @@ export async function GET(request: NextRequest) {
   }
 
   const tentativasSelect = [
-    "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,data_aniversario",
-    "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,data_aniversario",
-    "id,nome,whatsapp,cep,endereco,bairro,cidade,data_aniversario",
-    "id,nome,whatsapp,cep,endereco,bairro,cidade",
-    "id,nome,whatsapp,endereco",
+    "id,nome,email,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,data_aniversario",
+    "id,nome,email,whatsapp,cep,endereco,numero,bairro,cidade,data_aniversario",
+    "id,nome,email,whatsapp,cep,endereco,bairro,cidade,data_aniversario",
+    "id,nome,email,whatsapp,cep,endereco,bairro,cidade",
+    "id,nome,email,whatsapp,endereco",
   ];
 
   let cliente: Record<string, unknown> | null = null;
@@ -116,6 +141,7 @@ export async function GET(request: NextRequest) {
     data: {
       id: Number(cliente.id || 0),
       nome: String(cliente.nome || ""),
+      email: String(cliente.email || ""),
       whatsapp: normalizarNumero(String(cliente.whatsapp || "")),
       cep: normalizarNumero(String(cliente.cep || "")).slice(0, 8),
       endereco: String(cliente.endereco || ""),
@@ -158,6 +184,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     action?: "login" | "register" | "logout";
     whatsapp?: string;
+    email?: string;
     password?: string;
     nome?: string;
   };
@@ -170,9 +197,16 @@ export async function POST(request: NextRequest) {
   }
 
   const whatsapp = normalizarNumero(String(body.whatsapp || ""));
+  const email = normalizarEmail(String(body.email || ""));
   const password = String(body.password || "");
   const nome = String(body.nome || "").trim();
-  if (whatsapp.length < 10) {
+  if (action === "register" && !emailValido(email)) {
+    return NextResponse.json({ ok: false, error: "E-mail invalido." }, { status: 400 });
+  }
+  if (action === "login" && whatsapp.length < 10 && !emailValido(email)) {
+    return NextResponse.json({ ok: false, error: "Informe WhatsApp ou e-mail valido." }, { status: 400 });
+  }
+  if (action === "register" && whatsapp.length < 10) {
     return NextResponse.json({ ok: false, error: "WhatsApp invalido." }, { status: 400 });
   }
   if (password.length < 6) {
@@ -209,6 +243,7 @@ export async function POST(request: NextRequest) {
         .update({
           senha_hash: senhaHash,
           nome: nome || String(existente.nome || ""),
+          email,
         })
         .eq("id", clienteId);
       if (erroUpdate) {
@@ -223,13 +258,14 @@ export async function POST(request: NextRequest) {
     } else {
       const payload = {
         nome: nome || "Cliente",
+        email,
         whatsapp,
         senha_hash: senhaHash,
       };
       const { data: criado, error: erroCriar } = await supabase
         .from("clientes")
         .insert([payload])
-        .select("id,nome,whatsapp")
+        .select("id,nome,email,whatsapp")
         .maybeSingle();
       if (erroCriar) {
         if (isSchemaColumnError(erroCriar.message)) {
@@ -252,7 +288,8 @@ export async function POST(request: NextRequest) {
     return resp;
   }
 
-  const buscaLogin = await buscarClientePorWhatsapp(supabase, whatsapp);
+  const buscaLogin =
+    whatsapp.length >= 10 ? await buscarClientePorWhatsapp(supabase, whatsapp) : await buscarClientePorEmail(supabase, email);
   if (buscaLogin.error) {
     if (isSchemaColumnError(buscaLogin.error)) {
       return NextResponse.json(
@@ -262,7 +299,7 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ ok: false, error: buscaLogin.error }, { status: 500 });
   }
-  const cliente = buscaLogin.cliente as { id?: number; senha_hash?: string } | null;
+  const cliente = buscaLogin.cliente as { id?: number; whatsapp?: string | null; senha_hash?: string } | null;
   if (!cliente?.id) {
     return NextResponse.json({ ok: false, error: "Cadastro nao encontrado. Crie sua conta." }, { status: 404 });
   }
@@ -275,9 +312,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Senha invalida." }, { status: 401 });
   }
 
+  const whatsappSessao = normalizarNumero(String(cliente.whatsapp || whatsapp || ""));
+  if (whatsappSessao.length < 10) {
+    return NextResponse.json({ ok: false, error: "Conta sem WhatsApp valido." }, { status: 409 });
+  }
+
   const token = buildCustomerSessionToken({
     clienteId: Number(cliente.id),
-    whatsapp,
+    whatsapp: whatsappSessao,
   });
   const resp = NextResponse.json({ ok: true });
   resp.cookies.set(getCustomerSessionCookie(token));
