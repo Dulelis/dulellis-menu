@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   AlertTriangle,
@@ -233,6 +234,23 @@ function limparEnderecoDePontoReferencia(endereco: string) {
   return texto.replace(/\s*-\s*ponto de refer(?:e|ê)ncia\s*:.*$/i, "").trim();
 }
 
+function extrairResetToken(valor: string) {
+  const texto = String(valor || "").trim();
+  if (!texto) return "";
+
+  if (!texto.includes("reset_token=")) {
+    return texto;
+  }
+
+  try {
+    const url = new URL(texto);
+    return String(url.searchParams.get("reset_token") || "").trim();
+  } catch {
+    const match = texto.match(/[?&]reset_token=([^&#]+)/i);
+    return match ? decodeURIComponent(match[1]) : texto;
+  }
+}
+
 function dataHojeISO() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -347,6 +365,7 @@ function descricaoPromocaoVitrine(promo: Promocao) {
 }
 
 export default function ClientePage() {
+  const searchParams = useSearchParams();
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [taxas, setTaxas] = useState<TaxaEntregaRow[]>([]);
@@ -387,7 +406,7 @@ export default function ClientePage() {
   const [authCarregando, setAuthCarregando] = useState(false);
   const [sessaoCliente, setSessaoCliente] = useState<SessaoCliente | null>(null);
   const [authEsqueciSenha, setAuthEsqueciSenha] = useState(false);
-  const [resetCodigo, setResetCodigo] = useState("");
+  const [resetToken, setResetToken] = useState("");
   const [resetNovaSenha, setResetNovaSenha] = useState("");
   const [resetCodigoEnviado, setResetCodigoEnviado] = useState(false);
 
@@ -780,22 +799,18 @@ export default function ClientePage() {
         throw new Error(json.error || "Falha ao solicitar token.");
       }
       setResetCodigoEnviado(true);
-      alert(json.message || "Codigo enviado por SMS.");
+      alert(json.message || "Link de recuperacao enviado por SMS.");
     } catch (error) {
-      alert(obterMensagemErro(error) || "Nao foi possivel enviar o codigo.");
+      alert(obterMensagemErro(error) || "Nao foi possivel enviar o link.");
     } finally {
       setAuthCarregando(false);
     }
   }, [authWhatsapp]);
 
   const redefinirSenhaComToken = useCallback(async () => {
-    const zap = normalizarNumero(authWhatsapp);
-    if (zap.length < 10) {
-      alert("Informe um telefone valido.");
-      return;
-    }
-    if (String(resetCodigo).replace(/\D/g, "").length !== 6) {
-      alert("Informe o codigo de 6 digitos.");
+    const token = String(resetToken || "").trim();
+    if (!token) {
+      alert("Token de recuperacao ausente. Abra o link enviado por SMS.");
       return;
     }
     if (resetNovaSenha.length < 6) {
@@ -808,8 +823,7 @@ export default function ClientePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          whatsapp: zap,
-          code: resetCodigo,
+          token,
           new_password: resetNovaSenha,
         }),
       });
@@ -819,7 +833,7 @@ export default function ClientePage() {
       }
       alert(json.message || "Senha redefinida. Faça login.");
       setAuthEsqueciSenha(false);
-      setResetCodigo("");
+      setResetToken("");
       setResetNovaSenha("");
       setResetCodigoEnviado(false);
     } catch (error) {
@@ -827,7 +841,21 @@ export default function ClientePage() {
     } finally {
       setAuthCarregando(false);
     }
-  }, [authWhatsapp, resetCodigo, resetNovaSenha]);
+  }, [resetNovaSenha, resetToken]);
+
+  useEffect(() => {
+    const tokenDaUrl = String(searchParams.get("reset_token") || "").trim();
+    if (!tokenDaUrl) return;
+
+    setModalAuthAberto(true);
+    setAuthEsqueciSenha(true);
+    setResetCodigoEnviado(true);
+    setResetToken(tokenDaUrl);
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("reset_token");
+    window.history.replaceState({}, "", url.toString());
+  }, [searchParams]);
 
   useEffect(() => {
     const zapLimpo = normalizarNumero(cliente.whatsapp);
@@ -1807,7 +1835,7 @@ export default function ClientePage() {
                   setModalAuthAberto(false);
                   setAuthEsqueciSenha(false);
                   setResetCodigoEnviado(false);
-                  setResetCodigo("");
+                  setResetToken("");
                   setResetNovaSenha("");
                 }}
                 className="bg-slate-50 p-3 rounded-full text-slate-300"
@@ -1836,12 +1864,18 @@ export default function ClientePage() {
                 <>
                   {resetCodigoEnviado ? (
                     <>
-                      <input
-                        placeholder="Codigo de 6 digitos"
-                        className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
-                        value={resetCodigo}
-                        onChange={(e) => setResetCodigo(e.target.value)}
-                      />
+                      {resetToken ? (
+                        <p className="text-[11px] rounded-2xl bg-blue-50 border border-blue-100 p-3 text-blue-700 font-bold">
+                          Link de recuperacao validado. Defina sua nova senha.
+                        </p>
+                      ) : (
+                        <input
+                          placeholder="Cole o token (ou link) recebido por SMS"
+                          className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                          value={resetToken}
+                          onChange={(e) => setResetToken(extrairResetToken(e.target.value))}
+                        />
+                      )}
                       <input
                         type="password"
                         placeholder="Nova senha (min. 6)"
@@ -1867,7 +1901,7 @@ export default function ClientePage() {
                       className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
                     >
                       {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
-                      Enviar codigo por SMS
+                      Enviar link por SMS
                     </button>
                   )}
                   <button
@@ -1875,7 +1909,7 @@ export default function ClientePage() {
                     onClick={() => {
                       setAuthEsqueciSenha(false);
                       setResetCodigoEnviado(false);
-                      setResetCodigo("");
+                      setResetToken("");
                       setResetNovaSenha("");
                     }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
@@ -1913,7 +1947,7 @@ export default function ClientePage() {
                     onClick={() => {
                       setAuthEsqueciSenha(true);
                       setResetCodigoEnviado(false);
-                      setResetCodigo("");
+                      setResetToken("");
                       setResetNovaSenha("");
                     }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-1"

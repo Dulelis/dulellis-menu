@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { getClientIp, enforceSameOriginForWrite } from "@/lib/request-security";
-import { hashCustomerOtpToken } from "@/lib/customer-auth";
+import { buildCustomerPasswordResetToken, hashCustomerResetTokenId } from "@/lib/customer-auth";
 import { enviarTokenViaSms, getSmsOtpEnabled } from "@/lib/sms-otp";
 
 function normalizarNumero(value: string): string {
@@ -15,10 +15,6 @@ function whatsappEquivalente(a: string, b: string): boolean {
   if (!wa || !wb) return false;
   if (wa === wb) return true;
   return wa.slice(-10) === wb.slice(-10);
-}
-
-function gerarCodigoNumerico() {
-  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 export async function POST(request: NextRequest) {
@@ -84,17 +80,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       data: { sent: true },
-      message: "Se o telefone estiver cadastrado, voce recebera um codigo por SMS.",
+      message: "Se o telefone estiver cadastrado, voce recebera um link por SMS.",
     });
   }
 
-  const codigo = gerarCodigoNumerico();
-  const tokenHash = await hashCustomerOtpToken(codigo);
+  const resetToken = buildCustomerPasswordResetToken({ whatsapp });
+  if (!resetToken) {
+    return NextResponse.json({ ok: false, error: "Falha ao gerar token." }, { status: 500 });
+  }
+
+  const tokenHash = await hashCustomerResetTokenId(resetToken.jti);
   if (!tokenHash) {
     return NextResponse.json({ ok: false, error: "Falha ao gerar token." }, { status: 500 });
   }
 
-  const expiraEm = new Date(Date.now() + 10 * 60_000).toISOString();
+  const expiraEm = resetToken.expiraEm;
   await supabase
     .from("clientes_password_reset_tokens")
     .update({ usado_em: new Date().toISOString() })
@@ -119,11 +119,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await enviarTokenViaSms({ telefone: whatsapp, token: codigo, minutos: 10 });
+  const baseUrl = String(process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || request.nextUrl.origin || "").trim();
+  const siteUrl = baseUrl ? baseUrl.replace(/\/+$/, "") : request.nextUrl.origin;
+  const resetUrl = `${siteUrl}/?reset_token=${encodeURIComponent(resetToken.token)}`;
+
+  await enviarTokenViaSms({ telefone: whatsapp, token: "", minutos: 10, resetUrl });
 
   return NextResponse.json({
     ok: true,
     data: { sent: true },
-    message: "Codigo enviado por SMS.",
+    message: "Enviamos um link de recuperacao por SMS.",
   });
 }

@@ -2,7 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { enforceSameOriginForWrite, getClientIp } from "@/lib/request-security";
-import { hashCustomerOtpToken, hashCustomerPassword } from "@/lib/customer-auth";
+import {
+  hashCustomerPassword,
+  hashCustomerResetTokenId,
+  verifyCustomerPasswordResetToken,
+} from "@/lib/customer-auth";
 
 function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
@@ -40,24 +44,26 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as {
-    whatsapp?: string;
-    code?: string;
+    token?: string;
     new_password?: string;
   };
 
-  const whatsapp = normalizarNumero(body.whatsapp || "");
-  const code = String(body.code || "").replace(/\D/g, "").slice(0, 6);
+  const token = String(body.token || "").trim();
   const newPassword = String(body.new_password || "");
 
-  if (whatsapp.length < 10) {
-    return NextResponse.json({ ok: false, error: "Telefone invalido." }, { status: 400 });
-  }
-  if (code.length !== 6) {
-    return NextResponse.json({ ok: false, error: "Codigo invalido." }, { status: 400 });
+  if (!token) {
+    return NextResponse.json({ ok: false, error: "Token invalido." }, { status: 400 });
   }
   if (newPassword.length < 6) {
     return NextResponse.json({ ok: false, error: "Senha deve ter no minimo 6 caracteres." }, { status: 400 });
   }
+
+  const payload = verifyCustomerPasswordResetToken(token);
+  if (!payload) {
+    return NextResponse.json({ ok: false, error: "Token invalido ou expirado." }, { status: 401 });
+  }
+
+  const whatsapp = normalizarNumero(payload.whatsapp);
 
   const { data: tokenAtual, error: erroToken } = await supabase
     .from("clientes_password_reset_tokens")
@@ -69,7 +75,7 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (erroToken || !tokenAtual) {
-    return NextResponse.json({ ok: false, error: "Codigo nao encontrado. Solicite um novo." }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Token nao encontrado. Solicite um novo link." }, { status: 404 });
   }
 
   const expira = new Date(String(tokenAtual.expira_em || "")).getTime();
@@ -78,10 +84,10 @@ export async function POST(request: NextRequest) {
       .from("clientes_password_reset_tokens")
       .update({ usado_em: new Date().toISOString() })
       .eq("id", tokenAtual.id);
-    return NextResponse.json({ ok: false, error: "Codigo expirado. Solicite outro." }, { status: 410 });
+    return NextResponse.json({ ok: false, error: "Link expirado. Solicite outro." }, { status: 410 });
   }
 
-  const codeHash = await hashCustomerOtpToken(code);
+  const codeHash = await hashCustomerResetTokenId(payload.jti);
   const tokenHashAtual = String(tokenAtual.token_hash || "");
   const tentativas = Number(tokenAtual.tentativas || 0);
   if (!codeHash || !tokenHashAtual || codeHash !== tokenHashAtual) {
@@ -94,7 +100,7 @@ export async function POST(request: NextRequest) {
         usado_em: invalida ? new Date().toISOString() : null,
       })
       .eq("id", tokenAtual.id);
-    return NextResponse.json({ ok: false, error: "Codigo incorreto." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Token invalido ou expirado." }, { status: 401 });
   }
 
   const novaSenhaHash = await hashCustomerPassword(newPassword);

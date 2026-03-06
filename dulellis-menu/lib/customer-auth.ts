@@ -1,7 +1,9 @@
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
+import jwt from "jsonwebtoken";
 
 const CUSTOMER_COOKIE_NAME = "customer_session";
 const CUSTOMER_SESSION_DURATION_SECONDS = 60 * 60 * 24 * 15; // 15 dias
+const CUSTOMER_PASSWORD_RESET_DURATION_SECONDS = 10 * 60; // 10 minutos
 
 type CustomerSessionPayload = {
   clienteId: number;
@@ -17,6 +19,14 @@ type CookieOptions = {
   sameSite: "lax";
   path: string;
   maxAge: number;
+};
+
+type CustomerPasswordResetPayload = {
+  type: "password_reset";
+  whatsapp: string;
+  jti: string;
+  iat: number;
+  exp: number;
 };
 
 function getAuthSecret() {
@@ -47,6 +57,66 @@ export async function hashCustomerOtpToken(token: string) {
   const secret = getAuthSecret();
   if (!secret) return "";
   return createHmac("sha256", secret).update(`otp:${token}`).digest("hex");
+}
+
+export async function hashCustomerResetTokenId(jti: string) {
+  const secret = getAuthSecret();
+  if (!secret) return "";
+  return createHmac("sha256", secret).update(`reset:${jti}`).digest("hex");
+}
+
+export function buildCustomerPasswordResetToken(input: { whatsapp: string }) {
+  const secret = getAuthSecret();
+  if (!secret) return null;
+
+  const whatsapp = String(input.whatsapp || "").replace(/\D/g, "");
+  if (!whatsapp.match(/^\d{10,13}$/)) return null;
+
+  const jti = randomUUID();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const exp = nowSeconds + CUSTOMER_PASSWORD_RESET_DURATION_SECONDS;
+  const token = jwt.sign(
+    {
+      type: "password_reset",
+      whatsapp,
+      jti,
+    },
+    secret,
+    {
+      algorithm: "HS256",
+      expiresIn: CUSTOMER_PASSWORD_RESET_DURATION_SECONDS,
+    },
+  );
+
+  return {
+    token,
+    jti,
+    expiraEm: new Date(exp * 1000).toISOString(),
+  };
+}
+
+export function verifyCustomerPasswordResetToken(token: string | undefined): CustomerPasswordResetPayload | null {
+  if (!token) return null;
+  const secret = getAuthSecret();
+  if (!secret) return null;
+
+  try {
+    const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] }) as Partial<CustomerPasswordResetPayload>;
+    if (!decoded || decoded.type !== "password_reset") return null;
+    if (!String(decoded.whatsapp || "").match(/^\d{10,13}$/)) return null;
+    if (!String(decoded.jti || "").trim()) return null;
+    if (!Number.isInteger(decoded.exp) || !Number.isInteger(decoded.iat)) return null;
+
+    return {
+      type: "password_reset",
+      whatsapp: String(decoded.whatsapp),
+      jti: String(decoded.jti),
+      iat: Number(decoded.iat),
+      exp: Number(decoded.exp),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function buildCustomerSessionToken(input: { clienteId: number; whatsapp: string }) {
