@@ -11,6 +11,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",
     "@types/jsonwebtoken": "^9.0.10",
+    "@vonage/server-sdk": "^3.26.4",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.575.0",
     "mercadopago": "^2.0.15",
