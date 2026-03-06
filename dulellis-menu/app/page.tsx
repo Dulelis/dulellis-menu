@@ -934,11 +934,6 @@ function ClientePageContent() {
       }
       if (loading || estoqueEmAtualizacao[produto.id]) return;
 
-      const produtoAtual = produtos.find((i) => i.id === produto.id);
-      if (produtoAtual && Number(produtoAtual.quantidade ?? 0) <= 2) {
-        alert("Este item esta acabando! Ultimas unidades.");
-      }
-
       setItemEstoqueProcessando(produto.id, true);
       try {
         const reservou = await atualizarQuantidadeEstoque(produto.id, -1);
@@ -1760,9 +1755,9 @@ function ClientePageContent() {
                       <p className="text-[11px] leading-[1.25] text-slate-500 mt-1 line-clamp-2">
                         {String(prod.descricao || "").trim() || "Confira essa delicia da Dulelis."}
                       </p>
-                      {Number(prod.quantidade ?? 0) <= 2 && (
+                      {Number(prod.quantidade ?? 0) === 1 && (
                         <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-500 mt-1">
-                          Esta acabando
+                          Tem so mais um
                         </p>
                       )}
                       <div className="mt-1 flex items-center justify-between gap-2">
