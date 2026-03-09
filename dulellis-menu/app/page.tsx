@@ -207,40 +207,74 @@ function montarCupomEscPos(input: {
   totalPedido: number;
 }) {
   const reset = "\x1b\x40";
+  const alinharCentro = "\x1b\x61\x01";
+  const alinharEsquerda = "\x1b\x61\x00";
+  const fonteCompacta = "\x1b\x4d\x01";
+  const espacamentoCompacto = "\x1b\x33\x12";
   const negritoOn = "\x1b\x45\x01\x1b\x47\x01";
   const negritoOff = "\x1b\x45\x00\x1b\x47\x00";
-  const corte = "\x1d\x56\x00";
+  const avancoMinimo = "\n\n";
+  const corte = "\x1d\x56\x41\x03";
+  const larguraLinha = 32;
+
+  const quebrarLinha = (texto: string, largura = larguraLinha) => {
+    const bruto = String(texto || "").trim();
+    if (!bruto) return [];
+    const palavras = bruto.split(/\s+/);
+    const linhas: string[] = [];
+    let atual = "";
+
+    for (const palavra of palavras) {
+      const tentativa = atual ? `${atual} ${palavra}` : palavra;
+      if (tentativa.length <= largura) {
+        atual = tentativa;
+        continue;
+      }
+      if (atual) linhas.push(atual);
+      atual = palavra;
+    }
+
+    if (atual) linhas.push(atual);
+    return linhas;
+  };
+
+  const formatarValor = (valor: number) => `R$ ${valor.toFixed(2)}`;
+
+  const linhasMeta = [
+    `PEDIDO ${input.pedidoId}`,
+    `CLI: ${input.clienteNome}`,
+    `END: ${input.endereco}`,
+    `REF: ${input.pontoReferencia || "Nao informado"}`,
+    `PGTO: ${input.pagamento}`,
+  ]
+    .flatMap((linha) => quebrarLinha(linha))
+    .join("\n");
 
   const linhasItens = input.itens
     .map((item) => {
       const totalItem = Number(item.preco || 0) * Number(item.qtd || 0);
-      return `${item.qtd}x ${item.nome}  R$ ${totalItem.toFixed(2)}`;
+      return quebrarLinha(`${item.qtd}x ${item.nome} ${formatarValor(totalItem)}`).join("\n");
     })
     .join("\n");
 
   const subtotalSemFrete = Math.max(0, Number(input.totalPedido) - Number(input.taxaEntrega || 0));
   const descontoLinha =
     Number(input.descontoPromocoes || 0) > 0
-      ? `Descontos: -R$ ${Number(input.descontoPromocoes || 0).toFixed(2)}\n`
+      ? `DESC: -${formatarValor(Number(input.descontoPromocoes || 0))}\n`
       : "";
 
   const textoCupom =
-    `DULELIS CONFEITARIA\n` +
-    `Pedido #${input.pedidoId}\n` +
-    `------------------------------\n` +
-    `Cliente: ${input.clienteNome}\n` +
-    `Endereco: ${input.endereco}\n` +
-    `Ponto Ref.: ${input.pontoReferencia || "Nao informado"}\n` +
-    `Pagamento: ${input.pagamento}\n` +
-    `------------------------------\n` +
+    `${alinharCentro}DULELIS CONFEITARIA\n${alinharEsquerda}` +
+    `${linhasMeta}\n` +
+    `--------------------------------\n` +
     `${linhasItens}\n` +
-    `------------------------------\n` +
-    `Subtotal: R$ ${subtotalSemFrete.toFixed(2)}\n` +
-    `Taxa entrega: R$ ${Number(input.taxaEntrega || 0).toFixed(2)}\n` +
+    `--------------------------------\n` +
+    `SUBT: ${formatarValor(subtotalSemFrete)}\n` +
+    `FRETE: ${formatarValor(Number(input.taxaEntrega || 0))}\n` +
     descontoLinha +
-    `TOTAL: R$ ${Number(input.totalPedido).toFixed(2)}\n\n`;
+    `TOTAL: ${formatarValor(Number(input.totalPedido))}\n`;
 
-  return reset + negritoOn + textoCupom + negritoOff + corte;
+  return reset + fonteCompacta + espacamentoCompacto + negritoOn + textoCupom + negritoOff + avancoMinimo + corte;
 }
 
 function primeiroNome(nome: string) {
@@ -1373,13 +1407,14 @@ function ClientePageContent() {
                 <meta charset="utf-8" />
                 <title>Pedido #${pedidoId}</title>
                 <style>
-                  body { font-family: Arial, sans-serif; margin: 12px; color: #111; }
-                  h1 { margin: 0 0 8px; font-size: 16px; }
-                  .meta { font-size: 12px; margin-bottom: 4px; }
-                  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-                  td { font-size: 12px; padding: 4px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
-                  .totais { margin-top: 10px; font-size: 12px; }
-                  .linha-total { font-weight: 700; font-size: 14px; margin-top: 4px; }
+                  @page { margin: 4mm; }
+                  body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 11px; font-weight: 700; }
+                  h1 { margin: 0 0 4px; font-size: 13px; text-align: center; }
+                  .meta { font-size: 10px; margin-bottom: 2px; line-height: 1.15; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+                  td { font-size: 10px; padding: 2px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
+                  .totais { margin-top: 4px; font-size: 10px; }
+                  .linha-total { font-weight: 700; font-size: 12px; margin-top: 4px; }
                 </style>
               </head>
               <body>
