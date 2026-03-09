@@ -1338,11 +1338,17 @@ function ClientePageContent() {
         let impressaoDiretaConcluida = false;
         if (qzGlobal?.websocket && qzGlobal?.configs && qzGlobal?.print) {
           try {
-            if (!qzGlobal.websocket.isActive()) {
-              await qzGlobal.websocket.connect();
+            const websocket = qzGlobal.websocket;
+            const configs = qzGlobal.configs;
+            const print = qzGlobal.print;
+            if (!websocket.isActive || !websocket.connect || !configs.create) {
+              throw new Error("QZ Tray indisponivel para impressao direta.");
             }
-            const config = qzGlobal.configs.create(QZ_PRINTER_NAME);
-            await qzGlobal.print(config, [{ type: "raw", format: "command", data: impressaoFinal }]);
+            if (!websocket.isActive()) {
+              await websocket.connect();
+            }
+            const config = configs.create(QZ_PRINTER_NAME);
+            await print(config, [{ type: "raw", format: "command", data: impressaoFinal }]);
             impressaoDiretaConcluida = true;
           } catch (error) {
             console.error("Falha ao imprimir em modo ESC/POS. Usando popup:", error);
