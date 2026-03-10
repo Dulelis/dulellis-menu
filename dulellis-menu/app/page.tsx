@@ -633,13 +633,18 @@ function ClientePageContent() {
             .maybeSingle(),
         ]);
 
-      if (errProd || errTax) {
+      if (errProd) {
         const detalhes = [errProd?.message, errTax?.message].filter(Boolean).join(" | ");
-        throw new Error(`Erro ao conectar com Supabase${detalhes ? `: ${detalhes}` : ""}`);
+        throw new Error(`Erro ao carregar produtos${detalhes ? `: ${detalhes}` : ""}`);
       }
 
       setProdutos((resProdutos ?? []) as Produto[]);
-      setTaxas((resTaxas ?? []) as TaxaEntregaRow[]);
+      if (errTax) {
+        console.warn("Falha ao carregar taxas de entrega. Seguindo com lista vazia.", errTax.message);
+        setTaxas([]);
+      } else {
+        setTaxas((resTaxas ?? []) as TaxaEntregaRow[]);
+      }
       if (errProm) {
         console.warn("Falha ao carregar promocoes. Seguindo sem promocoes.", errProm.message);
         setPromocoes([]);
@@ -667,7 +672,7 @@ function ClientePageContent() {
       }
     } catch (e) {
       console.error("Erro Supabase:", e);
-      alert("Erro ao carregar cardápio. Verifique sua conexão.");
+      alert(obterMensagemErro(e) || "Erro ao carregar cardápio. Verifique sua conexão.");
     } finally {
       setLoading(false);
     }
@@ -815,20 +820,32 @@ function ClientePageContent() {
       }, 250);
     };
 
-    const channel = supabase
-      .channel("cliente-vitrine-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "estoque" }, agendarVitrine)
-      .on("postgres_changes", { event: "*", schema: "public", table: "taxas_entrega" }, agendarVitrine)
-      .on("postgres_changes", { event: "*", schema: "public", table: "promocoes" }, agendarVitrine)
-      .on("postgres_changes", { event: "*", schema: "public", table: "propagandas" }, agendarVitrine)
-      .on("postgres_changes", { event: "*", schema: "public", table: "configuracoes_loja" }, agendarVitrine)
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel("cliente-vitrine-realtime")
+        .on("postgres_changes", { event: "*", schema: "public", table: "estoque" }, agendarVitrine)
+        .on("postgres_changes", { event: "*", schema: "public", table: "taxas_entrega" }, agendarVitrine)
+        .on("postgres_changes", { event: "*", schema: "public", table: "promocoes" }, agendarVitrine)
+        .on("postgres_changes", { event: "*", schema: "public", table: "propagandas" }, agendarVitrine)
+        .on("postgres_changes", { event: "*", schema: "public", table: "configuracoes_loja" }, agendarVitrine)
+        .subscribe();
+    } catch (error) {
+      console.warn("Realtime da vitrine indisponivel. Mantendo recarga automatica.", error);
+    }
+
+    const timer = window.setInterval(() => {
+      void carregarDadosIniciais();
+    }, 5000);
 
     return () => {
+      window.clearInterval(timer);
       if (recarregarVitrineRef.current) {
         window.clearTimeout(recarregarVitrineRef.current);
       }
-      void supabase.removeChannel(channel);
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
     };
   }, [carregarDadosIniciais]);
 
