@@ -609,9 +609,11 @@ function ClientePageContent() {
     [descontoPromocoes, subtotal, taxaEntrega],
   );
 
-  const carregarDadosIniciais = useCallback(async () => {
+  const carregarDadosIniciais = useCallback(async (mostrarLoading = true) => {
     try {
-      setLoading(true);
+      if (mostrarLoading) {
+        setLoading(true);
+      }
 
       const [
         { data: resProdutos, error: errProd },
@@ -674,7 +676,9 @@ function ClientePageContent() {
       console.error("Erro Supabase:", e);
       alert(obterMensagemErro(e) || "Erro ao carregar cardápio. Verifique sua conexão.");
     } finally {
-      setLoading(false);
+      if (mostrarLoading) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -807,7 +811,7 @@ function ClientePageContent() {
   );
 
   useEffect(() => {
-    carregarDadosIniciais();
+    void carregarDadosIniciais(true);
   }, [carregarDadosIniciais]);
 
   useEffect(() => {
@@ -816,7 +820,7 @@ function ClientePageContent() {
         window.clearTimeout(recarregarVitrineRef.current);
       }
       recarregarVitrineRef.current = window.setTimeout(() => {
-        void carregarDadosIniciais();
+        void carregarDadosIniciais(false);
       }, 250);
     };
 
@@ -835,7 +839,7 @@ function ClientePageContent() {
     }
 
     const timer = window.setInterval(() => {
-      void carregarDadosIniciais();
+      void carregarDadosIniciais(false);
     }, 5000);
 
     return () => {
