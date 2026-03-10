@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Script from "next/script";
 import { useSearchParams } from "next/navigation";
@@ -521,6 +521,8 @@ function ClientePageContent() {
   const [resetToken, setResetToken] = useState("");
   const [resetNovaSenha, setResetNovaSenha] = useState("");
   const [resetCodigoEnviado, setResetCodigoEnviado] = useState(false);
+  const recarregarVitrineRef = useRef<number | null>(null);
+  const recarregarAcompanhamentoRef = useRef<number | null>(null);
 
   const subtotal = useMemo(
     () => carrinho.reduce((acc, i) => acc + i.preco * i.qtd, 0),
@@ -801,6 +803,33 @@ function ClientePageContent() {
 
   useEffect(() => {
     carregarDadosIniciais();
+  }, [carregarDadosIniciais]);
+
+  useEffect(() => {
+    const agendarVitrine = () => {
+      if (recarregarVitrineRef.current) {
+        window.clearTimeout(recarregarVitrineRef.current);
+      }
+      recarregarVitrineRef.current = window.setTimeout(() => {
+        void carregarDadosIniciais();
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel("cliente-vitrine-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "estoque" }, agendarVitrine)
+      .on("postgres_changes", { event: "*", schema: "public", table: "taxas_entrega" }, agendarVitrine)
+      .on("postgres_changes", { event: "*", schema: "public", table: "promocoes" }, agendarVitrine)
+      .on("postgres_changes", { event: "*", schema: "public", table: "propagandas" }, agendarVitrine)
+      .on("postgres_changes", { event: "*", schema: "public", table: "configuracoes_loja" }, agendarVitrine)
+      .subscribe();
+
+    return () => {
+      if (recarregarVitrineRef.current) {
+        window.clearTimeout(recarregarVitrineRef.current);
+      }
+      void supabase.removeChannel(channel);
+    };
   }, [carregarDadosIniciais]);
 
   const carregarSessaoCliente = useCallback(async () => {
@@ -1205,6 +1234,39 @@ function ClientePageContent() {
       setCarregandoAcompanhamento(false);
     }
   }, [whatsappAcompanhamento]);
+
+  useEffect(() => {
+    const zapMonitorado = normalizarNumero(whatsappAcompanhamento || authWhatsapp || "");
+    if (zapMonitorado.length < 10) return;
+
+    const atualizarStatus = () => {
+      if (recarregarAcompanhamentoRef.current) {
+        window.clearTimeout(recarregarAcompanhamentoRef.current);
+      }
+      recarregarAcompanhamentoRef.current = window.setTimeout(() => {
+        void fetch(`/api/public/order-status?whatsapp=${encodeURIComponent(zapMonitorado)}`, {
+          cache: "no-store",
+        })
+          .then((res) => res.json().catch(() => ({})))
+          .then((json) => {
+            setPedidoAcompanhamento(((json as { data?: PedidoAcompanhamento | null }).data || null) as PedidoAcompanhamento | null);
+          })
+          .catch(() => undefined);
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel(`cliente-pedido-${zapMonitorado}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, atualizarStatus)
+      .subscribe();
+
+    return () => {
+      if (recarregarAcompanhamentoRef.current) {
+        window.clearTimeout(recarregarAcompanhamentoRef.current);
+      }
+      void supabase.removeChannel(channel);
+    };
+  }, [authWhatsapp, whatsappAcompanhamento]);
 
   async function verificarDisponibilidadeAcompanhamento(whatsappBase: string) {
     const zap = normalizarNumero(whatsappBase);

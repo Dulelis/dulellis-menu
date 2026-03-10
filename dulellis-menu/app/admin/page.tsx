@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @next/next/no-img-element */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   Package, Users, PlusCircle, Minus, Plus, 
@@ -121,6 +121,7 @@ export default function AdminPage() {
   const [pedidosSelecionadosPorCliente, setPedidosSelecionadosPorCliente] = useState<Record<number, number[]>>({});
   const [pedidosSelecionadosVendas, setPedidosSelecionadosVendas] = useState<number[]>([]);
   const [pedidoAtualizandoId, setPedidoAtualizandoId] = useState<number | null>(null);
+  const recarregarRealtimeRef = useRef<number | null>(null);
   const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
     categoria,
     itens: estoque.filter((item) => String(item.categoria || '').trim().toLowerCase() === categoria.toLowerCase()),
@@ -206,12 +207,35 @@ export default function AdminPage() {
   }, [carregarDados]);
 
   useEffect(() => {
+    const agendarRecarga = () => {
+      if (recarregarRealtimeRef.current) {
+        window.clearTimeout(recarregarRealtimeRef.current);
+      }
+      recarregarRealtimeRef.current = window.setTimeout(() => {
+        void carregarDados();
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel('admin-realtime-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, agendarRecarga)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'estoque' }, agendarRecarga)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'taxas_entrega' }, agendarRecarga)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'promocoes' }, agendarRecarga)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'propagandas' }, agendarRecarga)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes_loja' }, agendarRecarga)
+      .subscribe();
+
     const timer = window.setInterval(() => {
       void carregarDados();
-    }, 8000);
+    }, 30000);
 
     return () => {
       window.clearInterval(timer);
+      if (recarregarRealtimeRef.current) {
+        window.clearTimeout(recarregarRealtimeRef.current);
+      }
+      void supabase.removeChannel(channel);
     };
   }, [carregarDados]);
 
