@@ -137,11 +137,12 @@ type PedidoAcompanhamento = {
   whatsapp: string;
   total: number;
   forma_pagamento: string;
+  status_pedido: string;
   status_pagamento: string;
   pagamento_referencia: string;
   pagamento_id: string;
   created_at: string;
-  status_chave: "aprovado" | "pendente" | "recusado" | "recebido";
+  status_chave: "aguardando_aceite" | "recebido" | "em_preparo" | "saiu_entrega" | "aprovado" | "pendente" | "recusado";
   status_texto: string;
 };
 
@@ -2227,6 +2228,12 @@ function ClientePageContent() {
                   className={`text-sm font-black ${
                     pedidoAcompanhamento.status_chave === "aprovado"
                       ? "text-green-600"
+                      : pedidoAcompanhamento.status_chave === "saiu_entrega"
+                        ? "text-sky-600"
+                        : pedidoAcompanhamento.status_chave === "em_preparo"
+                          ? "text-orange-600"
+                          : pedidoAcompanhamento.status_chave === "aguardando_aceite"
+                            ? "text-violet-600"
                       : pedidoAcompanhamento.status_chave === "pendente"
                         ? "text-amber-600"
                         : pedidoAcompanhamento.status_chave === "recusado"

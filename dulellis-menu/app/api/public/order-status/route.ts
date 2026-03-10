@@ -9,6 +9,7 @@ type PedidoStatus = {
   whatsapp?: string | null;
   total?: number | null;
   forma_pagamento?: string | null;
+  status_pedido?: string | null;
   status_pagamento?: string | null;
   pagamento_referencia?: string | null;
   pagamento_id?: string | null;
@@ -28,6 +29,20 @@ function whatsappEquivalente(a: string, b: string): boolean {
 }
 
 function statusResumo(pedido: PedidoStatus) {
+  const statusPedido = String(pedido.status_pedido || "").trim().toLowerCase();
+  if (["aguardando_aceite", "novo", "pendente_aceite"].includes(statusPedido)) {
+    return { chave: "aguardando_aceite", texto: "Aguardando aceite da loja" };
+  }
+  if (["recebido", "aceito"].includes(statusPedido)) {
+    return { chave: "recebido", texto: "Pedido recebido" };
+  }
+  if (["em_preparo", "preparo", "preparando"].includes(statusPedido)) {
+    return { chave: "em_preparo", texto: "Pedido em preparo" };
+  }
+  if (["saiu_entrega", "saiu_para_entrega", "entrega"].includes(statusPedido)) {
+    return { chave: "saiu_entrega", texto: "Saiu para entrega" };
+  }
+
   const status = String(pedido.status_pagamento || "").trim().toLowerCase();
   if (["approved", "paid", "authorized", "pago"].includes(status)) {
     return { chave: "aprovado", texto: "Pagamento aprovado" };
@@ -89,7 +104,9 @@ export async function GET(request: Request) {
   }
 
   const tentativasSelect = [
-    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,pagamento_referencia,pagamento_id,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,pagamento_id,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,pagamento_referencia,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,pagamento_referencia,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,pagamento_referencia,created_at",
     "id,cliente_nome,whatsapp,total,created_at",
@@ -151,6 +168,7 @@ export async function GET(request: Request) {
       whatsapp: zap,
       total: Number(pedidoFinal.total || 0),
       forma_pagamento: String(pedidoFinal.forma_pagamento || "").trim(),
+      status_pedido: String(pedidoFinal.status_pedido || "").trim(),
       status_pagamento: String(pedidoFinal.status_pagamento || "").trim(),
       pagamento_referencia: String(pedidoFinal.pagamento_referencia || "").trim(),
       pagamento_id: String(pedidoFinal.pagamento_id || "").trim(),

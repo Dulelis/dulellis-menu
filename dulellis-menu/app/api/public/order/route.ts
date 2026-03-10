@@ -213,6 +213,7 @@ export async function POST(request: NextRequest) {
     forma_pagamento: formaPagamento,
     pagamento_referencia: referencia || null,
     status_pagamento: formaPagamento === "Pix" ? "pending" : null,
+    status_pedido: "aguardando_aceite",
   };
 
   const pedidoPayloadComForma = {
@@ -221,6 +222,7 @@ export async function POST(request: NextRequest) {
     itens: itensPedido,
     total,
     forma_pagamento: formaPagamento,
+    status_pedido: "aguardando_aceite",
   };
   const pedidoPayloadLegado = {
     cliente_nome: payloadCliente.nome,

@@ -20,6 +20,26 @@ const DIAS_SEMANA = [
   { key: 'sabado', label: 'Sabado' },
 ] as const;
 const CATEGORIAS_ESTOQUE = ['Bolos', 'Doces', 'Salgados', 'Bebidas'] as const;
+const STATUS_PEDIDO_LABELS: Record<string, string> = {
+  aguardando_aceite: 'Aguardando aceite',
+  recebido: 'Recebido',
+  em_preparo: 'Em preparo',
+  saiu_entrega: 'Saiu para entrega',
+};
+
+const STATUS_PEDIDO_CORES: Record<string, string> = {
+  aguardando_aceite: 'bg-violet-50 text-violet-700 border-violet-200',
+  recebido: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  em_preparo: 'bg-amber-50 text-amber-700 border-amber-200',
+  saiu_entrega: 'bg-sky-50 text-sky-700 border-sky-200',
+};
+
+const STATUS_PEDIDO_FLUXO: Record<string, { label: string; proximo: string } | null> = {
+  aguardando_aceite: { label: 'Aceitar pedido', proximo: 'recebido' },
+  recebido: { label: 'Colocar em preparo', proximo: 'em_preparo' },
+  em_preparo: { label: 'Saiu para entrega', proximo: 'saiu_entrega' },
+  saiu_entrega: null,
+};
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('estoque');
@@ -100,6 +120,7 @@ export default function AdminPage() {
   const [clienteHistoricoAbertoId, setClienteHistoricoAbertoId] = useState<number | null>(null);
   const [pedidosSelecionadosPorCliente, setPedidosSelecionadosPorCliente] = useState<Record<number, number[]>>({});
   const [pedidosSelecionadosVendas, setPedidosSelecionadosVendas] = useState<number[]>([]);
+  const [pedidoAtualizandoId, setPedidoAtualizandoId] = useState<number | null>(null);
   const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
     categoria,
     itens: estoque.filter((item) => String(item.categoria || '').trim().toLowerCase() === categoria.toLowerCase()),
@@ -751,6 +772,15 @@ export default function AdminPage() {
   };
 
   const normalizarNumero = (valor: string) => valor.replace(/\D/g, '');
+  const normalizarStatusPedido = (pedido: any) => {
+    const status = String(pedido?.status_pedido || '').trim().toLowerCase();
+    if (status in STATUS_PEDIDO_LABELS) return status;
+    return 'aguardando_aceite';
+  };
+  const obterRotuloStatusPedido = (pedido: any) => STATUS_PEDIDO_LABELS[normalizarStatusPedido(pedido)] || 'Aguardando aceite';
+  const obterClasseStatusPedido = (pedido: any) =>
+    STATUS_PEDIDO_CORES[normalizarStatusPedido(pedido)] || STATUS_PEDIDO_CORES.aguardando_aceite;
+  const obterProximoFluxoPedido = (pedido: any) => STATUS_PEDIDO_FLUXO[normalizarStatusPedido(pedido)] || null;
   const extrairPontoReferencia = (cliente: any) => {
     const pontoDireto = String(cliente?.ponto_referencia || '').trim();
     if (pontoDireto) return pontoDireto;
@@ -773,6 +803,28 @@ export default function AdminPage() {
     const nomeCliente = String(nome || '').trim();
     setClienteEmFoco({ whatsapp: zap, nome: nomeCliente });
     setActiveTab('clientes');
+  };
+
+  const atualizarStatusPedido = async (pedidoId: number, proximoStatus: string) => {
+    setPedidoAtualizandoId(pedidoId);
+    try {
+      await adminDb({
+        action: 'update_eq',
+        table: 'pedidos',
+        payload: { status_pedido: proximoStatus },
+        eq: { column: 'id', value: pedidoId },
+      });
+      await carregarDados();
+    } catch (error: any) {
+      const mensagem = String(error?.message || '');
+      if (mensagem.toLowerCase().includes('column') || mensagem.toLowerCase().includes('schema cache')) {
+        alert('A coluna status_pedido ainda nao existe no banco. Rode a migracao SQL antes de usar o fluxo de aceite.');
+        return;
+      }
+      alert(`Erro ao atualizar status do pedido: ${mensagem || 'falha inesperada.'}`);
+    } finally {
+      setPedidoAtualizandoId(null);
+    }
   };
 
   const imprimirCadastroCliente = (cliente: any) => {
@@ -1731,6 +1783,12 @@ export default function AdminPage() {
                             <button type="button" onClick={() => irParaCadastroCliente(pedido.whatsapp, pedido.cliente_nome)} className="text-left flex-1 hover:opacity-80 transition-opacity">
                               <p className="text-sm font-black text-slate-800 leading-tight">{pedido.cliente_nome || 'Cliente sem nome'}</p>
                               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{pedido.whatsapp || 'sem número'}</p>
+                              <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterClasseStatusPedido(pedido)}`}>
+                                {obterRotuloStatusPedido(pedido)}
+                              </div>
+                              <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterClasseStatusPedido(pedido)}`}>
+                                {obterRotuloStatusPedido(pedido)}
+                              </div>
                               <p className="text-sm font-black text-green-600 mt-1">R$ {Number(pedido.total || 0).toFixed(2)}</p>
                             </button>
                             <input
@@ -1740,6 +1798,20 @@ export default function AdminPage() {
                               onChange={() => alternarSelecaoVenda(pedido.id)}
                             />
                           </div>
+                          {obterProximoFluxoPedido(pedido) ? (
+                            <button
+                              type="button"
+                              onClick={() => void atualizarStatusPedido(pedido.id, obterProximoFluxoPedido(pedido)?.proximo || 'recebido')}
+                              disabled={pedidoAtualizandoId === pedido.id}
+                              className="mt-3 w-full rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {pedidoAtualizandoId === pedido.id ? 'Atualizando...' : obterProximoFluxoPedido(pedido)?.label}
+                            </button>
+                          ) : (
+                            <p className="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                              Fluxo operacional concluido
+                            </p>
+                          )}
                         </div>
                       )) : <p className="text-slate-400 italic text-sm text-center py-6">Sem vendas hoje.</p>}
                     </div>
