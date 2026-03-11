@@ -1164,7 +1164,7 @@ function ClientePageContent() {
         throw new Error(json.error || json.message || bruto || "Falha ao solicitar token.");
       }
       setResetCodigoEnviado(true);
-      alert(json.message || "Link de recuperacao enviado por e-mail.");
+      alert(json.message || "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperacao em instantes.");
     } catch (error) {
       alert(obterMensagemErro(error) || "Nao foi possivel enviar o link.");
     } finally {
@@ -2290,6 +2290,10 @@ function ClientePageContent() {
                 <>
                   {resetCodigoEnviado ? (
                     <>
+                      <p className="text-[11px] rounded-2xl bg-amber-50 border border-amber-100 p-3 text-amber-700 font-bold">
+                        Se o e-mail estiver cadastrado, voce recebera um link de recuperacao. Ao abrir o link, volte aqui
+                        para definir a nova senha.
+                      </p>
                       {resetToken ? (
                         <p className="text-[11px] rounded-2xl bg-blue-50 border border-blue-100 p-3 text-blue-700 font-bold">
                           Link de recuperacao validado. Defina sua nova senha.
@@ -2320,15 +2324,20 @@ function ClientePageContent() {
                       </button>
                     </>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => void solicitarTokenRecuperacao()}
-                      disabled={authCarregando}
-                      className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
-                    >
-                      {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
-                      Enviar link por e-mail
-                    </button>
+                    <>
+                      <p className="text-[11px] rounded-2xl bg-slate-50 border border-slate-200 p-3 text-slate-600 font-bold">
+                        Informe o e-mail cadastrado para receber o link de recuperacao de senha.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void solicitarTokenRecuperacao()}
+                        disabled={authCarregando}
+                        className="w-full p-4 rounded-2xl bg-pink-600 text-white font-black uppercase tracking-widest text-xs disabled:opacity-60 flex items-center justify-center gap-2"
+                      >
+                        {authCarregando ? <Loader2 size={16} className="animate-spin" /> : null}
+                        Enviar link por e-mail
+                      </button>
+                    </>
                   )}
                   <button
                     type="button"

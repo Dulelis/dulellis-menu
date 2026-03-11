@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       data: { sent: true },
-      message: "Se o e-mail estiver cadastrado, voce recebera um link de recuperacao.",
+      message: "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperacao em instantes.",
     });
   }
 
@@ -99,8 +99,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "Tabela de reset por e-mail ausente. Rode sql/upgrade_clientes_auth_email.sql e sql/upgrade_clientes_password_reset.sql.",
+        error: "A recuperacao de senha esta temporariamente indisponivel. Tente novamente em alguns minutos.",
       },
       { status: 500 },
     );
@@ -120,6 +119,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     data: { sent: true },
-    message: "Enviamos um link de recuperacao por e-mail.",
+    message: "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperacao em instantes.",
   });
 }

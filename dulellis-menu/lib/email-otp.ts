@@ -36,8 +36,15 @@ export async function enviarLinkRecuperacaoPorEmail(args: {
   const email = normalizarEmail(args.email);
   const from = String(process.env.EMAIL_OTP_FROM || "").trim();
   const assunto = "Recuperacao de senha - Dulelis";
-  const texto = `Clique no link para redefinir sua senha (valido por ${args.minutos} minutos): ${args.resetUrl}`;
-  const html = `<p>Clique no link para redefinir sua senha (valido por ${args.minutos} minutos):</p><p><a href="${args.resetUrl}">${args.resetUrl}</a></p>`;
+  const texto =
+    `Recebemos um pedido para redefinir sua senha na Dulelis.\n\n` +
+    `Use o link abaixo em ate ${args.minutos} minutos:\n${args.resetUrl}\n\n` +
+    `Se voce nao pediu a redefinicao, pode ignorar este e-mail.`;
+  const html =
+    `<p>Recebemos um pedido para redefinir sua senha na Dulelis.</p>` +
+    `<p>Use o link abaixo em ate ${args.minutos} minutos:</p>` +
+    `<p><a href="${args.resetUrl}">${args.resetUrl}</a></p>` +
+    `<p>Se voce nao pediu a redefinicao, pode ignorar este e-mail.</p>`;
 
   const webhookUrl = String(process.env.EMAIL_OTP_API_URL || "").trim();
   if (webhookUrl) {
