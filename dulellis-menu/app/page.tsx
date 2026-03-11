@@ -693,6 +693,58 @@ function ClientePageContent() {
     [cliente.cidade, taxas],
   );
 
+  const buscarCepPorEndereco = useCallback(async () => {
+    const rua = String(cliente.endereco || "").trim();
+    const bairroAtual = normalizarTexto(String(cliente.bairro || ""));
+    const cidadeAtual = String(cliente.cidade || DEFAULT_CITY).trim() || DEFAULT_CITY;
+
+    if (rua.length < 3) {
+      alert("Informe a rua para localizar o CEP.");
+      return;
+    }
+
+    setBuscandoCep(true);
+    try {
+      const url = `https://viacep.com.br/ws/SC/${encodeURIComponent(cidadeAtual)}/${encodeURIComponent(rua)}/json/`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error("Falha ao buscar CEP pelo endereco.");
+      }
+
+      const resultados = (await res.json().catch(() => [])) as Array<{
+        cep?: string;
+        logradouro?: string;
+        bairro?: string;
+        localidade?: string;
+      }>;
+
+      if (!Array.isArray(resultados) || !resultados.length || "erro" in (resultados[0] || {})) {
+        throw new Error("CEP nao encontrado para esse endereco.");
+      }
+
+      const resultado =
+        resultados.find((item) => {
+          const bairroItem = normalizarTexto(String(item.bairro || ""));
+          if (!bairroAtual) return true;
+          return bairroItem.includes(bairroAtual) || bairroAtual.includes(bairroItem);
+        }) || resultados[0];
+
+      const cepEncontrado = normalizarNumero(String(resultado.cep || "")).slice(0, 8);
+      if (cepEncontrado.length !== 8) {
+        throw new Error("CEP nao encontrado para esse endereco.");
+      }
+
+      await executarBuscaCep(cepEncontrado);
+    } catch (error) {
+      setDistanciaKm(null);
+      setTaxaEntrega(0);
+      setMsgTaxa("Nao foi possivel localizar o CEP pelo endereco.");
+      alert(obterMensagemErro(error) || "Nao foi possivel localizar o CEP pelo endereco.");
+    } finally {
+      setBuscandoCep(false);
+    }
+  }, [cliente.bairro, cliente.cidade, cliente.endereco, executarBuscaCep]);
+
   const executarBuscaCliente = useCallback(
     async (zap: string) => {
       setBuscandoCliente(true);
@@ -2577,6 +2629,15 @@ function ClientePageContent() {
                     disabled
                   />
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => void buscarCepPorEndereco()}
+                  disabled={buscandoCep || !cliente.endereco.trim()}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
+                >
+                  Nao sei o CEP, localizar pelo endereco
+                </button>
 
                 <div className="grid grid-cols-4 gap-3">
                   <label htmlFor="rua" className="sr-only">Rua</label>
