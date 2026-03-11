@@ -949,8 +949,8 @@ export default function AdminPage() {
       '\n\n' +
       '\x1d\x56\x41\x03';
   };
-  const imprimirPedidoAceito = async (pedido: any) => {
-    const popup = window.open('', '_blank', 'width=420,height=760');
+  const imprimirPedidoAceito = async (pedido: any, popupExistente?: Window | null) => {
+    const popup = popupExistente || window.open('', '_blank', 'width=420,height=760');
     const pagamento = obterResumoPagamento(pedido);
     const pontoReferencia = extrairPontoReferencia(pedido);
     const enderecoSemPonto = extrairEnderecoSemPonto(pedido);
@@ -1038,6 +1038,9 @@ export default function AdminPage() {
 
   const atualizarStatusPedido = async (pedidoId: number, proximoStatus: string) => {
     setPedidoAtualizandoId(pedidoId);
+    const vaiImprimirAoAceitar =
+      Boolean(pedidos.find((item) => Number(item.id) === Number(pedidoId))) && proximoStatus === 'recebido';
+    const popupImpressao = vaiImprimirAoAceitar ? window.open('', '_blank', 'width=420,height=760') : null;
     try {
       const pedidoAtual = pedidos.find((item) => Number(item.id) === Number(pedidoId)) || null;
       await adminDb({
@@ -1047,10 +1050,13 @@ export default function AdminPage() {
         eq: { column: 'id', value: pedidoId },
       });
       if (pedidoAtual && normalizarStatusPedido(pedidoAtual) === 'aguardando_aceite' && proximoStatus === 'recebido') {
-        await imprimirPedidoAceito({ ...pedidoAtual, status_pedido: proximoStatus });
+        await imprimirPedidoAceito({ ...pedidoAtual, status_pedido: proximoStatus }, popupImpressao);
       }
       await carregarDados();
     } catch (error: any) {
+      if (popupImpressao && !popupImpressao.closed) {
+        popupImpressao.close();
+      }
       const mensagem = String(error?.message || '');
       if (mensagem.toLowerCase().includes('column') || mensagem.toLowerCase().includes('schema cache')) {
         alert('A coluna status_pedido ainda nao existe no banco. Rode a migracao SQL antes de usar o fluxo de aceite.');
