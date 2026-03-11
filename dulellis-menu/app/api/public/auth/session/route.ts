@@ -170,6 +170,7 @@ export async function POST(request: NextRequest) {
     email?: string;
     password?: string;
     nome?: string;
+    data_aniversario?: string;
   };
 
   const action = String(body.action || "login");
@@ -183,6 +184,7 @@ export async function POST(request: NextRequest) {
   const email = normalizarEmail(String(body.email || ""));
   const password = String(body.password || "");
   const nome = String(body.nome || "").trim();
+  const dataAniversario = String(body.data_aniversario || "").slice(0, 10);
   if (action === "register" && !emailValido(email)) {
     return NextResponse.json({ ok: false, error: "E-mail invalido." }, { status: 400 });
   }
@@ -227,6 +229,7 @@ export async function POST(request: NextRequest) {
           senha_hash: senhaHash,
           nome: nome || String(existente.nome || ""),
           email,
+          data_aniversario: dataAniversario,
         })
         .eq("id", clienteId);
       if (erroUpdate) {
@@ -244,6 +247,7 @@ export async function POST(request: NextRequest) {
         email,
         whatsapp,
         senha_hash: senhaHash,
+        data_aniversario: dataAniversario,
       };
       const { data: criado, error: erroCriar } = await supabase
         .from("clientes")

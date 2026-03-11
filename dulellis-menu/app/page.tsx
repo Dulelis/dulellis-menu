@@ -167,6 +167,7 @@ type AuthDraft = {
   nome: string;
   email: string;
   whatsapp: string;
+  data_aniversario: string;
 };
 
 type QzGlobal = {
@@ -523,6 +524,7 @@ function ClientePageContent() {
   const [authNome, setAuthNome] = useState("");
   const [authEmail, setAuthEmail] = useState("");
   const [authWhatsapp, setAuthWhatsapp] = useState("");
+  const [authDataAniversario, setAuthDataAniversario] = useState("");
   const [authSenha, setAuthSenha] = useState("");
   const [authCarregando, setAuthCarregando] = useState(false);
   const [sessaoCliente, setSessaoCliente] = useState<SessaoCliente | null>(null);
@@ -914,6 +916,7 @@ function ClientePageContent() {
       setAuthNome(String(draft.nome || ""));
       setAuthEmail(String(draft.email || ""));
       setAuthWhatsapp(String(draft.whatsapp || ""));
+      setAuthDataAniversario(String(draft.data_aniversario || ""));
     } catch {
       window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
     }
@@ -928,16 +931,19 @@ function ClientePageContent() {
       nome: authNome,
       email: authEmail,
       whatsapp: authWhatsapp,
+      data_aniversario: authDataAniversario,
     };
 
-    const temConteudo = [draft.nome, draft.email, draft.whatsapp].some((value) => String(value).trim());
+    const temConteudo = [draft.nome, draft.email, draft.whatsapp, draft.data_aniversario].some((value) =>
+      String(value).trim(),
+    );
     if (!temConteudo && !draft.modalAberto && !draft.modoCadastro) {
       window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
       return;
     }
 
     window.localStorage.setItem(AUTH_DRAFT_STORAGE_KEY, JSON.stringify(draft));
-  }, [authEmail, authModoCadastro, authNome, authWhatsapp, modalAuthAberto]);
+  }, [authDataAniversario, authEmail, authModoCadastro, authNome, authWhatsapp, modalAuthAberto]);
 
   const limparRascunhoAuth = useCallback(() => {
     window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
@@ -977,6 +983,7 @@ function ClientePageContent() {
   const autenticarCliente = useCallback(async () => {
     const zap = normalizarNumero(authWhatsapp);
     const email = String(authEmail || "").trim().toLowerCase();
+    const dataAniversario = String(authDataAniversario || "").slice(0, 10);
     if (authModoCadastro && !authNome.trim()) {
       alert("Informe seu nome.");
       return;
@@ -1005,6 +1012,7 @@ function ClientePageContent() {
           email,
           password: authSenha,
           nome: authNome.trim(),
+          data_aniversario: dataAniversario,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -1017,6 +1025,7 @@ function ClientePageContent() {
       limparRascunhoAuth();
       setAuthNome("");
       setAuthEmail("");
+      setAuthDataAniversario("");
     } catch (error) {
       const mensagem = obterMensagemErro(error) || "Erro ao autenticar.";
       if (!authModoCadastro && mensagem.includes("Cadastro nao encontrado")) {
@@ -1028,7 +1037,16 @@ function ClientePageContent() {
     } finally {
       setAuthCarregando(false);
     }
-  }, [authEmail, authModoCadastro, authNome, authSenha, authWhatsapp, carregarSessaoCliente, limparRascunhoAuth]);
+  }, [
+    authDataAniversario,
+    authEmail,
+    authModoCadastro,
+    authNome,
+    authSenha,
+    authWhatsapp,
+    carregarSessaoCliente,
+    limparRascunhoAuth,
+  ]);
 
   const sairSessaoCliente = useCallback(async () => {
     try {
@@ -2260,12 +2278,20 @@ function ClientePageContent() {
 
             <div className="space-y-3">
               {!authEsqueciSenha && authModoCadastro && (
-                <input
-                  placeholder="Seu nome"
-                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
-                  value={authNome}
-                  onChange={(e) => setAuthNome(e.target.value)}
-                />
+                <>
+                  <input
+                    placeholder="Seu nome"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
+                    value={authNome}
+                    onChange={(e) => setAuthNome(e.target.value)}
+                  />
+                  <input
+                    type="date"
+                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold text-slate-500"
+                    value={authDataAniversario}
+                    onChange={(e) => setAuthDataAniversario(e.target.value)}
+                  />
+                </>
               )}
               {!authEsqueciSenha && (
                 <input
@@ -2339,6 +2365,7 @@ function ClientePageContent() {
                       setResetToken("");
                       setResetNovaSenha("");
                       setAuthEmail("");
+                      setAuthDataAniversario("");
                     }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
                   >
@@ -2374,6 +2401,7 @@ function ClientePageContent() {
                       if (authModoCadastro) {
                         setAuthEmail("");
                         setAuthNome("");
+                        setAuthDataAniversario("");
                       }
                     }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
@@ -2554,17 +2582,6 @@ function ClientePageContent() {
                     onChange={(e) => setCliente((prev) => ({ ...prev, nome: e.target.value }))}
                   />
                 </div>
-
-                <label htmlFor="data_nascimento" className="sr-only">Data de Nascimento</label>
-                <input
-                  id="data_nascimento"
-                  type="date"
-                  value={cliente.data_aniversario}
-                  className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold text-slate-500"
-                  onChange={(e) =>
-                    setCliente((prev) => ({ ...prev, data_aniversario: e.target.value }))
-                  }
-                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="relative">
