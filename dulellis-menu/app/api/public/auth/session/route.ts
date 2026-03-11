@@ -74,23 +74,6 @@ async function buscarClientePorWhatsapp(
   return { error: "", cliente };
 }
 
-async function buscarClientePorEmail(
-  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
-  email: string,
-) {
-  const mail = normalizarEmail(email);
-  const { data, error } = await supabase
-    .from("clientes")
-    .select("id,nome,email,whatsapp,senha_hash,created_at")
-    .eq("email", mail)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) return { error: error.message, cliente: null as null };
-  return { error: "", cliente: data || null };
-}
-
 export async function GET(request: NextRequest) {
   const sessao = getCustomerSessionFromRequest(request);
   if (!sessao) {
@@ -203,8 +186,8 @@ export async function POST(request: NextRequest) {
   if (action === "register" && !emailValido(email)) {
     return NextResponse.json({ ok: false, error: "E-mail invalido." }, { status: 400 });
   }
-  if (action === "login" && whatsapp.length < 10 && !emailValido(email)) {
-    return NextResponse.json({ ok: false, error: "Informe WhatsApp ou e-mail valido." }, { status: 400 });
+  if (action === "login" && whatsapp.length < 10) {
+    return NextResponse.json({ ok: false, error: "Informe um WhatsApp valido." }, { status: 400 });
   }
   if (action === "register" && whatsapp.length < 10) {
     return NextResponse.json({ ok: false, error: "WhatsApp invalido." }, { status: 400 });
@@ -288,8 +271,7 @@ export async function POST(request: NextRequest) {
     return resp;
   }
 
-  const buscaLogin =
-    whatsapp.length >= 10 ? await buscarClientePorWhatsapp(supabase, whatsapp) : await buscarClientePorEmail(supabase, email);
+  const buscaLogin = await buscarClientePorWhatsapp(supabase, whatsapp);
   if (buscaLogin.error) {
     if (isSchemaColumnError(buscaLogin.error)) {
       return NextResponse.json(

@@ -46,6 +46,7 @@ const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_PIX_CARTAO];
 const VITRINE_MODAL_SLIDE_MS = 6000;
 const QZ_TRAY_SCRIPT_URL = "https://unpkg.com/qz-tray@2.2.4/qz-tray.js";
 const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
+const AUTH_DRAFT_STORAGE_KEY = "dulellis.auth.draft";
 
 type Cliente = {
   nome: string;
@@ -158,6 +159,14 @@ type SessaoCliente = {
   cidade: string;
   ponto_referencia: string;
   data_aniversario: string;
+};
+
+type AuthDraft = {
+  modalAberto: boolean;
+  modoCadastro: boolean;
+  nome: string;
+  email: string;
+  whatsapp: string;
 };
 
 type QzGlobal = {
@@ -521,6 +530,7 @@ function ClientePageContent() {
   const [resetToken, setResetToken] = useState("");
   const [resetNovaSenha, setResetNovaSenha] = useState("");
   const [resetCodigoEnviado, setResetCodigoEnviado] = useState(false);
+  const authDraftRestauradoRef = useRef(false);
   const recarregarVitrineRef = useRef<number | null>(null);
   const recarregarAcompanhamentoRef = useRef<number | null>(null);
 
@@ -890,9 +900,87 @@ function ClientePageContent() {
     void carregarSessaoCliente();
   }, [carregarSessaoCliente]);
 
+  useEffect(() => {
+    if (authDraftRestauradoRef.current) return;
+    authDraftRestauradoRef.current = true;
+
+    try {
+      const bruto = window.localStorage.getItem(AUTH_DRAFT_STORAGE_KEY);
+      if (!bruto) return;
+
+      const draft = JSON.parse(bruto) as Partial<AuthDraft>;
+      setModalAuthAberto(Boolean(draft.modalAberto));
+      setAuthModoCadastro(Boolean(draft.modoCadastro));
+      setAuthNome(String(draft.nome || ""));
+      setAuthEmail(String(draft.email || ""));
+      setAuthWhatsapp(String(draft.whatsapp || ""));
+    } catch {
+      window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authDraftRestauradoRef.current) return;
+
+    const draft: AuthDraft = {
+      modalAberto: modalAuthAberto,
+      modoCadastro: authModoCadastro,
+      nome: authNome,
+      email: authEmail,
+      whatsapp: authWhatsapp,
+    };
+
+    const temConteudo = [draft.nome, draft.email, draft.whatsapp].some((value) => String(value).trim());
+    if (!temConteudo && !draft.modalAberto && !draft.modoCadastro) {
+      window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(AUTH_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  }, [authEmail, authModoCadastro, authNome, authWhatsapp, modalAuthAberto]);
+
+  const limparRascunhoAuth = useCallback(() => {
+    window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
+  }, []);
+
+  const verificarCadastroAuthPorWhatsapp = useCallback(async () => {
+    if (authEsqueciSenha) return false;
+
+    const zap = normalizarNumero(authWhatsapp);
+    if (zap.length < 10) {
+      setAuthModoCadastro(false);
+      return false;
+    }
+
+    try {
+      const res = await fetch(`/api/public/customer?whatsapp=${encodeURIComponent(zap)}`, {
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        data?: ClienteRow | null;
+      };
+      const clienteExistente = Boolean(res.ok && json.ok !== false && json.data);
+
+      if (clienteExistente) {
+        setAuthModoCadastro(false);
+        return true;
+      }
+
+      setAuthModoCadastro(true);
+      return false;
+    } catch {
+      return false;
+    }
+  }, [authEsqueciSenha, authWhatsapp]);
+
   const autenticarCliente = useCallback(async () => {
     const zap = normalizarNumero(authWhatsapp);
     const email = String(authEmail || "").trim().toLowerCase();
+    if (authModoCadastro && !authNome.trim()) {
+      alert("Informe seu nome.");
+      return;
+    }
     if (zap.length < 10) {
       alert("Informe um WhatsApp valido.");
       return;
@@ -926,12 +1014,21 @@ function ClientePageContent() {
       await carregarSessaoCliente();
       setModalAuthAberto(false);
       setAuthSenha("");
+      limparRascunhoAuth();
+      setAuthNome("");
+      setAuthEmail("");
     } catch (error) {
-      alert(obterMensagemErro(error) || "Erro ao autenticar.");
+      const mensagem = obterMensagemErro(error) || "Erro ao autenticar.";
+      if (!authModoCadastro && mensagem.includes("Cadastro nao encontrado")) {
+        setAuthModoCadastro(true);
+        alert("Nao encontramos seu cadastro. Complete seus dados para criar a conta.");
+      } else {
+        alert(mensagem);
+      }
     } finally {
       setAuthCarregando(false);
     }
-  }, [authEmail, authModoCadastro, authNome, authSenha, authWhatsapp, carregarSessaoCliente]);
+  }, [authEmail, authModoCadastro, authNome, authSenha, authWhatsapp, carregarSessaoCliente, limparRascunhoAuth]);
 
   const sairSessaoCliente = useCallback(async () => {
     try {
@@ -1032,18 +1129,6 @@ function ClientePageContent() {
     url.searchParams.delete("reset_token");
     window.history.replaceState({}, "", url.toString());
   }, [searchParams]);
-
-  useEffect(() => {
-    const zapLimpo = normalizarNumero(cliente.whatsapp);
-    if (zapLimpo.length >= 10) {
-      const timer = setTimeout(() => {
-        executarBuscaCliente(zapLimpo);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-
-    setClienteEncontrado(false);
-  }, [cliente.whatsapp, executarBuscaCliente]);
 
   const setItemEstoqueProcessando = useCallback((id: number, processando: boolean) => {
     setEstoqueEmAtualizacao((prev) => ({ ...prev, [id]: processando }));
@@ -2143,6 +2228,36 @@ function ClientePageContent() {
               </button>
             </div>
 
+            {!authEsqueciSenha && (
+              <div
+                className={`mb-4 rounded-[2rem] border px-4 py-3 ${
+                  authModoCadastro
+                    ? "border-pink-200 bg-gradient-to-r from-pink-50 to-rose-50 text-pink-700"
+                    : "border-emerald-200 bg-gradient-to-r from-emerald-50 to-white text-emerald-700"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`mt-0.5 rounded-2xl p-2 ${
+                      authModoCadastro ? "bg-pink-600 text-white" : "bg-emerald-600 text-white"
+                    }`}
+                  >
+                    {authModoCadastro ? <User size={18} /> : <CheckCircle2 size={18} />}
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em]">
+                      {authModoCadastro ? "Novo cliente" : "Cliente encontrado"}
+                    </p>
+                    <p className="mt-1 text-sm font-bold leading-snug">
+                      {authModoCadastro
+                        ? "Complete seu cadastro para liberar os pedidos e salvar seu endereco."
+                        : "Sua conta ja existe. Entre com sua senha para pedir mais rapido."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-3">
               {!authEsqueciSenha && authModoCadastro && (
                 <input
@@ -2158,6 +2273,9 @@ function ClientePageContent() {
                   className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
                   value={authWhatsapp}
                   onChange={(e) => setAuthWhatsapp(e.target.value)}
+                  onBlur={() => {
+                    void verificarCadastroAuthPorWhatsapp();
+                  }}
                 />
               )}
               {(authModoCadastro || authEsqueciSenha) && (
@@ -2220,6 +2338,7 @@ function ClientePageContent() {
                       setResetCodigoEnviado(false);
                       setResetToken("");
                       setResetNovaSenha("");
+                      setAuthEmail("");
                     }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
                   >
@@ -2246,7 +2365,17 @@ function ClientePageContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setAuthModoCadastro((prev) => !prev)}
+                    onClick={() => {
+                      setAuthModoCadastro((prev) => !prev);
+                      setAuthEsqueciSenha(false);
+                      setResetCodigoEnviado(false);
+                      setResetToken("");
+                      setResetNovaSenha("");
+                      if (authModoCadastro) {
+                        setAuthEmail("");
+                        setAuthNome("");
+                      }
+                    }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
                   >
                     {authModoCadastro ? "Ja tenho conta" : "Criar minha conta"}
@@ -2258,6 +2387,7 @@ function ClientePageContent() {
                       setResetCodigoEnviado(false);
                       setResetToken("");
                       setResetNovaSenha("");
+                      setAuthModoCadastro(false);
                     }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-1"
                   >
@@ -2384,6 +2514,14 @@ function ClientePageContent() {
                     onChange={(e) =>
                       setCliente((prev) => ({ ...prev, whatsapp: e.target.value }))
                     }
+                    onBlur={() => {
+                      const zapLimpo = normalizarNumero(cliente.whatsapp);
+                      if (zapLimpo.length >= 10) {
+                        void executarBuscaCliente(zapLimpo);
+                        return;
+                      }
+                      setClienteEncontrado(false);
+                    }}
                     disabled={Boolean(sessaoCliente)}
                   />
                   {buscandoCliente && (
