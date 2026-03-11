@@ -15,6 +15,7 @@ type ClienteInput = {
   bairro?: string;
   cidade?: string;
   ponto_referencia?: string;
+  observacao?: string;
   data_aniversario?: string;
 };
 
@@ -188,6 +189,7 @@ export async function POST(request: NextRequest) {
     bairro: String(cliente.bairro || ""),
     cidade: String(cliente.cidade || ""),
     ponto_referencia: String(cliente.ponto_referencia || ""),
+    observacao: String(cliente.observacao || "").trim(),
     data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
   };
 
@@ -211,12 +213,22 @@ export async function POST(request: NextRequest) {
     itens: itensPedido,
     total,
     forma_pagamento: formaPagamento,
+    observacao: payloadCliente.observacao || null,
     pagamento_referencia: referencia || null,
     status_pagamento: formaPagamento === "Pix" ? "pending" : null,
     status_pedido: "aguardando_aceite",
   };
 
   const pedidoPayloadComForma = {
+    cliente_nome: payloadCliente.nome,
+    whatsapp: payloadCliente.whatsapp,
+    itens: itensPedido,
+    total,
+    forma_pagamento: formaPagamento,
+    observacao: payloadCliente.observacao || null,
+    status_pedido: "aguardando_aceite",
+  };
+  const pedidoPayloadSemObservacao = {
     cliente_nome: payloadCliente.nome,
     whatsapp: payloadCliente.whatsapp,
     itens: itensPedido,
@@ -254,19 +266,29 @@ export async function POST(request: NextRequest) {
       pedidoId = Number(inseridoForma.id);
     } else {
       const msgErroForma = String(erroForma?.message || "").toLowerCase();
-      const erroFormaSchema = msgErroForma.includes("forma_pagamento") || msgErroForma.includes("schema cache") || msgErroForma.includes("column");
+      const erroFormaSchema =
+        msgErroForma.includes("forma_pagamento") || msgErroForma.includes("observacao") || msgErroForma.includes("schema cache") || msgErroForma.includes("column");
       if (!erroFormaSchema) {
         return NextResponse.json({ ok: false, error: erroForma?.message || "Falha ao salvar pedido." }, { status: 500 });
       }
-      const { data: inseridoLegado, error: erroLegado } = await supabase
+      const { data: inseridoSemObservacao, error: erroSemObservacao } = await supabase
         .from("pedidos")
-        .insert([pedidoPayloadLegado])
+        .insert([pedidoPayloadSemObservacao])
         .select("id")
         .maybeSingle();
-      if (erroLegado || !inseridoLegado?.id) {
-        return NextResponse.json({ ok: false, error: erroLegado?.message || "Falha ao salvar pedido." }, { status: 500 });
+      if (!erroSemObservacao && inseridoSemObservacao?.id) {
+        pedidoId = Number(inseridoSemObservacao.id);
+      } else {
+        const { data: inseridoLegado, error: erroLegado } = await supabase
+          .from("pedidos")
+          .insert([pedidoPayloadLegado])
+          .select("id")
+          .maybeSingle();
+        if (erroLegado || !inseridoLegado?.id) {
+          return NextResponse.json({ ok: false, error: erroLegado?.message || erroSemObservacao?.message || "Falha ao salvar pedido." }, { status: 500 });
+        }
+        pedidoId = Number(inseridoLegado.id);
       }
-      pedidoId = Number(inseridoLegado.id);
     }
   }
 

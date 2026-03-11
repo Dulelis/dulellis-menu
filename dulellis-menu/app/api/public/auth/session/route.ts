@@ -86,9 +86,12 @@ export async function GET(request: NextRequest) {
   }
 
   const tentativasSelect = [
+    "id,nome,email,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,observacao,data_aniversario",
     "id,nome,email,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,data_aniversario",
-    "id,nome,email,whatsapp,cep,endereco,numero,bairro,cidade,data_aniversario",
-    "id,nome,email,whatsapp,cep,endereco,bairro,cidade,data_aniversario",
+    "id,nome,email,whatsapp,cep,endereco,numero,bairro,cidade,observacao,data_aniversario",
+    "id,nome,email,whatsapp,cep,endereco,bairro,cidade,observacao,data_aniversario",
+    "id,nome,email,whatsapp,cep,endereco,bairro,cidade,ponto_referencia,data_aniversario",
+    "id,nome,email,whatsapp,cep,endereco,bairro,cidade,observacao",
     "id,nome,email,whatsapp,cep,endereco,bairro,cidade",
     "id,nome,email,whatsapp,endereco",
   ];
@@ -132,6 +135,7 @@ export async function GET(request: NextRequest) {
       bairro: String(cliente.bairro || ""),
       cidade: String(cliente.cidade || ""),
       ponto_referencia: String(cliente.ponto_referencia || ""),
+      observacao: String(cliente.observacao || ""),
       data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
     },
   });

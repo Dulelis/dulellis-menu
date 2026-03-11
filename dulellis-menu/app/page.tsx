@@ -57,6 +57,7 @@ type Cliente = {
   bairro: string;
   cidade: string;
   ponto_referencia: string;
+  observacao: string;
   data_aniversario: string;
 };
 
@@ -158,6 +159,7 @@ type SessaoCliente = {
   bairro: string;
   cidade: string;
   ponto_referencia: string;
+  observacao: string;
   data_aniversario: string;
 };
 
@@ -190,8 +192,36 @@ const CLIENTE_INICIAL: Cliente = {
   bairro: "",
   cidade: DEFAULT_CITY,
   ponto_referencia: "",
+  observacao: "",
   data_aniversario: "",
 };
+
+function clienteTemEnderecoSalvo(cliente: Partial<Cliente> | null | undefined) {
+  if (!cliente) return false;
+  return Boolean(
+    String(cliente.cep || "").trim() ||
+      String(cliente.endereco || "").trim() ||
+      String(cliente.numero || "").trim() ||
+      String(cliente.bairro || "").trim() ||
+      String(cliente.ponto_referencia || "").trim() ||
+      String(cliente.observacao || "").trim(),
+  );
+}
+
+function normalizarClienteParaEntrega(cliente: Partial<Cliente>): Cliente {
+  return {
+    nome: String(cliente.nome || ""),
+    whatsapp: String(cliente.whatsapp || ""),
+    cep: String(cliente.cep || ""),
+    endereco: String(cliente.endereco || ""),
+    numero: String(cliente.numero || ""),
+    bairro: String(cliente.bairro || ""),
+    cidade: String(cliente.cidade || DEFAULT_CITY),
+    ponto_referencia: String(cliente.ponto_referencia || ""),
+    observacao: String(cliente.observacao || ""),
+    data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
+  };
+}
 
 function normalizarNumero(valor: string) {
   return valor.replace(/\D/g, "");
@@ -211,6 +241,7 @@ function montarCupomEscPos(input: {
   clienteNome: string;
   endereco: string;
   pontoReferencia: string;
+  observacao: string;
   pagamento: string;
   itens: Array<{ nome: string; qtd: number; preco: number }>;
   taxaEntrega: number;
@@ -256,6 +287,7 @@ function montarCupomEscPos(input: {
     `CLI: ${input.clienteNome}`,
     `END: ${input.endereco}`,
     `REF: ${input.pontoReferencia || "Nao informado"}`,
+    ...(input.observacao ? [`OBS: ${input.observacao}`] : []),
     `PGTO: ${input.pagamento}`,
   ]
     .flatMap((linha) => quebrarLinha(linha))
@@ -511,6 +543,8 @@ function ClientePageContent() {
   const [taxaEntrega, setTaxaEntrega] = useState<number>(0);
   const [msgTaxa, setMsgTaxa] = useState("Aguardando endereço...");
   const [cliente, setCliente] = useState<Cliente>(CLIENTE_INICIAL);
+  const [enderecoSalvoCliente, setEnderecoSalvoCliente] = useState<Cliente | null>(null);
+  const [modoEnderecoEntrega, setModoEnderecoEntrega] = useState<"saved" | "new">("saved");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [referenciaPagamento, setReferenciaPagamento] = useState("");
   const [vitrineSlideIndex, setVitrineSlideIndex] = useState(0);
@@ -806,8 +840,24 @@ function ClientePageContent() {
           bairro: String(clienteEncontradoDb.bairro ?? ""),
           cidade: String(clienteEncontradoDb.cidade ?? DEFAULT_CITY),
           ponto_referencia: pontoFinal,
+          observacao: String(clienteEncontradoDb.observacao ?? ""),
           data_aniversario: aniversarioNormalizado,
         }));
+        setEnderecoSalvoCliente(
+          normalizarClienteParaEntrega({
+            nome: String(clienteEncontradoDb.nome ?? ""),
+            whatsapp: zap,
+            cep: cepNormalizado,
+            endereco: enderecoFinal,
+            numero: String(clienteEncontradoDb.numero ?? ""),
+            bairro: String(clienteEncontradoDb.bairro ?? ""),
+            cidade: String(clienteEncontradoDb.cidade ?? DEFAULT_CITY),
+            ponto_referencia: pontoFinal,
+            observacao: String(clienteEncontradoDb.observacao ?? ""),
+            data_aniversario: aniversarioNormalizado,
+          }),
+        );
+        setModoEnderecoEntrega("saved");
         setClienteEncontrado(true);
 
         if (cepNormalizado.length === 8) {
@@ -871,6 +921,8 @@ function ClientePageContent() {
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: SessaoCliente | null };
       if (!res.ok || json.ok === false || !json.data) {
         setSessaoCliente(null);
+        setEnderecoSalvoCliente(null);
+        setModoEnderecoEntrega("saved");
         setPodeAcompanharPedido(false);
         return;
       }
@@ -887,13 +939,34 @@ function ClientePageContent() {
         bairro: dados.bairro || prev.bairro,
         cidade: dados.cidade || prev.cidade || DEFAULT_CITY,
         ponto_referencia: dados.ponto_referencia || prev.ponto_referencia,
+        observacao: dados.observacao || prev.observacao,
         data_aniversario: dados.data_aniversario || prev.data_aniversario,
       }));
+      const clienteSessao = normalizarClienteParaEntrega({
+        nome: dados.nome,
+        whatsapp: dados.whatsapp,
+        cep: dados.cep,
+        endereco: dados.endereco,
+        numero: dados.numero,
+        bairro: dados.bairro,
+        cidade: dados.cidade,
+        ponto_referencia: dados.ponto_referencia,
+        observacao: dados.observacao,
+        data_aniversario: dados.data_aniversario,
+      });
+      if (clienteTemEnderecoSalvo(clienteSessao)) {
+        setEnderecoSalvoCliente(clienteSessao);
+        setModoEnderecoEntrega("saved");
+      } else {
+        setEnderecoSalvoCliente(null);
+      }
       setAuthWhatsapp(dados.whatsapp || "");
       setAuthEmail(dados.email || "");
       await verificarDisponibilidadeAcompanhamento(dados.whatsapp || "");
     } catch {
       setSessaoCliente(null);
+      setEnderecoSalvoCliente(null);
+      setModoEnderecoEntrega("saved");
       setPodeAcompanharPedido(false);
     }
   }, []);
@@ -947,6 +1020,35 @@ function ClientePageContent() {
 
   const limparRascunhoAuth = useCallback(() => {
     window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
+  }, []);
+
+  const aplicarEnderecoSalvo = useCallback((base: Cliente) => {
+    setCliente((prev) => ({
+      ...prev,
+      nome: base.nome || prev.nome,
+      whatsapp: base.whatsapp || prev.whatsapp,
+      cep: base.cep,
+      endereco: base.endereco,
+      numero: base.numero,
+      bairro: base.bairro,
+      cidade: base.cidade || DEFAULT_CITY,
+      ponto_referencia: base.ponto_referencia,
+      observacao: base.observacao,
+      data_aniversario: base.data_aniversario || prev.data_aniversario,
+    }));
+  }, []);
+
+  const prepararNovoEndereco = useCallback(() => {
+    setCliente((prev) => ({
+      ...prev,
+      cep: "",
+      endereco: "",
+      numero: "",
+      bairro: "",
+      cidade: DEFAULT_CITY,
+      ponto_referencia: "",
+      observacao: "",
+    }));
   }, []);
 
   const verificarCadastroAuthPorWhatsapp = useCallback(async () => {
@@ -1057,6 +1159,9 @@ function ClientePageContent() {
       });
     } finally {
       setSessaoCliente(null);
+      setEnderecoSalvoCliente(null);
+      setModoEnderecoEntrega("saved");
+      setCliente(CLIENTE_INICIAL);
       setCarrinho([]);
       setFormaPagamento("");
       setAbaCarrinho(false);
@@ -1312,6 +1417,7 @@ function ClientePageContent() {
       ...clienteBase,
       whatsapp: normalizarNumero(clienteBase.whatsapp),
       cep: normalizarNumero(clienteBase.cep).slice(0, 8),
+      observacao: String(clienteBase.observacao || "").trim(),
       data_aniversario: String(clienteBase.data_aniversario || "").slice(0, 10),
     };
     const res = await fetch("/api/public/customer", {
@@ -1428,7 +1534,11 @@ function ClientePageContent() {
     if (!cadastroOk) return;
     setLoading(true);
     try {
-      await salvarOuAtualizarCliente(cliente);
+      const clienteSalvo = await salvarOuAtualizarCliente(cliente);
+      const enderecoAtualizado = normalizarClienteParaEntrega(clienteSalvo);
+      setEnderecoSalvoCliente(enderecoAtualizado);
+      setModoEnderecoEntrega("saved");
+      aplicarEnderecoSalvo(enderecoAtualizado);
       setPasso(2);
     } catch (error) {
       const mensagem = obterMensagemErro(error) || "Nao foi possivel salvar seu cadastro.";
@@ -1437,7 +1547,17 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [cliente, salvarOuAtualizarCliente, sessaoCliente]);
+  }, [aplicarEnderecoSalvo, cliente, salvarOuAtualizarCliente, sessaoCliente]);
+
+  const resumoEnderecoSalvo = useMemo(() => {
+    if (!enderecoSalvoCliente || !clienteTemEnderecoSalvo(enderecoSalvoCliente)) return "";
+    const partes = [
+      enderecoSalvoCliente.endereco,
+      enderecoSalvoCliente.numero,
+      enderecoSalvoCliente.bairro,
+    ].filter((value) => String(value || "").trim());
+    return partes.join(", ");
+  }, [enderecoSalvoCliente]);
 
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
@@ -1471,6 +1591,9 @@ function ClientePageContent() {
     }
     try {
       const payloadCliente = await salvarOuAtualizarCliente(cliente);
+      const enderecoAtualizado = normalizarClienteParaEntrega(payloadCliente);
+      setEnderecoSalvoCliente(enderecoAtualizado);
+      setModoEnderecoEntrega("saved");
       const pagamentoTexto = formaPagamento;
       const resPedido = await fetch("/api/public/order", {
         method: "POST",
@@ -1521,12 +1644,14 @@ function ClientePageContent() {
       const itensFormatados = carrinho.map((i) => `- ${i.qtd}x ${i.nome}`).join("\n");
       const enderecoCompleto = `${payloadCliente.endereco}, ${payloadCliente.numero}`.trim();
       const pontoReferencia = String(payloadCliente.ponto_referencia || "").trim();
+      const observacaoEntrega = String(payloadCliente.observacao || "").trim();
 
       const msgDinheiro =
         `Pedido Dulelis\n\n` +
         `Cliente: ${payloadCliente.nome}\n` +
         `Endereco: ${enderecoCompleto}\n` +
         `Ponto de Referencia: ${pontoReferencia || "Nao informado"}\n` +
+        (observacaoEntrega ? `Observacao: ${observacaoEntrega}\n` : "") +
         `Pagamento: ${pagamentoTexto}\n\n` +
         `Itens:\n${itensFormatados}\n\n` +
         (descontoPromocoes > 0 ? `Descontos: R$ ${descontoPromocoes.toFixed(2)}\n` : "") +
@@ -1537,6 +1662,7 @@ function ClientePageContent() {
         `Cliente: ${payloadCliente.nome}\n` +
         `Endereco: ${enderecoCompleto}\n` +
         (pontoReferencia ? `Ponto de Referencia: ${pontoReferencia}\n` : "") +
+        (observacaoEntrega ? `Observacao: ${observacaoEntrega}\n` : "") +
         `Pagamento: ${pagamentoTexto}\n\n` +
         `Itens:\n${itensFormatados}\n\n` +
         (descontoPromocoes > 0 ? `Descontos: R$ ${descontoPromocoes.toFixed(2)}\n` : "") +
@@ -1549,6 +1675,7 @@ function ClientePageContent() {
           clienteNome: payloadCliente.nome,
           endereco: enderecoCompleto,
           pontoReferencia,
+          observacao: observacaoEntrega,
           pagamento: pagamentoTexto,
           itens: carrinho.map((i) => ({ nome: i.nome, qtd: i.qtd, preco: Number(i.preco || 0) })),
           taxaEntrega: Number(taxaEntrega || 0),
@@ -1611,6 +1738,7 @@ function ClientePageContent() {
                 <div class="meta"><strong>WhatsApp:</strong> ${escaparHtml(payloadCliente.whatsapp)}</div>
                 <div class="meta"><strong>Endereco:</strong> ${escaparHtml(enderecoCompleto)}</div>
                 <div class="meta"><strong>Ponto:</strong> ${escaparHtml(pontoReferencia || "Nao informado")}</div>
+                ${observacaoEntrega ? `<div class="meta"><strong>Observacao:</strong> ${escaparHtml(observacaoEntrega)}</div>` : ""}
                 <div class="meta"><strong>Pagamento:</strong> ${escaparHtml(pagamentoTexto)}</div>
                 <table>
                   <tbody>${itensHtml}</tbody>
@@ -1643,7 +1771,8 @@ function ClientePageContent() {
       setCarrinho([]);
       setAbaCarrinho(false);
       setPasso(1);
-      setCliente(CLIENTE_INICIAL);
+      aplicarEnderecoSalvo(enderecoAtualizado);
+      setModoEnderecoEntrega("saved");
       setClienteEncontrado(false);
       setDistanciaKm(null);
       setTaxaEntrega(0);
@@ -1665,7 +1794,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, totalGeral]);
+  }, [aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, totalGeral]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -2520,7 +2649,7 @@ function ClientePageContent() {
           <div className="bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-8 max-h-[95vh] overflow-y-auto shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-3xl font-black italic text-slate-800">
-                {passo === 1 ? "Quase lá!" : "Resumo"}
+                {passo === 1 ? "Endereco para entrega" : "Resumo"}
               </h3>
               <button
                 type="button"
@@ -2535,7 +2664,7 @@ function ClientePageContent() {
               <div className="space-y-4">
                 <div className="bg-blue-50 text-blue-800 p-4 rounded-3xl border border-blue-100 gentle-blink">
                   <p className="text-[12px] font-bold tracking-wide">
-                    Seu cadastro e rapidinho: voce faz uma vez e, nos proximos pedidos, a gente ja lembra de voce.
+                    Escolha seu endereco salvo ou informe um novo endereco para esta entrega.
                   </p>
                 </div>
                 <div className="relative">
@@ -2591,6 +2720,52 @@ function ClientePageContent() {
                     onChange={(e) => setCliente((prev) => ({ ...prev, nome: e.target.value }))}
                   />
                 </div>
+
+                {enderecoSalvoCliente && clienteTemEnderecoSalvo(enderecoSalvoCliente) && (
+                  <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4 space-y-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                        Entrega
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-slate-700">
+                        Escolha usar o endereco salvo ou preencher outro para este pedido.
+                      </p>
+                      {resumoEnderecoSalvo ? (
+                        <p className="mt-1 text-xs font-medium text-slate-500">{resumoEnderecoSalvo}</p>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModoEnderecoEntrega("saved");
+                          aplicarEnderecoSalvo(enderecoSalvoCliente);
+                        }}
+                        className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
+                          modoEnderecoEntrega === "saved"
+                            ? "bg-slate-900 text-white"
+                            : "bg-white text-slate-600 border border-slate-200"
+                        }`}
+                      >
+                        Endereco salvo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModoEnderecoEntrega("new");
+                          prepararNovoEndereco();
+                        }}
+                        className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
+                          modoEnderecoEntrega === "new"
+                            ? "bg-pink-600 text-white"
+                            : "bg-white text-slate-600 border border-slate-200"
+                        }`}
+                      >
+                        Novo endereco
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="relative">
@@ -2661,6 +2836,17 @@ function ClientePageContent() {
                   className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                   onChange={(e) =>
                     setCliente((prev) => ({ ...prev, ponto_referencia: e.target.value }))
+                  }
+                />
+
+                <label htmlFor="observacao_entrega" className="sr-only">Observacao da entrega</label>
+                <textarea
+                  id="observacao_entrega"
+                  placeholder="Observacao da entrega"
+                  value={cliente.observacao}
+                  className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold min-h-28 resize-none"
+                  onChange={(e) =>
+                    setCliente((prev) => ({ ...prev, observacao: e.target.value }))
                   }
                 />
 

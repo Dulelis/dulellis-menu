@@ -14,6 +14,7 @@ type ClientePayload = {
   bairro?: string;
   cidade?: string;
   ponto_referencia?: string;
+  observacao?: string;
   data_aniversario?: string;
 };
 
@@ -120,6 +121,7 @@ export async function GET(request: Request) {
       cep: normalizarNumero(String(cliente.cep || "")).slice(0, 8),
       endereco: enderecoFinal,
       ponto_referencia: pontoFinal,
+      observacao: String(cliente.observacao || ""),
       data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
     },
   });
@@ -168,6 +170,7 @@ export async function POST(request: NextRequest) {
     bairro: String(body.bairro || ""),
     cidade: String(body.cidade || ""),
     ponto_referencia: String(body.ponto_referencia || ""),
+    observacao: String(body.observacao || "").trim(),
     data_aniversario: String(body.data_aniversario || "").slice(0, 10),
   };
   const payloadClienteComEnderecoReferencia = {
@@ -176,16 +179,20 @@ export async function POST(request: NextRequest) {
   };
   const payloadClienteSemPontoReferencia = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
   delete payloadClienteSemPontoReferencia.ponto_referencia;
+  const payloadClienteSemObservacao = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
+  delete payloadClienteSemObservacao.observacao;
   const payloadClienteSemDataAniversario = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
   delete payloadClienteSemDataAniversario.data_aniversario;
   const payloadClienteLegado = { ...payloadClienteComEnderecoReferencia } as Record<string, unknown>;
   delete payloadClienteLegado.ponto_referencia;
+  delete payloadClienteLegado.observacao;
   delete payloadClienteLegado.data_aniversario;
 
   const payloadsClienteTentativa: Array<Record<string, unknown>> = [
     payloadCliente as unknown as Record<string, unknown>,
     payloadClienteComEnderecoReferencia as unknown as Record<string, unknown>,
     payloadClienteSemPontoReferencia,
+    payloadClienteSemObservacao,
     payloadClienteSemDataAniversario,
     payloadClienteLegado,
   ];
