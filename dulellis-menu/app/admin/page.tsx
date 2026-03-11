@@ -949,8 +949,35 @@ export default function AdminPage() {
       '\n\n' +
       '\x1d\x56\x41\x03';
   };
+  const prepararPopupImpressao = (popup: Window | null | undefined, pedidoId?: number) => {
+    if (!popup || popup.closed) return;
+    popup.document.open();
+    popup.document.write(`
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Preparando pedido #${pedidoId ?? ''}</title>
+          <style>
+            body { font-family: Arial, sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; color:#111827; }
+            .box { text-align:center; padding:24px; }
+            h1 { font-size:18px; margin:0 0 8px; }
+            p { margin:0; color:#475569; font-weight:700; }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <h1>Preparando impressao</h1>
+            <p>Pedido #${pedidoId ?? ''}</p>
+          </div>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+  };
   const imprimirPedidoAceito = async (pedido: any, popupExistente?: Window | null) => {
     const popup = popupExistente || window.open('', '_blank', 'width=420,height=760');
+    prepararPopupImpressao(popup, Number(pedido?.id || 0));
     const pagamento = obterResumoPagamento(pedido);
     const pontoReferencia = extrairPontoReferencia(pedido);
     const enderecoSemPonto = extrairEnderecoSemPonto(pedido);
@@ -963,6 +990,9 @@ export default function AdminPage() {
 
     try {
       const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
+      if (!QZ_PRINTER_NAME) {
+        throw new Error('NEXT_PUBLIC_QZ_PRINTER nao configurado.');
+      }
       if (qzGlobal?.websocket && qzGlobal?.configs && qzGlobal?.print) {
         const websocket = qzGlobal.websocket;
         const configs = qzGlobal.configs;
@@ -977,8 +1007,12 @@ export default function AdminPage() {
           return;
         }
       }
+      throw new Error('QZ Tray indisponivel no navegador.');
     } catch (error) {
       console.error('Falha ao imprimir via QZ Tray no admin. Usando popup:', error);
+      if (popup && !popup.closed) {
+        popup.focus();
+      }
     }
 
     if (!popup) {
@@ -2026,12 +2060,6 @@ export default function AdminPage() {
                               <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                                 {obterResumoPagamento(pedido).detalhe}
                               </p>
-                              <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterResumoPagamento(pedido).classe}`}>
-                                {obterResumoPagamento(pedido).titulo}
-                              </div>
-                              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                {obterResumoPagamento(pedido).detalhe}
-                              </p>
                               <p className="text-sm font-black text-green-600 mt-1">R$ {Number(pedido.total || 0).toFixed(2)}</p>
                             </button>
                             <input
@@ -2041,6 +2069,13 @@ export default function AdminPage() {
                               onChange={() => alternarSelecaoVenda(pedido.id)}
                             />
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => void imprimirPedidoAceito(pedido)}
+                            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
+                          >
+                            Imprimir
+                          </button>
                           {obterProximoFluxoPedido(pedido) ? (
                             <button
                               type="button"
