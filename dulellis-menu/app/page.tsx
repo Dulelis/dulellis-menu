@@ -942,7 +942,28 @@ function ClientePageContent() {
       ponto_referencia: "",
       observacao: "",
     }));
+    setDistanciaKm(null);
+    setTaxaEntrega(0);
+    setMsgTaxa("Aguardando endereço...");
   }, []);
+
+  const selecionarEnderecoSalvo = useCallback(
+    async (base: Cliente) => {
+      setModoEnderecoEntrega("saved");
+      aplicarEnderecoSalvo(base);
+
+      const cepSalvo = normalizarNumero(base.cep).slice(0, 8);
+      if (cepSalvo.length === 8) {
+        await executarBuscaCep(cepSalvo);
+        return;
+      }
+
+      setDistanciaKm(null);
+      setTaxaEntrega(0);
+      setMsgTaxa("Nao foi possivel calcular o frete para o endereco salvo.");
+    },
+    [aplicarEnderecoSalvo, executarBuscaCep],
+  );
 
   const verificarCadastroAuthPorWhatsapp = useCallback(async () => {
     if (authEsqueciSenha) return false;
@@ -2534,8 +2555,7 @@ function ClientePageContent() {
                       <button
                         type="button"
                         onClick={() => {
-                          setModoEnderecoEntrega("saved");
-                          aplicarEnderecoSalvo(enderecoSalvoCliente);
+                          void selecionarEnderecoSalvo(enderecoSalvoCliente);
                         }}
                         className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
                           modoEnderecoEntrega === "saved"
