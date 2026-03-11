@@ -893,7 +893,7 @@ export default function AdminPage() {
     const enderecoSemPonto = extrairEnderecoSemPonto(pedido);
     const enderecoCompleto = [enderecoSemPonto, String(pedido?.numero || '').trim()].filter(Boolean).join(', ');
     const observacao = String(pedido?.observacao || '').trim();
-    const larguraLinha = 32;
+    const larguraLinha = 24;
 
     const quebrarLinha = (texto: string, largura = larguraLinha) => {
       const bruto = String(texto || '').trim();
@@ -938,7 +938,9 @@ export default function AdminPage() {
       : 'Itens nao informados';
 
     return '\x1b\x40' +
-      '\x1d\x21\x11' +
+      '\x1b\x45\x01' +
+      '\x1b\x21\x30' +
+      '\x1d\x21\x22' +
       '\x1b\x61\x01' +
       'DULELIS CONFEITARIA\n' +
       '\x1b\x61\x00' +
@@ -948,6 +950,8 @@ export default function AdminPage() {
       '--------------------------------\n' +
       `TOTAL: ${formatarValor(valorTotal)}\n` +
       '\n\n' +
+      '\x1b\x45\x00' +
+      '\x1b\x21\x00' +
       '\x1d\x21\x00' +
       '\x1d\x56\x41\x03';
   };
@@ -1031,12 +1035,12 @@ export default function AdminPage() {
           <title>Pedido #${pedido?.id ?? ''}</title>
           <style>
             @page { margin: 4mm; }
-            body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 14px; font-weight: 700; }
-            h1 { margin: 0 0 8px; font-size: 18px; text-align: center; }
-            .meta { font-size: 13px; margin-bottom: 4px; line-height: 1.3; }
+            body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 18px; font-weight: 700; }
+            h1 { margin: 0 0 10px; font-size: 24px; text-align: center; }
+            .meta { font-size: 17px; margin-bottom: 6px; line-height: 1.35; }
             table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-            td { font-size: 13px; padding: 4px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
-            .linha-total { font-weight: 700; font-size: 16px; margin-top: 8px; }
+            td { font-size: 16px; padding: 6px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
+            .linha-total { font-weight: 900; font-size: 22px; margin-top: 12px; }
           </style>
         </head>
         <body>
