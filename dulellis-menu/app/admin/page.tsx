@@ -893,7 +893,7 @@ export default function AdminPage() {
     const enderecoSemPonto = extrairEnderecoSemPonto(pedido);
     const enderecoCompleto = [enderecoSemPonto, String(pedido?.numero || '').trim()].filter(Boolean).join(', ');
     const observacao = String(pedido?.observacao || '').trim();
-    const larguraLinha = 16;
+    const larguraLinha = 22;
 
     const quebrarLinha = (texto: string, largura = larguraLinha) => {
       const bruto = String(texto || '').trim();
@@ -937,22 +937,34 @@ export default function AdminPage() {
           .join('\n')
       : 'Itens nao informados';
 
-    return '\x1b\x40' +
-      '\x1b\x45\x01' +
-      '\x1b\x21\x38' +
-      '\x1d\x21\x33' +
-      '\x1b\x61\x01' +
-      'DULELIS CONFEITARIA\n' +
-      '\x1b\x61\x00' +
+    const iniciar = '\x1b\x40';
+    const negritoOn = '\x1b\x45\x01';
+    const negritoOff = '\x1b\x45\x00';
+    const alinharCentro = '\x1b\x61\x01';
+    const alinharEsquerda = '\x1b\x61\x00';
+    const fonteNormal = '\x1d\x21\x00';
+    const fonteDobro = '\x1d\x21\x11';
+    const divisor = '----------------------\n';
+
+    return iniciar +
+      alinharCentro +
+      negritoOn +
+      fonteDobro +
+      'DULELIS\n' +
+      'CONFEITARIA\n' +
+      '\n' +
+      alinharEsquerda +
+      fonteDobro +
       `${linhasMeta}\n` +
-      '--------------------------------\n' +
+      divisor +
       `${linhasItens}\n` +
-      '--------------------------------\n' +
+      divisor +
+      negritoOn +
+      fonteDobro +
       `TOTAL: ${formatarValor(valorTotal)}\n` +
       '\n\n' +
-      '\x1b\x45\x00' +
-      '\x1b\x21\x00' +
-      '\x1d\x21\x00' +
+      negritoOff +
+      fonteNormal +
       '\x1d\x56\x41\x03';
   };
   const prepararPopupImpressao = (popup: Window | null | undefined, pedidoId?: number) => {
