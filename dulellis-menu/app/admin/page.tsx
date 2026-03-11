@@ -1047,28 +1047,32 @@ export default function AdminPage() {
           <title>Pedido #${pedido?.id ?? ''}</title>
           <style>
             @page { margin: 3mm; }
-            body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 30px; font-weight: 800; line-height: 1.35; }
-            h1 { margin: 0 0 14px; font-size: 40px; text-align: center; line-height: 1.15; }
-            .meta { font-size: 28px; margin-bottom: 10px; line-height: 1.35; }
+            html, body { margin: 0; padding: 0; background: #fff; }
+            body { font-family: Arial, sans-serif; color: #111; }
+            .cupom { width: 220px; padding: 8px 6px 24px; zoom: 2.2; transform-origin: top left; }
+            h1 { margin: 0 0 14px; font-size: 20px; text-align: center; line-height: 1.15; font-weight: 900; }
+            .meta { font-size: 14px; margin-bottom: 8px; line-height: 1.35; font-weight: 700; }
             table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            td { font-size: 26px; padding: 10px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
-            .linha-total { font-weight: 900; font-size: 36px; margin-top: 18px; }
+            td { font-size: 13px; padding: 7px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; font-weight: 700; }
+            .linha-total { font-weight: 900; font-size: 18px; margin-top: 14px; }
           </style>
         </head>
         <body>
-          <h1>Dulelis - Pedido #${pedido?.id ?? ''}</h1>
-          <div class="meta"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
-          <div class="meta"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
-          <div class="meta"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
-          <div class="meta"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
-          <div class="meta"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
-          ${observacao ? `<div class="meta"><strong>Observacao:</strong> ${observacao}</div>` : ''}
-          <div class="meta"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
-          <div class="meta"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
-          <table>
-            <tbody>${itensHtml}</tbody>
-          </table>
-          <div class="linha-total">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
+          <div class="cupom">
+            <h1>Dulelis - Pedido #${pedido?.id ?? ''}</h1>
+            <div class="meta"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
+            <div class="meta"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
+            <div class="meta"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
+            <div class="meta"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
+            <div class="meta"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
+            ${observacao ? `<div class="meta"><strong>Observacao:</strong> ${observacao}</div>` : ''}
+            <div class="meta"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
+            <div class="meta"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
+            <table>
+              <tbody>${itensHtml}</tbody>
+            </table>
+            <div class="linha-total">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
+          </div>
           <script>
             window.onload = () => {
               window.print();
