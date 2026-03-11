@@ -893,7 +893,7 @@ export default function AdminPage() {
     const enderecoSemPonto = extrairEnderecoSemPonto(pedido);
     const enderecoCompleto = [enderecoSemPonto, String(pedido?.numero || '').trim()].filter(Boolean).join(', ');
     const observacao = String(pedido?.observacao || '').trim();
-    const larguraLinha = 24;
+    const larguraLinha = 16;
 
     const quebrarLinha = (texto: string, largura = larguraLinha) => {
       const bruto = String(texto || '').trim();
@@ -939,8 +939,8 @@ export default function AdminPage() {
 
     return '\x1b\x40' +
       '\x1b\x45\x01' +
-      '\x1b\x21\x30' +
-      '\x1d\x21\x22' +
+      '\x1b\x21\x38' +
+      '\x1d\x21\x33' +
       '\x1b\x61\x01' +
       'DULELIS CONFEITARIA\n' +
       '\x1b\x61\x00' +
@@ -1034,13 +1034,13 @@ export default function AdminPage() {
           <meta charset="utf-8" />
           <title>Pedido #${pedido?.id ?? ''}</title>
           <style>
-            @page { margin: 4mm; }
-            body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 18px; font-weight: 700; }
-            h1 { margin: 0 0 10px; font-size: 24px; text-align: center; }
-            .meta { font-size: 17px; margin-bottom: 6px; line-height: 1.35; }
-            table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-            td { font-size: 16px; padding: 6px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
-            .linha-total { font-weight: 900; font-size: 22px; margin-top: 12px; }
+            @page { margin: 3mm; }
+            body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 30px; font-weight: 800; line-height: 1.35; }
+            h1 { margin: 0 0 14px; font-size: 40px; text-align: center; line-height: 1.15; }
+            .meta { font-size: 28px; margin-bottom: 10px; line-height: 1.35; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            td { font-size: 26px; padding: 10px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
+            .linha-total { font-weight: 900; font-size: 36px; margin-top: 18px; }
           </style>
         </head>
         <body>
