@@ -871,6 +871,14 @@ export default function AdminPage() {
       };
     }
 
+    if (forma.toLowerCase() === 'cartao na entrega') {
+      return {
+        titulo: 'Cartao na entrega',
+        detalhe: 'Cobrar na entrega',
+        classe: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      };
+    }
+
     return {
       titulo: forma,
       detalhe: referencia ? `Ref. ${referencia}` : 'Forma registrada no pedido',

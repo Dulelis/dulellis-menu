@@ -40,8 +40,9 @@ const DIAS_SEMANA_LABELS: Record<(typeof DIAS_SEMANA_CHAVES)[number], string> = 
   sabado: "Sabado",
 };
 const FORMA_DINHEIRO = "Dinheiro";
+const FORMA_CARTAO_ENTREGA = "Cartao na entrega";
 const FORMA_PIX_CARTAO = "Pix";
-const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_PIX_CARTAO];
+const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_CARTAO_ENTREGA, FORMA_PIX_CARTAO];
 const VITRINE_MODAL_SLIDE_MS = 6000;
 const AUTH_DRAFT_STORAGE_KEY = "dulellis.auth.draft";
 
@@ -1528,8 +1529,6 @@ function ClientePageContent() {
       }
       const pedidoId = Number(jsonPedido.data.pedido_id);
       const referenciaFinal = String(jsonPedido.data.referencia || referenciaPagamento || "");
-      const totalPedido = Number(jsonPedido.data.total || totalGeral);
-
       if (ehPixCartao) {
         const resCheckout = await fetch("/api/mercadopago/checkout", {
           method: "POST",
@@ -1551,41 +1550,6 @@ function ClientePageContent() {
         } else if (typeof window !== "undefined") {
           window.location.href = dataCheckout.url;
         }
-      }
-
-      const itensFormatados = carrinho.map((i) => `- ${i.qtd}x ${i.nome}`).join("\n");
-      const enderecoCompleto = `${payloadCliente.endereco}, ${payloadCliente.numero}`.trim();
-      const pontoReferencia = String(payloadCliente.ponto_referencia || "").trim();
-      const observacaoEntrega = String(payloadCliente.observacao || "").trim();
-
-      const msgDinheiro =
-        `Pedido Dulelis\n\n` +
-        `Cliente: ${payloadCliente.nome}\n` +
-        `Endereco: ${enderecoCompleto}\n` +
-        `Ponto de Referencia: ${pontoReferencia || "Nao informado"}\n` +
-        (observacaoEntrega ? `Observacao: ${observacaoEntrega}\n` : "") +
-        `Pagamento: ${pagamentoTexto}\n\n` +
-        `Itens:\n${itensFormatados}\n\n` +
-        (descontoPromocoes > 0 ? `Descontos: R$ ${descontoPromocoes.toFixed(2)}\n` : "") +
-        `Total: R$ ${totalPedido.toFixed(2)}`;
-
-      const msgPadrao =
-        `Pedido Dulelis\n\n` +
-        `Cliente: ${payloadCliente.nome}\n` +
-        `Endereco: ${enderecoCompleto}\n` +
-        (pontoReferencia ? `Ponto de Referencia: ${pontoReferencia}\n` : "") +
-        (observacaoEntrega ? `Observacao: ${observacaoEntrega}\n` : "") +
-        `Pagamento: ${pagamentoTexto}\n\n` +
-        `Itens:\n${itensFormatados}\n\n` +
-        (descontoPromocoes > 0 ? `Descontos: R$ ${descontoPromocoes.toFixed(2)}\n` : "") +
-        `Total: R$ ${totalPedido.toFixed(2)}`;
-
-      const msg = pagamentoTexto === FORMA_DINHEIRO ? msgDinheiro : msgPadrao;
-      if (!ehPixCartao) {
-        window.open(
-          `https://wa.me/5547988347100?text=${encodeURIComponent(msg)}`,
-          "_blank",
-        );
       }
 
       setPodeAcompanharPedido(true);
@@ -1613,7 +1577,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, descontoPromocoes, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, totalGeral]);
+  }, [aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -2766,7 +2730,7 @@ function ClientePageContent() {
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">
                     Forma de Pagamento
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {FORMAS_PAGAMENTO.map((forma) => (
                       <button
                         key={forma}
@@ -2774,7 +2738,7 @@ function ClientePageContent() {
                         onClick={() => void selecionarFormaPagamento(forma)}
                         className={`p-3 rounded-2xl text-xs font-black uppercase tracking-wide border-2 transition-all ${formaPagamento === forma ? "bg-pink-600 border-pink-600 text-white" : "bg-slate-50 border-slate-100 text-slate-500"}`}
                       >
-                        {forma === FORMA_PIX_CARTAO ? "Pix" : forma}
+                        {forma}
                       </button>
                     ))}
                   </div>
@@ -2786,7 +2750,7 @@ function ClientePageContent() {
                   disabled={!formaPagamento || interacoesBloqueadas}
                   className={`w-full p-7 rounded-[2.5rem] font-black uppercase shadow-xl tracking-widest text-xl flex items-center justify-center gap-3 ${formaPagamento && !interacoesBloqueadas ? "bg-green-500 text-white" : "bg-slate-100 text-slate-300 shadow-none"}`}
                 >
-                  {interacoesBloqueadas ? "Loja Fechada" : "Enviar para o WhatsApp"}
+                  {interacoesBloqueadas ? "Loja Fechada" : "Finalizar Pedido"}
                 </button>
                 <button
                   type="button"
