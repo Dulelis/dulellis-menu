@@ -1049,12 +1049,12 @@ export default function AdminPage() {
             @page { margin: 3mm; }
             html, body { margin: 0; padding: 0; background: #fff; }
             body { font-family: Arial, sans-serif; color: #111; }
-            .cupom { width: 220px; padding: 8px 6px 24px; zoom: 2.2; transform-origin: top left; }
-            h1 { margin: 0 0 14px; font-size: 20px; text-align: center; line-height: 1.15; font-weight: 900; }
-            .meta { font-size: 14px; margin-bottom: 8px; line-height: 1.35; font-weight: 700; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            td { font-size: 13px; padding: 7px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; font-weight: 700; }
-            .linha-total { font-weight: 900; font-size: 18px; margin-top: 14px; }
+            .cupom { width: 170px; padding: 10px 8px 28px; }
+            h1 { margin: 0 0 16px; font-size: 34px; text-align: center; line-height: 1.1; font-weight: 900; }
+            .meta { font-size: 26px; margin-bottom: 12px; line-height: 1.25; font-weight: 700; word-break: break-word; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+            td { font-size: 24px; padding: 10px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; font-weight: 700; word-break: break-word; }
+            .linha-total { font-weight: 900; font-size: 32px; margin-top: 18px; }
           </style>
         </head>
         <body>
