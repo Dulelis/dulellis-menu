@@ -2285,12 +2285,21 @@ function ClientePageContent() {
                     value={authNome}
                     onChange={(e) => setAuthNome(e.target.value)}
                   />
-                  <input
-                    type="date"
-                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold text-slate-500"
-                    value={authDataAniversario}
-                    onChange={(e) => setAuthDataAniversario(e.target.value)}
-                  />
+                  <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3">
+                    <label
+                      htmlFor="auth-data-nascimento"
+                      className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500"
+                    >
+                      Data de nascimento
+                    </label>
+                    <input
+                      id="auth-data-nascimento"
+                      type="date"
+                      className="w-full bg-transparent focus:outline-none font-bold text-slate-700"
+                      value={authDataAniversario}
+                      onChange={(e) => setAuthDataAniversario(e.target.value)}
+                    />
+                  </div>
                 </>
               )}
               {!authEsqueciSenha && (
