@@ -36,6 +36,19 @@ function isSchemaColumnError(message: string) {
   return lower.includes("column") || lower.includes("schema cache");
 }
 
+function extrairPontoReferenciaDeEndereco(endereco: string) {
+  const texto = String(endereco || "");
+  const match = texto.match(/ponto\s+de\s+refer(?:e|ê)ncia\s*:\s*(.+)$/i);
+  return String(match?.[1] || "").trim();
+}
+
+function limparEnderecoDePontoReferencia(endereco: string) {
+  return String(endereco || "")
+    .replace(/\s*-\s*ponto\s+de\s+refer(?:e|ê)ncia\s*:.*$/i, "")
+    .replace(/\s*ponto\s+de\s+refer(?:e|ê)ncia\s*:.*$/i, "")
+    .trim();
+}
+
 async function buscarClientePorWhatsapp(
   supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
   whatsapp: string,
@@ -122,6 +135,12 @@ export async function GET(request: NextRequest) {
     return resp;
   }
 
+  const enderecoBruto = String(cliente.endereco || "");
+  const pontoDireto = String(cliente.ponto_referencia || "").trim();
+  const pontoExtraido = extrairPontoReferenciaDeEndereco(enderecoBruto);
+  const pontoFinal = pontoDireto || pontoExtraido;
+  const enderecoFinal = limparEnderecoDePontoReferencia(enderecoBruto);
+
   return NextResponse.json({
     ok: true,
     data: {
@@ -130,11 +149,11 @@ export async function GET(request: NextRequest) {
       email: String(cliente.email || ""),
       whatsapp: normalizarNumero(String(cliente.whatsapp || "")),
       cep: normalizarNumero(String(cliente.cep || "")).slice(0, 8),
-      endereco: String(cliente.endereco || ""),
+      endereco: enderecoFinal,
       numero: String(cliente.numero || ""),
       bairro: String(cliente.bairro || ""),
       cidade: String(cliente.cidade || ""),
-      ponto_referencia: String(cliente.ponto_referencia || ""),
+      ponto_referencia: pontoFinal,
       observacao: String(cliente.observacao || ""),
       data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
     },

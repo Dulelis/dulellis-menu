@@ -916,16 +916,18 @@ function ClientePageContent() {
   }, []);
 
   const aplicarEnderecoSalvo = useCallback((base: Cliente) => {
+    const pontoFinal = String(base.ponto_referencia || "").trim() || extrairPontoReferenciaDeEndereco(base.endereco);
+    const enderecoFinal = limparEnderecoDePontoReferencia(base.endereco);
     setCliente((prev) => ({
       ...prev,
       nome: base.nome || prev.nome,
       whatsapp: base.whatsapp || prev.whatsapp,
       cep: base.cep,
-      endereco: base.endereco,
+      endereco: enderecoFinal,
       numero: base.numero,
       bairro: base.bairro,
       cidade: base.cidade || DEFAULT_CITY,
-      ponto_referencia: base.ponto_referencia,
+      ponto_referencia: pontoFinal,
       observacao: base.observacao,
       data_aniversario: base.data_aniversario || prev.data_aniversario,
     }));
