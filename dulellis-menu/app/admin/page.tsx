@@ -938,6 +938,7 @@ export default function AdminPage() {
       : 'Itens nao informados';
 
     return '\x1b\x40' +
+      '\x1d\x21\x11' +
       '\x1b\x61\x01' +
       'DULELIS CONFEITARIA\n' +
       '\x1b\x61\x00' +
@@ -947,6 +948,7 @@ export default function AdminPage() {
       '--------------------------------\n' +
       `TOTAL: ${formatarValor(valorTotal)}\n` +
       '\n\n' +
+      '\x1d\x21\x00' +
       '\x1d\x56\x41\x03';
   };
   const prepararPopupImpressao = (popup: Window | null | undefined, pedidoId?: number) => {
@@ -1029,12 +1031,12 @@ export default function AdminPage() {
           <title>Pedido #${pedido?.id ?? ''}</title>
           <style>
             @page { margin: 4mm; }
-            body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 11px; font-weight: 700; }
-            h1 { margin: 0 0 4px; font-size: 13px; text-align: center; }
-            .meta { font-size: 10px; margin-bottom: 2px; line-height: 1.15; }
+            body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 14px; font-weight: 700; }
+            h1 { margin: 0 0 8px; font-size: 18px; text-align: center; }
+            .meta { font-size: 13px; margin-bottom: 4px; line-height: 1.3; }
             table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-            td { font-size: 10px; padding: 2px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
-            .linha-total { font-weight: 700; font-size: 12px; margin-top: 4px; }
+            td { font-size: 13px; padding: 4px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
+            .linha-total { font-weight: 700; font-size: 16px; margin-top: 8px; }
           </style>
         </head>
         <body>
