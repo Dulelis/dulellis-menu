@@ -3,12 +3,27 @@
 /* eslint-disable @next/next/no-img-element */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import Script from 'next/script';
 import { supabase } from '@/lib/supabase';
 import { 
   Package, Users, PlusCircle, Minus, Plus, 
   Trash2, Pencil, Loader2, Camera, Image as ImageIcon, 
   Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map, RotateCcw, ChevronDown, ChevronUp, BadgePercent, Megaphone, Clock3
 } from 'lucide-react';
+
+const QZ_TRAY_SCRIPT_URL = 'https://unpkg.com/qz-tray@2.2.4/qz-tray.js';
+const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
+
+type QzGlobal = {
+  websocket?: {
+    isActive?: () => boolean;
+    connect?: () => Promise<void>;
+  };
+  configs?: {
+    create?: (printer: string | null) => unknown;
+  };
+  print?: (config: unknown, data: Array<{ type: string; format: string; data: string }>) => Promise<void>;
+};
 
 const DIAS_SEMANA = [
   { key: 'domingo', label: 'Domingo' },
@@ -35,7 +50,7 @@ const STATUS_PEDIDO_CORES: Record<string, string> = {
 };
 
 const STATUS_PEDIDO_FLUXO: Record<string, { label: string; proximo: string } | null> = {
-  aguardando_aceite: { label: 'Aceitar pedido', proximo: 'recebido' },
+  aguardando_aceite: { label: 'Aceitar e imprimir', proximo: 'recebido' },
   recebido: { label: 'Colocar em preparo', proximo: 'em_preparo' },
   em_preparo: { label: 'Saiu para entrega', proximo: 'saiu_entrega' },
   saiu_entrega: null,
@@ -821,6 +836,190 @@ export default function AdminPage() {
     if (idx < 0) return endereco;
     return endereco.slice(0, idx).replace(/\-\s*$/g, '').trim();
   };
+  const parseItensPedido = (pedido: any) => {
+    let itensArray = pedido?.itens;
+    if (typeof itensArray === 'string') {
+      try { itensArray = JSON.parse(itensArray); } catch { itensArray = []; }
+    }
+    return Array.isArray(itensArray) ? itensArray : [];
+  };
+  const obterResumoPagamento = (pedido: any) => {
+    const forma = String(pedido?.forma_pagamento || '').trim() || 'Nao informado';
+    const statusPagamento = String(pedido?.status_pagamento || '').trim().toLowerCase();
+    const referencia = String(pedido?.pagamento_referencia || '').trim();
+
+    if (forma.toLowerCase() === 'pix') {
+      if (['approved', 'aprovado', 'paid'].includes(statusPagamento)) {
+        return {
+          titulo: 'Pix aprovado',
+          detalhe: referencia ? `Ref. ${referencia}` : 'Pagamento confirmado',
+          classe: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        };
+      }
+      return {
+        titulo: 'Pix pendente',
+        detalhe: referencia ? `Ref. ${referencia}` : 'Aguardando pagamento',
+        classe: 'bg-amber-50 text-amber-700 border-amber-200',
+      };
+    }
+
+    if (forma.toLowerCase() === 'dinheiro') {
+      return {
+        titulo: 'Dinheiro',
+        detalhe: 'Receber na entrega',
+        classe: 'bg-slate-100 text-slate-700 border-slate-200',
+      };
+    }
+
+    return {
+      titulo: forma,
+      detalhe: referencia ? `Ref. ${referencia}` : 'Forma registrada no pedido',
+      classe: 'bg-sky-50 text-sky-700 border-sky-200',
+    };
+  };
+  const montarCupomPedido = (pedido: any) => {
+    const itens = parseItensPedido(pedido);
+    const pagamento = obterResumoPagamento(pedido);
+    const valorTotal = Number(pedido?.total || 0);
+    const pontoReferencia = extrairPontoReferencia(pedido);
+    const enderecoSemPonto = extrairEnderecoSemPonto(pedido);
+    const enderecoCompleto = [enderecoSemPonto, String(pedido?.numero || '').trim()].filter(Boolean).join(', ');
+    const observacao = String(pedido?.observacao || '').trim();
+    const larguraLinha = 32;
+
+    const quebrarLinha = (texto: string, largura = larguraLinha) => {
+      const bruto = String(texto || '').trim();
+      if (!bruto) return [];
+      const palavras = bruto.split(/\s+/);
+      const linhas: string[] = [];
+      let atual = '';
+
+      for (const palavra of palavras) {
+        const tentativa = atual ? `${atual} ${palavra}` : palavra;
+        if (tentativa.length <= largura) {
+          atual = tentativa;
+          continue;
+        }
+        if (atual) linhas.push(atual);
+        atual = palavra;
+      }
+
+      if (atual) linhas.push(atual);
+      return linhas;
+    };
+
+    const formatarValor = (valor: number) => `R$ ${valor.toFixed(2)}`;
+    const linhasMeta = [
+      `PEDIDO ${pedido?.id ?? ''}`,
+      `CLI: ${String(pedido?.cliente_nome || 'Cliente')}`,
+      `TEL: ${String(pedido?.whatsapp || '')}`,
+      `END: ${enderecoCompleto || 'Nao informado'}`,
+      `REF: ${pontoReferencia || 'Nao informado'}`,
+      ...(observacao ? [`OBS: ${observacao}`] : []),
+      `PGTO: ${pagamento.titulo}`,
+      ...(pagamento.detalhe ? [pagamento.detalhe] : []),
+    ].flatMap((linha) => quebrarLinha(linha)).join('\n');
+
+    const linhasItens = itens.length
+      ? itens
+          .map((item: any) => {
+            const totalItem = Number(item.preco || 0) * Number(item.qtd || 0);
+            return quebrarLinha(`${Number(item.qtd || 1)}x ${String(item.nome || 'Item')} ${formatarValor(totalItem)}`).join('\n');
+          })
+          .join('\n')
+      : 'Itens nao informados';
+
+    return '\x1b\x40' +
+      '\x1b\x61\x01' +
+      'DULELIS CONFEITARIA\n' +
+      '\x1b\x61\x00' +
+      `${linhasMeta}\n` +
+      '--------------------------------\n' +
+      `${linhasItens}\n` +
+      '--------------------------------\n' +
+      `TOTAL: ${formatarValor(valorTotal)}\n` +
+      '\n\n' +
+      '\x1d\x56\x41\x03';
+  };
+  const imprimirPedidoAceito = async (pedido: any) => {
+    const popup = window.open('', '_blank', 'width=420,height=760');
+    const pagamento = obterResumoPagamento(pedido);
+    const pontoReferencia = extrairPontoReferencia(pedido);
+    const enderecoSemPonto = extrairEnderecoSemPonto(pedido);
+    const enderecoCompleto = [enderecoSemPonto, String(pedido?.numero || '').trim()].filter(Boolean).join(', ');
+    const observacao = String(pedido?.observacao || '').trim();
+    const itens = parseItensPedido(pedido);
+    const itensHtml = itens.length
+      ? itens.map((item: any) => `<tr><td>${Number(item.qtd || 1)}x ${String(item.nome || 'Item')}</td><td style="text-align:right">R$ ${(Number(item.preco || 0) * Number(item.qtd || 0)).toFixed(2)}</td></tr>`).join('')
+      : '<tr><td>Itens nao informados</td><td></td></tr>';
+
+    try {
+      const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
+      if (qzGlobal?.websocket && qzGlobal?.configs && qzGlobal?.print) {
+        const websocket = qzGlobal.websocket;
+        const configs = qzGlobal.configs;
+        const print = qzGlobal.print;
+        if (websocket.connect && configs.create && websocket.isActive) {
+          if (!websocket.isActive()) {
+            await websocket.connect();
+          }
+          const config = configs.create(QZ_PRINTER_NAME);
+          await print(config, [{ type: 'raw', format: 'command', data: montarCupomPedido(pedido) }]);
+          if (popup && !popup.closed) popup.close();
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Falha ao imprimir via QZ Tray no admin. Usando popup:', error);
+    }
+
+    if (!popup) {
+      alert('Nao foi possivel abrir a janela de impressao.');
+      return;
+    }
+
+    popup.document.open();
+    popup.document.write(`
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Pedido #${pedido?.id ?? ''}</title>
+          <style>
+            @page { margin: 4mm; }
+            body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 11px; font-weight: 700; }
+            h1 { margin: 0 0 4px; font-size: 13px; text-align: center; }
+            .meta { font-size: 10px; margin-bottom: 2px; line-height: 1.15; }
+            table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+            td { font-size: 10px; padding: 2px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
+            .linha-total { font-weight: 700; font-size: 12px; margin-top: 4px; }
+          </style>
+        </head>
+        <body>
+          <h1>Dulelis - Pedido #${pedido?.id ?? ''}</h1>
+          <div class="meta"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
+          <div class="meta"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
+          <div class="meta"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
+          <div class="meta"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
+          <div class="meta"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
+          ${observacao ? `<div class="meta"><strong>Observacao:</strong> ${observacao}</div>` : ''}
+          <div class="meta"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
+          <div class="meta"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
+          <table>
+            <tbody>${itensHtml}</tbody>
+          </table>
+          <div class="linha-total">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
+          <script>
+            window.onload = () => {
+              window.print();
+              window.onafterprint = () => window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+  };
 
   const irParaCadastroCliente = (whatsapp?: string, nome?: string) => {
     const zap = normalizarNumero(String(whatsapp || ''));
@@ -832,12 +1031,16 @@ export default function AdminPage() {
   const atualizarStatusPedido = async (pedidoId: number, proximoStatus: string) => {
     setPedidoAtualizandoId(pedidoId);
     try {
+      const pedidoAtual = pedidos.find((item) => Number(item.id) === Number(pedidoId)) || null;
       await adminDb({
         action: 'update_eq',
         table: 'pedidos',
         payload: { status_pedido: proximoStatus },
         eq: { column: 'id', value: pedidoId },
       });
+      if (pedidoAtual && normalizarStatusPedido(pedidoAtual) === 'aguardando_aceite' && proximoStatus === 'recebido') {
+        await imprimirPedidoAceito({ ...pedidoAtual, status_pedido: proximoStatus });
+      }
       await carregarDados();
     } catch (error: any) {
       const mensagem = String(error?.message || '');
@@ -1137,14 +1340,6 @@ export default function AdminPage() {
     popup.document.close();
   };
 
-  const parseItensPedido = (pedido: any) => {
-    let itensArray = pedido?.itens;
-    if (typeof itensArray === 'string') {
-      try { itensArray = JSON.parse(itensArray); } catch { itensArray = []; }
-    }
-    return Array.isArray(itensArray) ? itensArray : [];
-  };
-
   const imprimirHistoricoCliente = (cliente: any, incluirCadastro: boolean) => {
     const zap = normalizarNumero(String(cliente.whatsapp || ''));
     const historico = historicoPorWhatsapp[zap] || [];
@@ -1271,6 +1466,7 @@ export default function AdminPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
+      <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
       <aside className="w-full bg-slate-900 text-white p-4 lg:w-64 lg:p-6 print:hidden">
         <h2 className="text-xl font-black text-pink-500 italic mb-4 text-center tracking-tighter lg:text-2xl lg:mb-10">DULELIS</h2>
         <nav className="flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1810,9 +2006,18 @@ export default function AdminPage() {
                               <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterClasseStatusPedido(pedido)}`}>
                                 {obterRotuloStatusPedido(pedido)}
                               </div>
-                              <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterClasseStatusPedido(pedido)}`}>
-                                {obterRotuloStatusPedido(pedido)}
+                              <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterResumoPagamento(pedido).classe}`}>
+                                {obterResumoPagamento(pedido).titulo}
                               </div>
+                              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                {obterResumoPagamento(pedido).detalhe}
+                              </p>
+                              <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterResumoPagamento(pedido).classe}`}>
+                                {obterResumoPagamento(pedido).titulo}
+                              </div>
+                              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                {obterResumoPagamento(pedido).detalhe}
+                              </p>
                               <p className="text-sm font-black text-green-600 mt-1">R$ {Number(pedido.total || 0).toFixed(2)}</p>
                             </button>
                             <input

@@ -2,7 +2,6 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
@@ -44,8 +43,6 @@ const FORMA_DINHEIRO = "Dinheiro";
 const FORMA_PIX_CARTAO = "Pix";
 const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_PIX_CARTAO];
 const VITRINE_MODAL_SLIDE_MS = 6000;
-const QZ_TRAY_SCRIPT_URL = "https://unpkg.com/qz-tray@2.2.4/qz-tray.js";
-const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
 const AUTH_DRAFT_STORAGE_KEY = "dulellis.auth.draft";
 
 type Cliente = {
@@ -172,17 +169,6 @@ type AuthDraft = {
   data_aniversario: string;
 };
 
-type QzGlobal = {
-  websocket?: {
-    isActive?: () => boolean;
-    connect?: () => Promise<void>;
-  };
-  configs?: {
-    create?: (printer: string | null) => unknown;
-  };
-  print?: (config: unknown, data: Array<{ type: string; format: string; data: string }>) => Promise<void>;
-};
-
 const CLIENTE_INICIAL: Cliente = {
   nome: "",
   whatsapp: "",
@@ -225,99 +211,6 @@ function normalizarClienteParaEntrega(cliente: Partial<Cliente>): Cliente {
 
 function normalizarNumero(valor: string) {
   return valor.replace(/\D/g, "");
-}
-
-function escaparHtml(valor: string) {
-  return String(valor || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function montarCupomEscPos(input: {
-  pedidoId: number;
-  clienteNome: string;
-  endereco: string;
-  pontoReferencia: string;
-  observacao: string;
-  pagamento: string;
-  itens: Array<{ nome: string; qtd: number; preco: number }>;
-  taxaEntrega: number;
-  descontoPromocoes: number;
-  totalPedido: number;
-}) {
-  const reset = "\x1b\x40";
-  const alinharCentro = "\x1b\x61\x01";
-  const alinharEsquerda = "\x1b\x61\x00";
-  const fonteCompacta = "\x1b\x4d\x01";
-  const espacamentoCompacto = "\x1b\x33\x12";
-  const negritoOn = "\x1b\x45\x01\x1b\x47\x01";
-  const negritoOff = "\x1b\x45\x00\x1b\x47\x00";
-  const avancoMinimo = "\n\n";
-  const corte = "\x1d\x56\x41\x03";
-  const larguraLinha = 32;
-
-  const quebrarLinha = (texto: string, largura = larguraLinha) => {
-    const bruto = String(texto || "").trim();
-    if (!bruto) return [];
-    const palavras = bruto.split(/\s+/);
-    const linhas: string[] = [];
-    let atual = "";
-
-    for (const palavra of palavras) {
-      const tentativa = atual ? `${atual} ${palavra}` : palavra;
-      if (tentativa.length <= largura) {
-        atual = tentativa;
-        continue;
-      }
-      if (atual) linhas.push(atual);
-      atual = palavra;
-    }
-
-    if (atual) linhas.push(atual);
-    return linhas;
-  };
-
-  const formatarValor = (valor: number) => `R$ ${valor.toFixed(2)}`;
-
-  const linhasMeta = [
-    `PEDIDO ${input.pedidoId}`,
-    `CLI: ${input.clienteNome}`,
-    `END: ${input.endereco}`,
-    `REF: ${input.pontoReferencia || "Nao informado"}`,
-    ...(input.observacao ? [`OBS: ${input.observacao}`] : []),
-    `PGTO: ${input.pagamento}`,
-  ]
-    .flatMap((linha) => quebrarLinha(linha))
-    .join("\n");
-
-  const linhasItens = input.itens
-    .map((item) => {
-      const totalItem = Number(item.preco || 0) * Number(item.qtd || 0);
-      return quebrarLinha(`${item.qtd}x ${item.nome} ${formatarValor(totalItem)}`).join("\n");
-    })
-    .join("\n");
-
-  const subtotalSemFrete = Math.max(0, Number(input.totalPedido) - Number(input.taxaEntrega || 0));
-  const descontoLinha =
-    Number(input.descontoPromocoes || 0) > 0
-      ? `DESC: -${formatarValor(Number(input.descontoPromocoes || 0))}\n`
-      : "";
-
-  const textoCupom =
-    `${alinharCentro}DULELIS CONFEITARIA\n${alinharEsquerda}` +
-    `${linhasMeta}\n` +
-    `--------------------------------\n` +
-    `${linhasItens}\n` +
-    `--------------------------------\n` +
-    `SUBT: ${formatarValor(subtotalSemFrete)}\n` +
-    `FRETE: ${formatarValor(Number(input.taxaEntrega || 0))}\n` +
-    descontoLinha +
-    `TOTAL: ${formatarValor(Number(input.totalPedido))}\n`;
-
-  return reset + fonteCompacta + espacamentoCompacto + negritoOn + textoCupom + negritoOff + avancoMinimo + corte;
 }
 
 function primeiroNome(nome: string) {
@@ -1581,13 +1474,9 @@ function ClientePageContent() {
 
     setLoading(true);
     let janelaPagamento: Window | null = null;
-    let janelaImpressao: Window | null = null;
     const ehPixCartao = formaPagamento === FORMA_PIX_CARTAO;
     if (formaPagamento === FORMA_PIX_CARTAO && typeof window !== "undefined") {
       janelaPagamento = window.open("about:blank", "_blank");
-    }
-    if (!ehPixCartao && typeof window !== "undefined") {
-      janelaImpressao = window.open("about:blank", "_blank", "width=420,height=760");
     }
     try {
       const payloadCliente = await salvarOuAtualizarCliente(cliente);
@@ -1670,96 +1559,6 @@ function ClientePageContent() {
 
       const msg = pagamentoTexto === FORMA_DINHEIRO ? msgDinheiro : msgPadrao;
       if (!ehPixCartao) {
-        const impressaoFinal = montarCupomEscPos({
-          pedidoId,
-          clienteNome: payloadCliente.nome,
-          endereco: enderecoCompleto,
-          pontoReferencia,
-          observacao: observacaoEntrega,
-          pagamento: pagamentoTexto,
-          itens: carrinho.map((i) => ({ nome: i.nome, qtd: i.qtd, preco: Number(i.preco || 0) })),
-          taxaEntrega: Number(taxaEntrega || 0),
-          descontoPromocoes: Number(descontoPromocoes || 0),
-          totalPedido: Number(totalPedido || 0),
-        });
-        const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
-        let impressaoDiretaConcluida = false;
-        if (qzGlobal?.websocket && qzGlobal?.configs && qzGlobal?.print) {
-          try {
-            const websocket = qzGlobal.websocket;
-            const configs = qzGlobal.configs;
-            const print = qzGlobal.print;
-            if (!websocket.isActive || !websocket.connect || !configs.create) {
-              throw new Error("QZ Tray indisponivel para impressao direta.");
-            }
-            if (!websocket.isActive()) {
-              await websocket.connect();
-            }
-            const config = configs.create(QZ_PRINTER_NAME);
-            await print(config, [{ type: "raw", format: "command", data: impressaoFinal }]);
-            impressaoDiretaConcluida = true;
-          } catch (error) {
-            console.error("Falha ao imprimir em modo ESC/POS. Usando popup:", error);
-          }
-        }
-
-        const subtotalSemFrete = Math.max(0, totalPedido - Number(taxaEntrega || 0));
-        const itensHtml = carrinho
-          .map(
-            (item) =>
-              `<tr><td>${item.qtd}x ${escaparHtml(item.nome)}</td><td style="text-align:right">R$ ${(
-                Number(item.preco || 0) * item.qtd
-              ).toFixed(2)}</td></tr>`,
-          )
-          .join("");
-        if (!impressaoDiretaConcluida && janelaImpressao && !janelaImpressao.closed) {
-          janelaImpressao.document.open();
-          janelaImpressao.document.write(`
-            <!doctype html>
-            <html lang="pt-BR">
-              <head>
-                <meta charset="utf-8" />
-                <title>Pedido #${pedidoId}</title>
-                <style>
-                  @page { margin: 4mm; }
-                  body { font-family: Arial, sans-serif; margin: 0; color: #111; font-size: 11px; font-weight: 700; }
-                  h1 { margin: 0 0 4px; font-size: 13px; text-align: center; }
-                  .meta { font-size: 10px; margin-bottom: 2px; line-height: 1.15; }
-                  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-                  td { font-size: 10px; padding: 2px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
-                  .totais { margin-top: 4px; font-size: 10px; }
-                  .linha-total { font-weight: 700; font-size: 12px; margin-top: 4px; }
-                </style>
-              </head>
-              <body>
-                <h1>Dulelis - Pedido #${pedidoId}</h1>
-                <div class="meta"><strong>Data:</strong> ${new Date().toLocaleString("pt-BR")}</div>
-                <div class="meta"><strong>Cliente:</strong> ${escaparHtml(payloadCliente.nome)}</div>
-                <div class="meta"><strong>WhatsApp:</strong> ${escaparHtml(payloadCliente.whatsapp)}</div>
-                <div class="meta"><strong>Endereco:</strong> ${escaparHtml(enderecoCompleto)}</div>
-                <div class="meta"><strong>Ponto:</strong> ${escaparHtml(pontoReferencia || "Nao informado")}</div>
-                ${observacaoEntrega ? `<div class="meta"><strong>Observacao:</strong> ${escaparHtml(observacaoEntrega)}</div>` : ""}
-                <div class="meta"><strong>Pagamento:</strong> ${escaparHtml(pagamentoTexto)}</div>
-                <table>
-                  <tbody>${itensHtml}</tbody>
-                </table>
-                <div class="totais">Subtotal: R$ ${subtotalSemFrete.toFixed(2)}</div>
-                <div class="totais">Taxa de entrega: R$ ${Number(taxaEntrega || 0).toFixed(2)}</div>
-                ${descontoPromocoes > 0 ? `<div class="totais">Descontos: -R$ ${descontoPromocoes.toFixed(2)}</div>` : ""}
-                <div class="linha-total">Total: R$ ${totalPedido.toFixed(2)}</div>
-                <script>
-                  window.onload = () => {
-                    window.print();
-                    window.onafterprint = () => window.close();
-                  };
-                </script>
-              </body>
-            </html>
-          `);
-          janelaImpressao.document.close();
-        } else if (impressaoDiretaConcluida && janelaImpressao && !janelaImpressao.closed) {
-          janelaImpressao.close();
-        }
         window.open(
           `https://wa.me/5547988347100?text=${encodeURIComponent(msg)}`,
           "_blank",
@@ -1784,9 +1583,6 @@ function ClientePageContent() {
     } catch (error) {
       if (janelaPagamento && !janelaPagamento.closed) {
         janelaPagamento.close();
-      }
-      if (janelaImpressao && !janelaImpressao.closed) {
-        janelaImpressao.close();
       }
       const mensagem = obterMensagemErro(error) || "Erro ao finalizar pedido.";
       console.error("Erro ao finalizar pedido:", error);
@@ -2996,7 +2792,6 @@ function ClientePageContent() {
 export default function ClientePage() {
   return (
     <>
-      <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
       <Suspense fallback={null}>
         <ClientePageContent />
       </Suspense>
