@@ -1044,34 +1044,31 @@ export default function AdminPage() {
       <html lang="pt-BR">
         <head>
           <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>Pedido #${pedido?.id ?? ''}</title>
           <style>
             @page { margin: 3mm; }
             html, body { margin: 0; padding: 0; background: #fff; }
             body { font-family: Arial, sans-serif; color: #111; }
-            .cupom { width: 170px; padding: 10px 8px 28px; }
-            h1 { margin: 0 0 16px; font-size: 34px; text-align: center; line-height: 1.1; font-weight: 900; }
-            .meta { font-size: 26px; margin-bottom: 12px; line-height: 1.25; font-weight: 700; word-break: break-word; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
-            td { font-size: 24px; padding: 10px 0; border-bottom: 1px dashed #cbd5e1; vertical-align: top; font-weight: 700; word-break: break-word; }
-            .linha-total { font-weight: 900; font-size: 32px; margin-top: 18px; }
+            .cupom { width: 260px; padding: 12px 10px 30px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 12px; table-layout: fixed; }
           </style>
         </head>
         <body>
-          <div class="cupom">
-            <h1>Dulelis - Pedido #${pedido?.id ?? ''}</h1>
-            <div class="meta"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
-            <div class="meta"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
-            <div class="meta"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
-            <div class="meta"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
-            <div class="meta"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
-            ${observacao ? `<div class="meta"><strong>Observacao:</strong> ${observacao}</div>` : ''}
-            <div class="meta"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
-            <div class="meta"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
+          <div class="cupom" style="width:260px;padding:12px 10px 30px;">
+            <h1 style="margin:0 0 18px;font-size:52px;text-align:center;line-height:1.05;font-weight:900;">Dulelis - Pedido #${pedido?.id ?? ''}</h1>
+            <div style="font-size:34px;margin-bottom:14px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
+            <div style="font-size:34px;margin-bottom:14px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
+            <div style="font-size:34px;margin-bottom:14px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
+            <div style="font-size:34px;margin-bottom:14px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
+            <div style="font-size:34px;margin-bottom:14px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
+            ${observacao ? `<div style="font-size:34px;margin-bottom:14px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Observacao:</strong> ${observacao}</div>` : ''}
+            <div style="font-size:34px;margin-bottom:14px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
+            <div style="font-size:34px;margin-bottom:14px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
             <table>
-              <tbody>${itensHtml}</tbody>
+              <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:32px;padding:12px 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:700;word-break:break-word;"')}</tbody>
             </table>
-            <div class="linha-total">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
+            <div style="font-weight:900;font-size:42px;margin-top:20px;">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
           </div>
           <script>
             window.onload = () => {
