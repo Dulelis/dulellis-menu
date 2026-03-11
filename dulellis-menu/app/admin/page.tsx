@@ -1047,28 +1047,28 @@ export default function AdminPage() {
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>Pedido #${pedido?.id ?? ''}</title>
           <style>
-            @page { margin: 3mm; }
+            @page { size: 80mm 110mm; margin: 2mm; }
             html, body { margin: 0; padding: 0; background: #fff; }
             body { font-family: Arial, sans-serif; color: #111; }
-            .cupom { width: 260px; padding: 12px 10px 30px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 12px; table-layout: fixed; }
+            .cupom { width: 76mm; padding: 2mm 1.5mm 3mm; }
+            table { width: 100%; border-collapse: collapse; margin-top: 3mm; table-layout: fixed; }
           </style>
         </head>
         <body>
-          <div class="cupom" style="width:260px;padding:12px 10px 30px;">
-            <h1 style="margin:0 0 18px;font-size:20px;text-align:center;line-height:1.05;font-weight:900;">Dulelis - Pedido #${pedido?.id ?? ''}</h1>
-            <div style="font-size:12px;margin-bottom:8px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
-            <div style="font-size:12px;margin-bottom:8px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
-            <div style="font-size:12px;margin-bottom:8px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
-            <div style="font-size:12px;margin-bottom:8px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
-            <div style="font-size:12px;margin-bottom:8px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
-            ${observacao ? `<div style="font-size:12px;margin-bottom:8px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Observacao:</strong> ${observacao}</div>` : ''}
-            <div style="font-size:12px;margin-bottom:8px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
-            <div style="font-size:12px;margin-bottom:8px;line-height:1.2;font-weight:700;word-break:break-word;"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
+          <div class="cupom" style="width:76mm;padding:2mm 1.5mm 3mm;">
+            <h1 style="margin:0 0 3mm;font-size:15px;text-align:center;line-height:1.05;font-weight:900;">Dulelis - Pedido #${pedido?.id ?? ''}</h1>
+            <div style="font-size:10px;margin-bottom:1.4mm;line-height:1.12;font-weight:700;word-break:break-word;"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
+            <div style="font-size:10px;margin-bottom:1.4mm;line-height:1.12;font-weight:700;word-break:break-word;"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
+            <div style="font-size:10px;margin-bottom:1.4mm;line-height:1.12;font-weight:700;word-break:break-word;"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
+            <div style="font-size:10px;margin-bottom:1.4mm;line-height:1.12;font-weight:700;word-break:break-word;"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
+            <div style="font-size:10px;margin-bottom:1.4mm;line-height:1.12;font-weight:700;word-break:break-word;"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
+            ${observacao ? `<div style="font-size:10px;margin-bottom:1.4mm;line-height:1.12;font-weight:700;word-break:break-word;"><strong>Observacao:</strong> ${observacao}</div>` : ''}
+            <div style="font-size:10px;margin-bottom:1.4mm;line-height:1.12;font-weight:700;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
+            <div style="font-size:10px;margin-bottom:1.4mm;line-height:1.12;font-weight:700;word-break:break-word;"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
             <table>
-              <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:12px;padding:8px 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:700;word-break:break-word;"')}</tbody>
+              <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:10px;padding:1.5mm 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:700;word-break:break-word;line-height:1.1;"')}</tbody>
             </table>
-            <div style="font-weight:900;font-size:18px;margin-top:16px;">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
+            <div style="font-weight:900;font-size:14px;margin-top:3mm;line-height:1.05;">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
           </div>
           <script>
             window.onload = () => {
