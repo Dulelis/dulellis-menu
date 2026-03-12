@@ -87,6 +87,34 @@ async function buscarClientePorWhatsapp(
   return { error: "", cliente };
 }
 
+async function buscarUltimaTaxaEntrega(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  whatsapp: string,
+) {
+  const zap = normalizarNumero(whatsapp);
+  if (zap.length < 10) return null;
+
+  const tentativasSelect = ["taxa_entrega,created_at", "created_at"];
+  for (const selectCols of tentativasSelect) {
+    const { data, error } = await supabase
+      .from("pedidos")
+      .select(selectCols)
+      .eq("whatsapp", zap)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) continue;
+
+    if ("taxa_entrega" in data) {
+      const taxa = Number((data as { taxa_entrega?: number | string | null }).taxa_entrega ?? NaN);
+      return Number.isFinite(taxa) ? Math.max(0, taxa) : null;
+    }
+    return null;
+  }
+
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const sessao = getCustomerSessionFromRequest(request);
   if (!sessao) {
@@ -140,6 +168,7 @@ export async function GET(request: NextRequest) {
   const pontoExtraido = extrairPontoReferenciaDeEndereco(enderecoBruto);
   const pontoFinal = pontoDireto || pontoExtraido;
   const enderecoFinal = limparEnderecoDePontoReferencia(enderecoBruto);
+  const ultimaTaxaEntrega = await buscarUltimaTaxaEntrega(supabase, String(cliente.whatsapp || sessao.whatsapp || ""));
 
   return NextResponse.json({
     ok: true,
@@ -156,6 +185,7 @@ export async function GET(request: NextRequest) {
       ponto_referencia: pontoFinal,
       observacao: String(cliente.observacao || ""),
       data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
+      ultima_taxa_entrega: ultimaTaxaEntrega,
     },
   });
 }

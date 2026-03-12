@@ -212,6 +212,7 @@ export async function POST(request: NextRequest) {
     whatsapp: payloadCliente.whatsapp,
     itens: itensPedido,
     total,
+    taxa_entrega: taxaEntrega,
     forma_pagamento: formaPagamento,
     observacao: payloadCliente.observacao || null,
     pagamento_referencia: referencia || null,
@@ -224,6 +225,7 @@ export async function POST(request: NextRequest) {
     whatsapp: payloadCliente.whatsapp,
     itens: itensPedido,
     total,
+    taxa_entrega: taxaEntrega,
     forma_pagamento: formaPagamento,
     observacao: payloadCliente.observacao || null,
     status_pedido: "aguardando_aceite",
@@ -233,6 +235,7 @@ export async function POST(request: NextRequest) {
     whatsapp: payloadCliente.whatsapp,
     itens: itensPedido,
     total,
+    taxa_entrega: taxaEntrega,
     forma_pagamento: formaPagamento,
     status_pedido: "aguardando_aceite",
   };

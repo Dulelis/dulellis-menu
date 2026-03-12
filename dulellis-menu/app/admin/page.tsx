@@ -1056,19 +1056,19 @@ export default function AdminPage() {
         </head>
         <body>
           <div class="cupom" style="width:76mm;padding:2mm 1.5mm 3mm;">
-            <h1 style="margin:0 0 1.8mm;font-size:14px;text-align:center;line-height:1.1;font-weight:700;">Dulelis - Pedido #${pedido?.id ?? ''}</h1>
-            <div style="font-size:10px;margin-bottom:0.9mm;line-height:1.14;font-weight:400;word-break:break-word;"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
-            <div style="font-size:10px;margin-bottom:0.9mm;line-height:1.14;font-weight:400;word-break:break-word;"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
-            <div style="font-size:10px;margin-bottom:0.9mm;line-height:1.14;font-weight:400;word-break:break-word;"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
-            <div style="font-size:10px;margin-bottom:0.9mm;line-height:1.14;font-weight:400;word-break:break-word;"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
-            <div style="font-size:10px;margin-bottom:0.9mm;line-height:1.14;font-weight:400;word-break:break-word;"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
-            ${observacao ? `<div style="font-size:10px;margin-bottom:0.9mm;line-height:1.14;font-weight:400;word-break:break-word;"><strong>Observacao:</strong> ${observacao}</div>` : ''}
-            <div style="font-size:10px;margin-bottom:0.9mm;line-height:1.14;font-weight:400;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
-            <div style="font-size:10px;margin-bottom:0.9mm;line-height:1.14;font-weight:400;word-break:break-word;"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
+            <h1 style="margin:0 0 2mm;font-size:16px;text-align:center;line-height:1.1;font-weight:700;">Dulelis - Pedido #${pedido?.id ?? ''}</h1>
+            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
+            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
+            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
+            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
+            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
+            ${observacao ? `<div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Observacao:</strong> ${observacao}</div>` : ''}
+            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
+            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
             <table>
-              <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:10px;padding:1mm 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:400;word-break:break-word;line-height:1.12;"')}</tbody>
+              <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:11px;padding:1.1mm 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:400;word-break:break-word;line-height:1.16;"')}</tbody>
             </table>
-            <div style="font-weight:700;font-size:12px;margin-top:1.8mm;line-height:1.1;">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
+            <div style="font-weight:700;font-size:14px;margin-top:2mm;line-height:1.1;">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
           </div>
           <script>
             window.onload = () => {

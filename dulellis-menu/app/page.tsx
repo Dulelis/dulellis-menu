@@ -27,8 +27,8 @@ const LOJA_LNG = -48.6538;
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
 const CIDADE_ATENDIDA = "Navegantes";
-const CATEGORIAS = ["Todos", "Doces", "Bolos", "Salgados", "Bebidas"];
-const ORDEM_VITRINE_CATEGORIAS = ["Bolos", "Doces", "Salgados", "Bebidas"];
+const CATEGORIAS = ["Todos", "Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais"];
+const ORDEM_VITRINE_CATEGORIAS = ["Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais"];
 const DIAS_SEMANA_CHAVES = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"] as const;
 const DIAS_SEMANA_LABELS: Record<(typeof DIAS_SEMANA_CHAVES)[number], string> = {
   domingo: "Domingo",
@@ -64,6 +64,7 @@ type ClienteRow = Partial<Cliente> & {
   created_at?: string;
   whatsapp?: string | null;
   cep?: string | number | null;
+  ultima_taxa_entrega?: number | string | null;
 };
 
 type Produto = {
@@ -159,6 +160,7 @@ type SessaoCliente = {
   ponto_referencia: string;
   observacao: string;
   data_aniversario: string;
+  ultima_taxa_entrega?: number | null;
 };
 
 type AuthDraft = {
@@ -435,6 +437,7 @@ function ClientePageContent() {
   const [clienteEncontrado, setClienteEncontrado] = useState(false);
   const [distanciaKm, setDistanciaKm] = useState<number | null>(null);
   const [taxaEntrega, setTaxaEntrega] = useState<number>(0);
+  const [ultimaTaxaEntregaSalva, setUltimaTaxaEntregaSalva] = useState<number | null>(null);
   const [msgTaxa, setMsgTaxa] = useState("Aguardando endereço...");
   const [cliente, setCliente] = useState<Cliente>(CLIENTE_INICIAL);
   const [enderecoSalvoCliente, setEnderecoSalvoCliente] = useState<Cliente | null>(null);
@@ -463,6 +466,21 @@ function ClientePageContent() {
   const authDraftRestauradoRef = useRef(false);
   const recarregarVitrineRef = useRef<number | null>(null);
   const recarregarAcompanhamentoRef = useRef<number | null>(null);
+
+  const aplicarTaxaUltimoPedido = useCallback((valor: number | string | null | undefined) => {
+    const taxa = Number(valor);
+    if (!Number.isFinite(taxa) || taxa < 0) {
+      setUltimaTaxaEntregaSalva(null);
+      return false;
+    }
+
+    const taxaFinal = Math.max(0, taxa);
+    setUltimaTaxaEntregaSalva(taxaFinal);
+    setDistanciaKm(null);
+    setTaxaEntrega(taxaFinal);
+    setMsgTaxa(`Entrega: R$ ${taxaFinal.toFixed(2)} (ultimo pedido)`);
+    return true;
+  }, []);
 
   const subtotal = useMemo(
     () => carrinho.reduce((acc, i) => acc + i.preco * i.qtd, 0),
@@ -764,6 +782,7 @@ function ClientePageContent() {
 
         if (!clienteEncontradoDb) {
           setClienteEncontrado(false);
+          setUltimaTaxaEntregaSalva(null);
           return;
         }
 
@@ -806,16 +825,17 @@ function ClientePageContent() {
         setModoEnderecoEntrega("saved");
         setClienteEncontrado(true);
 
-        if (cepNormalizado.length === 8) {
+        if (!aplicarTaxaUltimoPedido(clienteEncontradoDb.ultima_taxa_entrega) && cepNormalizado.length === 8) {
           await executarBuscaCep(cepNormalizado);
         }
       } catch {
         setClienteEncontrado(false);
+        setUltimaTaxaEntregaSalva(null);
       } finally {
         setBuscandoCliente(false);
       }
     },
-    [executarBuscaCep],
+    [aplicarTaxaUltimoPedido, executarBuscaCep],
   );
 
   useEffect(() => {
@@ -870,6 +890,7 @@ function ClientePageContent() {
         setEnderecoSalvoCliente(null);
         setModoEnderecoEntrega("saved");
         setPodeAcompanharPedido(false);
+        setUltimaTaxaEntregaSalva(null);
         return;
       }
 
@@ -903,8 +924,12 @@ function ClientePageContent() {
       if (clienteTemEnderecoSalvo(clienteSessao)) {
         setEnderecoSalvoCliente(clienteSessao);
         setModoEnderecoEntrega("saved");
+        if (!aplicarTaxaUltimoPedido(dados.ultima_taxa_entrega) && dados.cep) {
+          await executarBuscaCep(dados.cep);
+        }
       } else {
         setEnderecoSalvoCliente(null);
+        setUltimaTaxaEntregaSalva(null);
       }
       setAuthWhatsapp(dados.whatsapp || "");
       setAuthEmail(dados.email || "");
@@ -914,8 +939,9 @@ function ClientePageContent() {
       setEnderecoSalvoCliente(null);
       setModoEnderecoEntrega("saved");
       setPodeAcompanharPedido(false);
+      setUltimaTaxaEntregaSalva(null);
     }
-  }, []);
+  }, [aplicarTaxaUltimoPedido, executarBuscaCep]);
 
   useEffect(() => {
     void carregarSessaoCliente();
@@ -1007,6 +1033,10 @@ function ClientePageContent() {
       setModoEnderecoEntrega("saved");
       aplicarEnderecoSalvo(base);
 
+      if (aplicarTaxaUltimoPedido(ultimaTaxaEntregaSalva)) {
+        return;
+      }
+
       const cepSalvo = normalizarNumero(base.cep).slice(0, 8);
       if (cepSalvo.length === 8) {
         await executarBuscaCep(cepSalvo);
@@ -1017,7 +1047,7 @@ function ClientePageContent() {
       setTaxaEntrega(0);
       setMsgTaxa("Nao foi possivel calcular o frete para o endereco salvo.");
     },
-    [aplicarEnderecoSalvo, executarBuscaCep],
+    [aplicarEnderecoSalvo, aplicarTaxaUltimoPedido, executarBuscaCep, ultimaTaxaEntregaSalva],
   );
 
   const verificarCadastroAuthPorWhatsapp = useCallback(async () => {
@@ -1506,6 +1536,7 @@ function ClientePageContent() {
       const clienteSalvo = await salvarOuAtualizarCliente(cliente);
       const enderecoAtualizado = normalizarClienteParaEntrega(clienteSalvo);
       setEnderecoSalvoCliente(enderecoAtualizado);
+      setUltimaTaxaEntregaSalva(taxaEntrega);
       setModoEnderecoEntrega("saved");
       aplicarEnderecoSalvo(enderecoAtualizado);
       setPasso(2);
@@ -1516,7 +1547,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [aplicarEnderecoSalvo, cliente, salvarOuAtualizarCliente, sessaoCliente]);
+  }, [aplicarEnderecoSalvo, cliente, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega]);
 
   const resumoEnderecoSalvo = useMemo(() => {
     if (!enderecoSalvoCliente || !clienteTemEnderecoSalvo(enderecoSalvoCliente)) return "";
@@ -1558,6 +1589,7 @@ function ClientePageContent() {
       const payloadCliente = await salvarOuAtualizarCliente(cliente);
       const enderecoAtualizado = normalizarClienteParaEntrega(payloadCliente);
       setEnderecoSalvoCliente(enderecoAtualizado);
+      setUltimaTaxaEntregaSalva(taxaEntrega);
       setModoEnderecoEntrega("saved");
       const pagamentoTexto = formaPagamento;
       const resPedido = await fetch("/api/public/order", {
@@ -1658,6 +1690,21 @@ function ClientePageContent() {
     },
     [categoriaAtiva, produtos, quantidadesCarrinho],
   );
+  const secoesVitrine = useMemo(() => {
+    if (categoriaAtiva === "Todos") {
+      return ORDEM_VITRINE_CATEGORIAS.map((categoria) => ({
+        categoria,
+        itens: produtosFiltrados.filter((produto) => produto.categoria === categoria),
+      }));
+    }
+
+    return [
+      {
+        categoria: categoriaAtiva,
+        itens: produtosFiltrados,
+      },
+    ];
+  }, [categoriaAtiva, produtosFiltrados]);
   const resumoPromocaoProduto = useCallback(
     (produtoId: number) => {
       const promo = promocoesAtivasHoje.find(
@@ -2026,7 +2073,7 @@ function ClientePageContent() {
           </div>
         </div>
 
-        <div className="grid grid-cols-5 gap-2 py-3 px-3 sm:flex sm:justify-center sm:gap-3 sm:overflow-x-auto sm:py-4 sm:px-6 sm:no-scrollbar">
+        <div className="grid grid-cols-3 gap-2 py-3 px-3 sm:flex sm:justify-center sm:gap-3 sm:overflow-x-auto sm:py-4 sm:px-6 sm:no-scrollbar">
         {CATEGORIAS.map((cat) => (
           <button
             key={cat}
@@ -2047,110 +2094,120 @@ function ClientePageContent() {
         }
       `}</style>
 
-      <main className="max-w-xl mx-auto px-4 py-5 sm:px-6 sm:py-6 grid gap-4">
+      <main className="max-w-xl mx-auto px-4 py-5 sm:px-6 sm:py-6 grid gap-5">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Image src="/logo.png" alt="Carregando" width={60} height={60} className="object-contain animate-pulse" />
             <Loader2 className="animate-spin text-pink-500" size={30} />
           </div>
         ) : (
-          produtosFiltrados.map((prod, idx) => {
-            const categoriaAnterior = idx > 0 ? produtosFiltrados[idx - 1]?.categoria : "";
-            const exibirArabesco = categoriaAtiva === "Todos" && idx > 0 && categoriaAnterior !== prod.categoria;
+          secoesVitrine.map((secao) => (
+            <section key={secao.categoria} className="space-y-3">
+              <div className="rounded-[1.8rem] border border-pink-200 bg-gradient-to-r from-[#fff4f8] via-white to-[#fff4f8] px-5 py-4 shadow-[0_10px_22px_rgba(236,72,153,0.08)]">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-pink-400">
+                  Categoria
+                </p>
+                <h2 className="mt-1 text-2xl font-black italic tracking-tight text-slate-800">
+                  {secao.categoria}
+                </h2>
+              </div>
 
-            return (
-              <React.Fragment key={prod.id}>
-                {exibirArabesco && (
-                  <div className="flex items-center gap-3 py-1 text-black/90">
-                    <div className="h-px flex-1 bg-black/40" />
-                    <span className="text-lg leading-none">❦</span>
-                    <div className="h-px flex-1 bg-black/40" />
-                  </div>
-                )}
-                <div className="group flex items-center gap-3 p-3 rounded-[1.8rem] border bg-[#fffafc] border-[#f3e8ee] shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition-all active:scale-[0.98]">
-                  <div className="w-16 h-16 rounded-[1.1rem] bg-[#fff5f9] overflow-hidden shrink-0 border border-[#f6eaf0]">
-                    {prod.imagem_url ? (
-                      <Image
-                        src={prod.imagem_url}
-                        className="w-full h-full object-cover"
-                        alt={prod.nome}
-                        width={96}
-                        height={96}
-                        sizes="96px"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-[#fffafc] p-2">
+              {secao.itens.length > 0 ? (
+                secao.itens.map((prod) => (
+                  <div key={prod.id} className="group flex items-center gap-3 p-3 rounded-[1.8rem] border bg-[#fffafc] border-[#f3e8ee] shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition-all active:scale-[0.98]">
+                    <div className="w-16 h-16 rounded-[1.1rem] bg-[#fff5f9] overflow-hidden shrink-0 border border-[#f6eaf0]">
+                      {prod.imagem_url ? (
                         <Image
-                          src="/logo.png"
-                          alt="Dulelis"
-                          width={50}
-                          height={50}
-                          className="object-contain opacity-50"
+                          src={prod.imagem_url}
+                          className="w-full h-full object-cover"
+                          alt={prod.nome}
+                          width={96}
+                          height={96}
+                          sizes="96px"
                         />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="min-w-0">
-                      <span className="text-[7px] font-black text-pink-500 uppercase tracking-[0.22em] bg-pink-50/80 px-2 py-0.5 rounded-full">
-                        {prod.categoria}
-                      </span>
-                      {resumoPromocaoProduto(prod.id) && (
-                        <span className="ml-1.5 text-[7px] font-black text-emerald-700 uppercase tracking-[0.2em] bg-emerald-50 px-2 py-0.5 rounded-full">
-                          {resumoPromocaoProduto(prod.id)}
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-[#fffafc] p-2">
+                          <Image
+                            src="/logo.png"
+                            alt="Dulelis"
+                            width={50}
+                            height={50}
+                            className="object-contain opacity-50"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="min-w-0">
+                        <span className="text-[7px] font-black text-pink-500 uppercase tracking-[0.22em] bg-pink-50/80 px-2 py-0.5 rounded-full">
+                          {prod.categoria}
                         </span>
-                      )}
-                      <h3 className="font-black text-slate-800 text-[clamp(0.86rem,3vw,1.2rem)] leading-[1.08] mt-1 tracking-[-0.01em] whitespace-nowrap">
-                        {prod.nome}
-                      </h3>
-                      <p className="text-[11px] leading-[1.25] text-slate-500 mt-1 line-clamp-2">
-                        {String(prod.descricao || "").trim() || "Confira essa delicia da Dulelis."}
-                      </p>
-                      {Number(prod.quantidade ?? 0) === 1 && (
-                        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-500 mt-1">
-                          Tem so mais um
-                        </p>
-                      )}
-                      <div className="mt-1 flex items-center justify-between gap-2">
-                        <p className="text-pink-600 font-black text-[1.65rem] leading-none">R$ {Number(prod.preco).toFixed(2)}</p>
-                        {sessaoCliente ? (
-                          <div className="flex items-center gap-1.5 bg-[#f8f5f7] p-1 rounded-xl border border-[#eee5ea] shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => void removerDoCarrinho(prod.id)}
-                              disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
-                              className="text-pink-600 p-1.5"
-                            >
-                              <Minus size={14} />
-                            </button>
-                            <span className="font-black text-[12px] w-5 text-center text-slate-700">
-                              {quantidadesCarrinho[prod.id] ?? 0}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => void adicionarAoCarrinho(prod)}
-                              disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
-                              className="bg-pink-600 text-white p-1.5 rounded-[9px] shadow-md shadow-pink-200/60"
-                            >
-                              <Plus size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setModalAuthAberto(true)}
-                            className="text-[10px] font-black uppercase tracking-wider text-slate-500 bg-slate-100 px-3 py-2 rounded-xl"
-                          >
-                            Entrar para pedir
-                          </button>
+                        {resumoPromocaoProduto(prod.id) && (
+                          <span className="ml-1.5 text-[7px] font-black text-emerald-700 uppercase tracking-[0.2em] bg-emerald-50 px-2 py-0.5 rounded-full">
+                            {resumoPromocaoProduto(prod.id)}
+                          </span>
                         )}
+                        <h3 className="font-black text-slate-800 text-[clamp(0.86rem,3vw,1.2rem)] leading-[1.08] mt-1 tracking-[-0.01em] whitespace-nowrap">
+                          {prod.nome}
+                        </h3>
+                        <p className="text-[11px] leading-[1.25] text-slate-500 mt-1 line-clamp-2">
+                          {String(prod.descricao || "").trim() || "Confira essa delicia da Dulelis."}
+                        </p>
+                        {Number(prod.quantidade ?? 0) === 1 && (
+                          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-500 mt-1">
+                            Tem so mais um
+                          </p>
+                        )}
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <p className="text-pink-600 font-black text-[1.65rem] leading-none">R$ {Number(prod.preco).toFixed(2)}</p>
+                          {sessaoCliente ? (
+                            <div className="flex items-center gap-1.5 bg-[#f8f5f7] p-1 rounded-xl border border-[#eee5ea] shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => void removerDoCarrinho(prod.id)}
+                                disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
+                                className="text-pink-600 p-1.5"
+                              >
+                                <Minus size={14} />
+                              </button>
+                              <span className="font-black text-[12px] w-5 text-center text-slate-700">
+                                {quantidadesCarrinho[prod.id] ?? 0}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void adicionarAoCarrinho(prod)}
+                                disabled={loading || Boolean(estoqueEmAtualizacao[prod.id]) || interacoesBloqueadas}
+                                className="bg-pink-600 text-white p-1.5 rounded-[9px] shadow-md shadow-pink-200/60"
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setModalAuthAberto(true)}
+                              className="text-[10px] font-black uppercase tracking-wider text-slate-500 bg-slate-100 px-3 py-2 rounded-xl"
+                            >
+                              Entrar para pedir
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
+                ))
+              ) : secao.categoria === "Produtos naturais" ? (
+                <div className="rounded-[1.8rem] border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-lime-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(16,185,129,0.08)]">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-500">
+                    Em breve
+                  </p>
+                  <p className="mt-2 text-lg font-black text-slate-800">
+                    Estamos preparando tudo para voce, agurde!
+                  </p>
                 </div>
-              </React.Fragment>
-            );
-          })
+              ) : null}
+            </section>
+          ))
         )}
       </main>
 
