@@ -90,6 +90,38 @@ function calcularDescontoPromocoes(
   return Math.min(descontoTotal, subtotal + taxaEntrega);
 }
 
+async function tentarAtualizarPedidoPosInsert(
+  supabase: ReturnType<typeof getServiceSupabase>,
+  pedidoId: number,
+  payload: Record<string, unknown>,
+) {
+  const tentativas = [
+    payload,
+    {
+      forma_pagamento: payload.forma_pagamento,
+      pagamento_referencia: payload.pagamento_referencia,
+      status_pagamento: payload.status_pagamento,
+      taxa_entrega: payload.taxa_entrega,
+      observacao: payload.observacao,
+      status_pedido: payload.status_pedido,
+    },
+    {
+      forma_pagamento: payload.forma_pagamento,
+      taxa_entrega: payload.taxa_entrega,
+      status_pedido: payload.status_pedido,
+    },
+  ];
+
+  for (const tentativa of tentativas) {
+    const { error } = await supabase.from("pedidos").update(tentativa).eq("id", pedidoId);
+    if (!error) return;
+
+    const mensagem = String(error.message || "").toLowerCase();
+    const erroSchema = mensagem.includes("schema cache") || mensagem.includes("column");
+    if (!erroSchema) break;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const sessao = getCustomerSessionFromRequest(request);
   if (!sessao) {
@@ -328,6 +360,10 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+  }
+
+  if (pedidoId) {
+    await tentarAtualizarPedidoPosInsert(supabase, pedidoId, pedidoPayload);
   }
 
   return NextResponse.json({
