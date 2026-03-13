@@ -860,13 +860,15 @@ export default function AdminPage() {
     if (forma.toLowerCase() === 'pix') {
       if (['approved', 'aprovado', 'paid'].includes(statusPagamento)) {
         return {
-          titulo: 'Pix aprovado',
+          titulo: 'Pix',
+          situacao: 'Pago',
           detalhe: referencia ? `Ref. ${referencia}` : 'Pagamento confirmado',
           classe: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         };
       }
       return {
-        titulo: 'Pix pendente',
+        titulo: 'Pix',
+        situacao: 'A receber',
         detalhe: referencia ? `Ref. ${referencia}` : 'Aguardando pagamento',
         classe: 'bg-amber-50 text-amber-700 border-amber-200',
       };
@@ -875,6 +877,7 @@ export default function AdminPage() {
     if (forma.toLowerCase() === 'dinheiro') {
       return {
         titulo: 'Dinheiro',
+        situacao: 'A receber',
         detalhe: 'Receber na entrega',
         classe: 'bg-slate-100 text-slate-700 border-slate-200',
       };
@@ -883,6 +886,7 @@ export default function AdminPage() {
     if (forma.toLowerCase() === 'cartao na entrega') {
       return {
         titulo: 'Cartao na entrega',
+        situacao: 'A receber',
         detalhe: 'Cobrar na entrega',
         classe: 'bg-indigo-50 text-indigo-700 border-indigo-200',
       };
@@ -890,6 +894,7 @@ export default function AdminPage() {
 
     return {
       titulo: forma,
+      situacao: 'A receber',
       detalhe: referencia ? `Ref. ${referencia}` : 'Forma registrada no pedido',
       classe: 'bg-sky-50 text-sky-700 border-sky-200',
     };
@@ -971,6 +976,7 @@ export default function AdminPage() {
       ...(aniversarioFormatado ? [`NASC: ${aniversarioFormatado}`] : []),
       ...(observacao ? [`OBS: ${observacao}`] : []),
       `PGTO: ${pagamento.titulo}`,
+      `STATUS: ${pagamento.situacao}`,
       ...(pagamento.detalhe ? [pagamento.detalhe] : []),
     ].flatMap((linha) => quebrarLinha(linha)).join('\n');
 
@@ -1131,6 +1137,7 @@ export default function AdminPage() {
             ${aniversarioFormatado ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Nascimento:</strong> ${aniversarioFormatado}</div>` : ''}
             ${observacao ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Observacao:</strong> ${observacao}</div>` : ''}
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Status:</strong> ${pagamento.situacao}</div>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
             <table>
               <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:12px;padding:1.3mm 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:500;word-break:break-word;line-height:1.2;"')}</tbody>
