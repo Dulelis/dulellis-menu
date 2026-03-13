@@ -230,6 +230,18 @@ export async function POST(request: NextRequest) {
   const pedidoPayloadComForma = {
     cliente_nome: payloadCliente.nome,
     whatsapp: payloadCliente.whatsapp,
+    itens: itensPedido,
+    total,
+    taxa_entrega: taxaEntrega,
+    forma_pagamento: formaPagamento,
+    observacao: payloadCliente.observacao || null,
+    pagamento_referencia: referencia || null,
+    status_pagamento: formaPagamento === "Pix" ? "pending" : null,
+    status_pedido: "aguardando_aceite",
+  };
+  const pedidoPayloadComPagamento = {
+    cliente_nome: payloadCliente.nome,
+    whatsapp: payloadCliente.whatsapp,
     cep: payloadCliente.cep || null,
     endereco: payloadCliente.endereco || null,
     numero: payloadCliente.numero || null,
@@ -247,13 +259,6 @@ export async function POST(request: NextRequest) {
   const pedidoPayloadSemObservacao = {
     cliente_nome: payloadCliente.nome,
     whatsapp: payloadCliente.whatsapp,
-    cep: payloadCliente.cep || null,
-    endereco: payloadCliente.endereco || null,
-    numero: payloadCliente.numero || null,
-    bairro: payloadCliente.bairro || null,
-    cidade: payloadCliente.cidade || null,
-    ponto_referencia: payloadCliente.ponto_referencia || null,
-    data_aniversario: payloadCliente.data_aniversario || null,
     itens: itensPedido,
     total,
     taxa_entrega: taxaEntrega,
@@ -295,14 +300,22 @@ export async function POST(request: NextRequest) {
       if (!erroFormaSchema) {
         return NextResponse.json({ ok: false, error: erroForma?.message || "Falha ao salvar pedido." }, { status: 500 });
       }
+      const { data: inseridoPagamento, error: erroPagamento } = await supabase
+        .from("pedidos")
+        .insert([pedidoPayloadComPagamento])
+        .select("id")
+        .maybeSingle();
+      if (!erroPagamento && inseridoPagamento?.id) {
+        pedidoId = Number(inseridoPagamento.id);
+      } else {
       const { data: inseridoSemObservacao, error: erroSemObservacao } = await supabase
         .from("pedidos")
         .insert([pedidoPayloadSemObservacao])
         .select("id")
         .maybeSingle();
-      if (!erroSemObservacao && inseridoSemObservacao?.id) {
-        pedidoId = Number(inseridoSemObservacao.id);
-      } else {
+        if (!erroSemObservacao && inseridoSemObservacao?.id) {
+          pedidoId = Number(inseridoSemObservacao.id);
+        } else {
         const { data: inseridoLegado, error: erroLegado } = await supabase
           .from("pedidos")
           .insert([pedidoPayloadLegado])
@@ -312,6 +325,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ ok: false, error: erroLegado?.message || erroSemObservacao?.message || "Falha ao salvar pedido." }, { status: 500 });
         }
         pedidoId = Number(inseridoLegado.id);
+        }
       }
     }
   }
