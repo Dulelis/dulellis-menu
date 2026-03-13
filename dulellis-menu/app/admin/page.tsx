@@ -146,6 +146,7 @@ export default function AdminPage() {
   const [pedidosSelecionadosVendas, setPedidosSelecionadosVendas] = useState<number[]>([]);
   const [pedidoAtualizandoId, setPedidoAtualizandoId] = useState<number | null>(null);
   const recarregarRealtimeRef = useRef<number | null>(null);
+  const qzConectandoRef = useRef<Promise<void> | null>(null);
   const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
     categoria,
     itens: estoque.filter((item) => String(item.categoria || '').trim().toLowerCase() === categoria.toLowerCase()),
@@ -182,6 +183,29 @@ export default function AdminPage() {
       throw new Error(json.error || 'Falha na operacao administrativa.');
     }
     return json;
+  }, []);
+
+  const garantirQzPronto = useCallback(async () => {
+    if (!QZ_PRINTER_NAME) return false;
+
+    const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
+    const websocket = qzGlobal?.websocket;
+    if (!websocket?.connect || !websocket?.isActive) return false;
+    if (websocket.isActive()) return true;
+
+    if (!qzConectandoRef.current) {
+      qzConectandoRef.current = websocket
+        .connect()
+        .catch((error) => {
+          console.warn('Nao foi possivel aquecer a conexao com a impressora.', error);
+        })
+        .finally(() => {
+          qzConectandoRef.current = null;
+        });
+    }
+
+    await qzConectandoRef.current;
+    return Boolean(websocket.isActive());
   }, []);
 
   const carregarDados = useCallback(async () => {
@@ -262,6 +286,18 @@ export default function AdminPage() {
       void supabase.removeChannel(channel);
     };
   }, [carregarDados]);
+
+  useEffect(() => {
+    if (!QZ_PRINTER_NAME) return;
+
+    const aquecer = () => {
+      void garantirQzPronto();
+    };
+
+    aquecer();
+    const timer = window.setInterval(aquecer, 15000);
+    return () => window.clearInterval(timer);
+  }, [garantirQzPronto]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -1048,19 +1084,6 @@ export default function AdminPage() {
     `);
     popup.document.close();
   };
-  const buscarPedidoAtualizado = useCallback(async (pedidoId: number) => {
-    const res = await fetch('/api/admin/data', { cache: 'no-store' });
-    const json = (await res.json().catch(() => ({}))) as {
-      ok?: boolean;
-      data?: { pedidos?: any[] };
-      error?: string;
-    };
-    if (!res.ok || json.ok === false) {
-      throw new Error(json.error || 'Falha ao recarregar pedido.');
-    }
-    const pedidosAtualizados = Array.isArray(json.data?.pedidos) ? json.data?.pedidos : [];
-    return pedidosAtualizados.find((item) => Number(item?.id) === Number(pedidoId)) || null;
-  }, []);
   const imprimirPedidoAceito = async (pedido: any, popupExistente?: Window | null) => {
     const popup = popupExistente || window.open('', '_blank', 'width=420,height=760');
     prepararPopupImpressao(popup, Number(pedido?.id || 0));
@@ -1093,14 +1116,13 @@ export default function AdminPage() {
       if (!QZ_PRINTER_NAME) {
         throw new Error('NEXT_PUBLIC_QZ_PRINTER nao configurado.');
       }
+      await garantirQzPronto();
       if (qzGlobal?.websocket && qzGlobal?.configs && qzGlobal?.print) {
         const websocket = qzGlobal.websocket;
         const configs = qzGlobal.configs;
         const print = qzGlobal.print;
         if (websocket.connect && configs.create && websocket.isActive) {
-          if (!websocket.isActive()) {
-            await websocket.connect();
-          }
+          if (!websocket.isActive()) throw new Error('QZ Tray nao conectado.');
           const config = configs.create(QZ_PRINTER_NAME);
           await print(config, [{ type: 'raw', format: 'command', data: montarCupomPedido(pedido) }]);
           if (popup && !popup.closed) popup.close();
@@ -1193,10 +1215,8 @@ export default function AdminPage() {
         eq: { column: 'id', value: pedidoId },
       });
       if (pedidoAtual && normalizarStatusPedido(pedidoAtual) === 'aguardando_aceite' && proximoStatus === 'recebido') {
-        const pedidoMaisRecente =
-          (await buscarPedidoAtualizado(pedidoId).catch(() => null)) ||
-          { ...pedidoAtual, status_pedido: proximoStatus };
-        await imprimirPedidoAceito(pedidoMaisRecente, popupImpressao);
+        void carregarDados();
+        await imprimirPedidoAceito({ ...pedidoAtual, status_pedido: proximoStatus }, popupImpressao);
       }
       await carregarDados();
     } catch (error: any) {
