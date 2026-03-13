@@ -34,7 +34,7 @@ const DIAS_SEMANA = [
   { key: 'sexta', label: 'Sexta' },
   { key: 'sabado', label: 'Sabado' },
 ] as const;
-const CATEGORIAS_ESTOQUE = ['Bolos', 'Doces', 'Salgados', 'Bebidas'] as const;
+const CATEGORIAS_ESTOQUE = ['Bolos', 'Doces', 'Salgados', 'Bebidas', 'Produtos naturais'] as const;
 const STATUS_PEDIDO_LABELS: Record<string, string> = {
   aguardando_aceite: 'Aguardando aceite',
   recebido: 'Recebido',
@@ -2251,7 +2251,7 @@ export default function AdminPage() {
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Categoria</label>
                 <select className="w-full p-4 rounded-2xl bg-slate-100 border-none font-bold text-slate-700 focus:ring-2 focus:ring-pink-500 outline-none" value={novoItem.categoria} onChange={e => setNovoItem({...novoItem, categoria: e.target.value})}>
-                  <option value="Doces">?? Doces</option><option value="Bolos">?? Bolos</option><option value="Salgados">?? Salgados</option><option value="Bebidas">?? Bebidas</option>
+                  <option value="Doces">Doces</option><option value="Bolos">Bolos</option><option value="Salgados">Salgados</option><option value="Bebidas">Bebidas</option><option value="Produtos naturais">Produtos naturais</option>
                 </select>
               </div>
               <textarea placeholder="Descrição (Ex: Massa de chocolate com recheio de ninho)" className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 font-medium text-slate-700" rows={2} value={novoItem.descricao} onChange={e => setNovoItem({...novoItem, descricao: e.target.value})} />

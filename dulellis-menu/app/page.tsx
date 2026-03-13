@@ -29,6 +29,13 @@ const DEFAULT_CITY = "Navegantes";
 const CIDADE_ATENDIDA = "Navegantes";
 const CATEGORIAS = ["Todos", "Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais"];
 const ORDEM_VITRINE_CATEGORIAS = ["Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais"];
+const DESCRICOES_CATEGORIA: Record<string, string> = {
+  Bolos: "Bolos",
+  Doces: "Doces",
+  Salgados: "Salgados",
+  Bebidas: "Bebidas",
+  "Produtos naturais": "Produtos naturais",
+};
 const DIAS_SEMANA_CHAVES = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"] as const;
 const DIAS_SEMANA_LABELS: Record<(typeof DIAS_SEMANA_CHAVES)[number], string> = {
   domingo: "Domingo",
@@ -2103,13 +2110,12 @@ function ClientePageContent() {
         ) : (
           secoesVitrine.map((secao) => (
             <section key={secao.categoria} className="space-y-3">
-              <div className="rounded-[1.8rem] border border-pink-200 bg-gradient-to-r from-[#fff4f8] via-white to-[#fff4f8] px-5 py-4 shadow-[0_10px_22px_rgba(236,72,153,0.08)]">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-pink-400">
-                  Categoria
-                </p>
-                <h2 className="mt-1 text-2xl font-black italic tracking-tight text-slate-800">
-                  {secao.categoria}
-                </h2>
+              <div className="overflow-hidden rounded-[1.8rem] border border-pink-200 bg-[#fffafc] shadow-[0_10px_22px_rgba(236,72,153,0.08)]">
+                <div className="bg-gradient-to-r from-pink-600 via-rose-500 to-pink-600 px-5 py-3 text-center">
+                  <p className="text-[11px] font-black uppercase tracking-[0.34em] text-white">
+                    {DESCRICOES_CATEGORIA[secao.categoria] || secao.categoria}
+                  </p>
+                </div>
               </div>
 
               {secao.itens.length > 0 ? (
@@ -2199,10 +2205,10 @@ function ClientePageContent() {
               ) : secao.categoria === "Produtos naturais" ? (
                 <div className="rounded-[1.8rem] border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-lime-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(16,185,129,0.08)]">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-500">
-                    Em breve
+                    Em construcao
                   </p>
                   <p className="mt-2 text-lg font-black text-slate-800">
-                    Estamos preparando tudo para voce, agurde!
+                    Produtos naturais em construcao. Estamos preparando essa novidade para voce.
                   </p>
                 </div>
               ) : null}
