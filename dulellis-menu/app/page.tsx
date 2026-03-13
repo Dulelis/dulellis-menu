@@ -2712,12 +2712,6 @@ function ClientePageContent() {
                       value={formatarCep(cliente.cep)}
                       className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                       onChange={(e) => atualizarCepDigitado(e.target.value)}
-                      onBlur={(e) => {
-                        const cepLimpo = normalizarNumero(e.target.value).slice(0, 8);
-                        if (cepLimpo.length === 8) {
-                          void executarBuscaCep(cepLimpo);
-                        }
-                      }}
                     />
                     {buscandoCep && (
                       <Loader2
@@ -2735,6 +2729,15 @@ function ClientePageContent() {
                     disabled
                   />
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => void executarBuscaCep(cliente.cep)}
+                  disabled={buscandoCep || normalizarNumero(cliente.cep).slice(0, 8).length !== 8}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
+                >
+                  Buscar endereco pelo CEP
+                </button>
 
                 <button
                   type="button"
