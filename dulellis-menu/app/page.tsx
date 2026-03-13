@@ -665,9 +665,9 @@ function ClientePageContent() {
         if (data.address) {
           setCliente((prev) => ({
             ...prev,
-            endereco: data.address ?? prev.endereco,
-            bairro: data.district ?? prev.bairro,
-            cidade: data.city ?? prev.cidade,
+            endereco: prev.endereco.trim() ? prev.endereco : (data.address ?? prev.endereco),
+            bairro: prev.bairro.trim() ? prev.bairro : (data.district ?? prev.bairro),
+            cidade: prev.cidade.trim() ? prev.cidade : (data.city ?? prev.cidade),
           }));
         }
 
@@ -718,6 +718,11 @@ function ClientePageContent() {
     },
     [cliente.cidade, taxas],
   );
+
+  const atualizarCepDigitado = useCallback((valor: string) => {
+    const cepLimpo = normalizarNumero(valor).slice(0, 8);
+    setCliente((prev) => ({ ...prev, cep: cepLimpo }));
+  }, []);
 
   const buscarCepPorEndereco = useCallback(async () => {
     const rua = String(cliente.endereco || "").trim();
@@ -2706,7 +2711,13 @@ function ClientePageContent() {
                       inputMode="numeric"
                       value={formatarCep(cliente.cep)}
                       className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                      onChange={(e) => executarBuscaCep(e.target.value)}
+                      onChange={(e) => atualizarCepDigitado(e.target.value)}
+                      onBlur={(e) => {
+                        const cepLimpo = normalizarNumero(e.target.value).slice(0, 8);
+                        if (cepLimpo.length === 8) {
+                          void executarBuscaCep(cepLimpo);
+                        }
+                      }}
                     />
                     {buscandoCep && (
                       <Loader2
