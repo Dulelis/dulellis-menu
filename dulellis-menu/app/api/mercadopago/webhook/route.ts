@@ -67,10 +67,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, warning: "supabase ausente" });
     }
 
+    const statusNormalizado = status.trim().toLowerCase();
+    const pagamentoAprovado = ["approved", "paid", "authorized", "pago"].includes(statusNormalizado);
+
     const payloadStatus = {
       status_pagamento: status,
       pagamento_id: paymentId,
       pagamento_atualizado_em: new Date().toISOString(),
+      ...(pagamentoAprovado
+        ? {
+            forma_pagamento: "Pix",
+            status_pedido: "recebido",
+          }
+        : {}),
     };
 
     let atualizado = false;

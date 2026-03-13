@@ -147,6 +147,8 @@ export default function AdminPage() {
   const [pedidoAtualizandoId, setPedidoAtualizandoId] = useState<number | null>(null);
   const recarregarRealtimeRef = useRef<number | null>(null);
   const qzConectandoRef = useRef<Promise<void> | null>(null);
+  const assinaturasPedidosRef = useRef<Map<number, string>>(new Map());
+  const pedidosPixImpressosRef = useRef<Set<number>>(new Set());
   const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
     categoria,
     itens: estoque.filter((item) => String(item.categoria || '').trim().toLowerCase() === categoria.toLowerCase()),
@@ -861,6 +863,11 @@ export default function AdminPage() {
     if (status in STATUS_PEDIDO_LABELS) return status;
     return 'aguardando_aceite';
   };
+  const pedidoTemPixAprovado = (pedido: any) => {
+    const forma = String(pedido?.forma_pagamento || '').trim().toLowerCase();
+    const statusPagamento = String(pedido?.status_pagamento || '').trim().toLowerCase();
+    return forma === 'pix' && ['approved', 'paid', 'authorized', 'pago'].includes(statusPagamento);
+  };
   const obterRotuloStatusPedido = (pedido: any) => STATUS_PEDIDO_LABELS[normalizarStatusPedido(pedido)] || 'Aguardando aceite';
   const obterClasseStatusPedido = (pedido: any) =>
     STATUS_PEDIDO_CORES[normalizarStatusPedido(pedido)] || STATUS_PEDIDO_CORES.aguardando_aceite;
@@ -957,7 +964,7 @@ export default function AdminPage() {
       data_aniversario: String(pedido?.data_aniversario || clienteRelacionado?.data_aniversario || ''),
     };
   }, [clientes]);
-  const montarCupomPedido = (pedido: any) => {
+  const montarCupomPedido = useCallback((pedido: any) => {
     const pedidoCompleto = completarPedidoComCliente(pedido);
     const itens = parseItensPedido(pedidoCompleto);
     const pagamento = obterResumoPagamento(pedidoCompleto);
@@ -1057,7 +1064,7 @@ export default function AdminPage() {
       negritoOff +
       fonteNormal +
       '\x1d\x56\x41\x03';
-  };
+  }, [completarPedidoComCliente]);
   const prepararPopupImpressao = (popup: Window | null | undefined, pedidoId?: number) => {
     if (!popup || popup.closed) return;
     popup.document.open();
@@ -1084,7 +1091,7 @@ export default function AdminPage() {
     `);
     popup.document.close();
   };
-  const imprimirPedidoAceito = async (pedido: any, popupExistente?: Window | null) => {
+  const imprimirPedidoAceito = useCallback(async (pedido: any, popupExistente?: Window | null) => {
     const popup = popupExistente || window.open('', '_blank', 'width=420,height=760');
     prepararPopupImpressao(popup, Number(pedido?.id || 0));
     const pedidoCompleto = completarPedidoComCliente(pedido);
@@ -1192,7 +1199,7 @@ export default function AdminPage() {
       </html>
     `);
     popup.document.close();
-  };
+  }, [completarPedidoComCliente, garantirQzPronto, montarCupomPedido]);
 
   const irParaCadastroCliente = (whatsapp?: string, nome?: string) => {
     const zap = normalizarNumero(String(whatsapp || ''));
@@ -1233,6 +1240,38 @@ export default function AdminPage() {
       setPedidoAtualizandoId(null);
     }
   };
+
+  useEffect(() => {
+    const proximoMapa = new Map<number, string>();
+
+    for (const pedido of pedidos) {
+      const id = Number(pedido?.id || 0);
+      if (!id) continue;
+
+      const assinatura = [
+        String(pedido?.forma_pagamento || '').trim().toLowerCase(),
+        String(pedido?.status_pagamento || '').trim().toLowerCase(),
+        String(pedido?.status_pedido || '').trim().toLowerCase(),
+        String(pedido?.pagamento_id || '').trim(),
+        String(pedido?.pagamento_atualizado_em || '').trim(),
+      ].join('|');
+      const assinaturaAnterior = assinaturasPedidosRef.current.get(id);
+
+      if (
+        assinaturaAnterior &&
+        assinaturaAnterior !== assinatura &&
+        pedidoTemPixAprovado(pedido) &&
+        !pedidosPixImpressosRef.current.has(id)
+      ) {
+        pedidosPixImpressosRef.current.add(id);
+        void imprimirPedidoAceito({ ...pedido, status_pedido: 'recebido' });
+      }
+
+      proximoMapa.set(id, assinatura);
+    }
+
+    assinaturasPedidosRef.current = proximoMapa;
+  }, [imprimirPedidoAceito, pedidos]);
 
   const imprimirCadastroCliente = (cliente: any) => {
     const valor = (v: unknown) => String(v ?? '');
