@@ -921,6 +921,9 @@ export default function AdminPage() {
     const itens = parseItensPedido(pedidoCompleto);
     const pagamento = obterResumoPagamento(pedidoCompleto);
     const valorTotal = Number(pedidoCompleto?.total || 0);
+    const taxaEntrega = Math.max(0, Number(pedidoCompleto?.taxa_entrega || 0));
+    const subtotal = itens.reduce((acc: number, item: any) => acc + (Number(item.preco || 0) * Number(item.qtd || 0)), 0);
+    const descontoAplicado = Math.max(0, subtotal + taxaEntrega - valorTotal);
     const pontoReferencia = extrairPontoReferencia(pedidoCompleto);
     const enderecoSemPonto = extrairEnderecoSemPonto(pedidoCompleto);
     const enderecoCompleto = [enderecoSemPonto, String(pedidoCompleto?.numero || '').trim()].filter(Boolean).join(', ');
@@ -1002,6 +1005,9 @@ export default function AdminPage() {
       divisor +
       `${linhasItens}\n` +
       divisor +
+      `SUBTOTAL: ${formatarValor(subtotal)}\n` +
+      `ENTREGA: ${formatarValor(taxaEntrega)}\n` +
+      `DESCONTO: ${formatarValor(descontoAplicado)}\n` +
       negritoOn +
       fonteDobro +
       `TOTAL: ${formatarValor(valorTotal)}\n` +
@@ -1041,6 +1047,12 @@ export default function AdminPage() {
     prepararPopupImpressao(popup, Number(pedido?.id || 0));
     const pedidoCompleto = completarPedidoComCliente(pedido);
     const pagamento = obterResumoPagamento(pedidoCompleto);
+    const taxaEntrega = Math.max(0, Number(pedidoCompleto?.taxa_entrega || 0));
+    const subtotal = parseItensPedido(pedidoCompleto).reduce(
+      (acc: number, item: any) => acc + (Number(item.preco || 0) * Number(item.qtd || 0)),
+      0,
+    );
+    const descontoAplicado = Math.max(0, subtotal + taxaEntrega - Number(pedidoCompleto?.total || 0));
     const pontoReferencia = extrairPontoReferencia(pedidoCompleto);
     const enderecoSemPonto = extrairEnderecoSemPonto(pedidoCompleto);
     const enderecoCompleto = [enderecoSemPonto, String(pedidoCompleto?.numero || '').trim()].filter(Boolean).join(', ');
@@ -1123,6 +1135,9 @@ export default function AdminPage() {
             <table>
               <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:12px;padding:1.3mm 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:500;word-break:break-word;line-height:1.2;"')}</tbody>
             </table>
+            <div style="font-size:12px;margin-top:1.8mm;line-height:1.2;font-weight:500;"><strong>Subtotal:</strong> R$ ${subtotal.toFixed(2)}</div>
+            <div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Entrega:</strong> R$ ${taxaEntrega.toFixed(2)}</div>
+            <div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Desconto:</strong> R$ ${descontoAplicado.toFixed(2)}</div>
             <div style="font-weight:700;font-size:15px;margin-top:2.2mm;line-height:1.12;">Total: R$ ${Number(pedidoCompleto?.total || 0).toFixed(2)}</div>
           </div>
           <script>
