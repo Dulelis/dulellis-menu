@@ -1048,6 +1048,19 @@ export default function AdminPage() {
     `);
     popup.document.close();
   };
+  const buscarPedidoAtualizado = useCallback(async (pedidoId: number) => {
+    const res = await fetch('/api/admin/data', { cache: 'no-store' });
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      data?: { pedidos?: any[] };
+      error?: string;
+    };
+    if (!res.ok || json.ok === false) {
+      throw new Error(json.error || 'Falha ao recarregar pedido.');
+    }
+    const pedidosAtualizados = Array.isArray(json.data?.pedidos) ? json.data?.pedidos : [];
+    return pedidosAtualizados.find((item) => Number(item?.id) === Number(pedidoId)) || null;
+  }, []);
   const imprimirPedidoAceito = async (pedido: any, popupExistente?: Window | null) => {
     const popup = popupExistente || window.open('', '_blank', 'width=420,height=760');
     prepararPopupImpressao(popup, Number(pedido?.id || 0));
@@ -1180,7 +1193,10 @@ export default function AdminPage() {
         eq: { column: 'id', value: pedidoId },
       });
       if (pedidoAtual && normalizarStatusPedido(pedidoAtual) === 'aguardando_aceite' && proximoStatus === 'recebido') {
-        await imprimirPedidoAceito({ ...pedidoAtual, status_pedido: proximoStatus }, popupImpressao);
+        const pedidoMaisRecente =
+          (await buscarPedidoAtualizado(pedidoId).catch(() => null)) ||
+          { ...pedidoAtual, status_pedido: proximoStatus };
+        await imprimirPedidoAceito(pedidoMaisRecente, popupImpressao);
       }
       await carregarDados();
     } catch (error: any) {
