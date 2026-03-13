@@ -263,12 +263,35 @@ export default function AdminPage() {
       }
       recarregarRealtimeRef.current = window.setTimeout(() => {
         void carregarDados();
-      }, 250);
+      }, 80);
+    };
+
+    const lidarMudancaPedido = (payload: any) => {
+      const pedidoAtualizado = payload?.new;
+      const pedidoId = Number(pedidoAtualizado?.id || 0);
+
+      if (pedidoId > 0) {
+        const assinatura = gerarAssinaturaPedido(pedidoAtualizado);
+        const assinaturaAnterior = assinaturasPedidosRef.current.get(pedidoId);
+        assinaturasPedidosRef.current.set(pedidoId, assinatura);
+
+        if (
+          assinaturaAnterior &&
+          assinaturaAnterior !== assinatura &&
+          pedidoTemPixAprovado(pedidoAtualizado) &&
+          !pedidosPixImpressosRef.current.has(pedidoId)
+        ) {
+          pedidosPixImpressosRef.current.add(pedidoId);
+          void imprimirPedidoAceito({ ...pedidoAtualizado, status_pedido: 'recebido' });
+        }
+      }
+
+      agendarRecarga();
     };
 
     const channel = supabase
       .channel('admin-realtime-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, agendarRecarga)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, lidarMudancaPedido)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'estoque' }, agendarRecarga)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'taxas_entrega' }, agendarRecarga)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'promocoes' }, agendarRecarga)
@@ -287,7 +310,7 @@ export default function AdminPage() {
       }
       void supabase.removeChannel(channel);
     };
-  }, [carregarDados]);
+  }, [carregarDados, imprimirPedidoAceito]);
 
   useEffect(() => {
     if (!QZ_PRINTER_NAME) return;
@@ -863,6 +886,14 @@ export default function AdminPage() {
     if (status in STATUS_PEDIDO_LABELS) return status;
     return 'aguardando_aceite';
   };
+  const gerarAssinaturaPedido = (pedido: any) =>
+    [
+      String(pedido?.forma_pagamento || '').trim().toLowerCase(),
+      String(pedido?.status_pagamento || '').trim().toLowerCase(),
+      String(pedido?.status_pedido || '').trim().toLowerCase(),
+      String(pedido?.pagamento_id || '').trim(),
+      String(pedido?.pagamento_atualizado_em || '').trim(),
+    ].join('|');
   const pedidoTemPixAprovado = (pedido: any) => {
     const forma = String(pedido?.forma_pagamento || '').trim().toLowerCase();
     const statusPagamento = String(pedido?.status_pagamento || '').trim().toLowerCase();
@@ -1248,13 +1279,7 @@ export default function AdminPage() {
       const id = Number(pedido?.id || 0);
       if (!id) continue;
 
-      const assinatura = [
-        String(pedido?.forma_pagamento || '').trim().toLowerCase(),
-        String(pedido?.status_pagamento || '').trim().toLowerCase(),
-        String(pedido?.status_pedido || '').trim().toLowerCase(),
-        String(pedido?.pagamento_id || '').trim(),
-        String(pedido?.pagamento_atualizado_em || '').trim(),
-      ].join('|');
+      const assinatura = gerarAssinaturaPedido(pedido);
       const assinaturaAnterior = assinaturasPedidosRef.current.get(id);
 
       if (
