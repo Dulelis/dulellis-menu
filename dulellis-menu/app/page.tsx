@@ -2615,14 +2615,6 @@ function ClientePageContent() {
                     onChange={(e) =>
                       setCliente((prev) => ({ ...prev, whatsapp: e.target.value }))
                     }
-                    onBlur={() => {
-                      const zapLimpo = normalizarNumero(cliente.whatsapp);
-                      if (zapLimpo.length >= 10) {
-                        void executarBuscaCliente(zapLimpo);
-                        return;
-                      }
-                      setClienteEncontrado(false);
-                    }}
                     disabled={Boolean(sessaoCliente)}
                   />
                   {buscandoCliente && (
@@ -2632,6 +2624,24 @@ function ClientePageContent() {
                     />
                   )}
                 </div>
+
+                {!sessaoCliente && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const zapLimpo = normalizarNumero(cliente.whatsapp);
+                      if (zapLimpo.length >= 10) {
+                        void executarBuscaCliente(zapLimpo);
+                        return;
+                      }
+                      setClienteEncontrado(false);
+                    }}
+                    disabled={buscandoCliente || normalizarNumero(cliente.whatsapp).length < 10}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
+                  >
+                    Buscar cadastro pelo WhatsApp
+                  </button>
+                )}
 
                 {clienteEncontrado && (
                   <div className="bg-green-50 text-green-700 p-4 rounded-3xl flex items-center gap-3">
