@@ -894,14 +894,44 @@ export default function AdminPage() {
       classe: 'bg-sky-50 text-sky-700 border-sky-200',
     };
   };
+  const completarPedidoComCliente = useCallback((pedido: any) => {
+    const whatsappPedido = normalizarNumero(String(pedido?.whatsapp || ''));
+    if (!whatsappPedido) return pedido;
+
+    const clienteRelacionado = clientes.find((cliente) => normalizarNumero(String(cliente?.whatsapp || '')) === whatsappPedido);
+    if (!clienteRelacionado) return pedido;
+
+    return {
+      ...clienteRelacionado,
+      ...pedido,
+      cliente_nome: String(pedido?.cliente_nome || clienteRelacionado?.nome || 'Cliente'),
+      whatsapp: String(pedido?.whatsapp || clienteRelacionado?.whatsapp || ''),
+      cep: String(pedido?.cep || clienteRelacionado?.cep || ''),
+      endereco: String(pedido?.endereco || clienteRelacionado?.endereco || ''),
+      numero: String(pedido?.numero || clienteRelacionado?.numero || ''),
+      bairro: String(pedido?.bairro || clienteRelacionado?.bairro || ''),
+      cidade: String(pedido?.cidade || clienteRelacionado?.cidade || ''),
+      ponto_referencia: String(pedido?.ponto_referencia || clienteRelacionado?.ponto_referencia || ''),
+      observacao: String(pedido?.observacao || clienteRelacionado?.observacao || ''),
+      data_aniversario: String(pedido?.data_aniversario || clienteRelacionado?.data_aniversario || ''),
+    };
+  }, [clientes]);
   const montarCupomPedido = (pedido: any) => {
-    const itens = parseItensPedido(pedido);
-    const pagamento = obterResumoPagamento(pedido);
-    const valorTotal = Number(pedido?.total || 0);
-    const pontoReferencia = extrairPontoReferencia(pedido);
-    const enderecoSemPonto = extrairEnderecoSemPonto(pedido);
-    const enderecoCompleto = [enderecoSemPonto, String(pedido?.numero || '').trim()].filter(Boolean).join(', ');
-    const observacao = String(pedido?.observacao || '').trim();
+    const pedidoCompleto = completarPedidoComCliente(pedido);
+    const itens = parseItensPedido(pedidoCompleto);
+    const pagamento = obterResumoPagamento(pedidoCompleto);
+    const valorTotal = Number(pedidoCompleto?.total || 0);
+    const pontoReferencia = extrairPontoReferencia(pedidoCompleto);
+    const enderecoSemPonto = extrairEnderecoSemPonto(pedidoCompleto);
+    const enderecoCompleto = [enderecoSemPonto, String(pedidoCompleto?.numero || '').trim()].filter(Boolean).join(', ');
+    const observacao = String(pedidoCompleto?.observacao || '').trim();
+    const bairro = String(pedidoCompleto?.bairro || '').trim();
+    const cidade = String(pedidoCompleto?.cidade || '').trim();
+    const cep = String(pedidoCompleto?.cep || '').trim();
+    const dataAniversario = String(pedidoCompleto?.data_aniversario || '').trim();
+    const aniversarioFormatado = dataAniversario
+      ? new Date(`${dataAniversario.slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+      : '';
     const larguraLinha = 22;
 
     const quebrarLinha = (texto: string, largura = larguraLinha) => {
@@ -927,11 +957,15 @@ export default function AdminPage() {
 
     const formatarValor = (valor: number) => `R$ ${valor.toFixed(2)}`;
     const linhasMeta = [
-      `PEDIDO ${pedido?.id ?? ''}`,
-      `CLI: ${String(pedido?.cliente_nome || 'Cliente')}`,
-      `TEL: ${String(pedido?.whatsapp || '')}`,
+      `PEDIDO ${pedidoCompleto?.id ?? ''}`,
+      `CLI: ${String(pedidoCompleto?.cliente_nome || 'Cliente')}`,
+      `TEL: ${String(pedidoCompleto?.whatsapp || '')}`,
       `END: ${enderecoCompleto || 'Nao informado'}`,
+      `BAI: ${bairro || 'Nao informado'}`,
+      `CID: ${cidade || 'Nao informado'}`,
+      `CEP: ${cep || 'Nao informado'}`,
       `REF: ${pontoReferencia || 'Nao informado'}`,
+      ...(aniversarioFormatado ? [`NASC: ${aniversarioFormatado}`] : []),
       ...(observacao ? [`OBS: ${observacao}`] : []),
       `PGTO: ${pagamento.titulo}`,
       ...(pagamento.detalhe ? [pagamento.detalhe] : []),
@@ -1005,12 +1039,20 @@ export default function AdminPage() {
   const imprimirPedidoAceito = async (pedido: any, popupExistente?: Window | null) => {
     const popup = popupExistente || window.open('', '_blank', 'width=420,height=760');
     prepararPopupImpressao(popup, Number(pedido?.id || 0));
-    const pagamento = obterResumoPagamento(pedido);
-    const pontoReferencia = extrairPontoReferencia(pedido);
-    const enderecoSemPonto = extrairEnderecoSemPonto(pedido);
-    const enderecoCompleto = [enderecoSemPonto, String(pedido?.numero || '').trim()].filter(Boolean).join(', ');
-    const observacao = String(pedido?.observacao || '').trim();
-    const itens = parseItensPedido(pedido);
+    const pedidoCompleto = completarPedidoComCliente(pedido);
+    const pagamento = obterResumoPagamento(pedidoCompleto);
+    const pontoReferencia = extrairPontoReferencia(pedidoCompleto);
+    const enderecoSemPonto = extrairEnderecoSemPonto(pedidoCompleto);
+    const enderecoCompleto = [enderecoSemPonto, String(pedidoCompleto?.numero || '').trim()].filter(Boolean).join(', ');
+    const observacao = String(pedidoCompleto?.observacao || '').trim();
+    const bairro = String(pedidoCompleto?.bairro || '').trim();
+    const cidade = String(pedidoCompleto?.cidade || '').trim();
+    const cep = String(pedidoCompleto?.cep || '').trim();
+    const dataAniversario = String(pedidoCompleto?.data_aniversario || '').trim();
+    const aniversarioFormatado = dataAniversario
+      ? new Date(`${dataAniversario.slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+      : '';
+    const itens = parseItensPedido(pedidoCompleto);
     const itensHtml = itens.length
       ? itens.map((item: any) => `<tr><td>${Number(item.qtd || 1)}x ${String(item.nome || 'Item')}</td><td style="text-align:right">R$ ${(Number(item.preco || 0) * Number(item.qtd || 0)).toFixed(2)}</td></tr>`).join('')
       : '<tr><td>Itens nao informados</td><td></td></tr>';
@@ -1065,19 +1107,23 @@ export default function AdminPage() {
         </head>
         <body>
           <div class="cupom" style="width:76mm;padding:2mm 1.5mm 3mm;">
-            <h1 style="margin:0 0 2mm;font-size:16px;text-align:center;line-height:1.1;font-weight:700;">Dulelis - Pedido #${pedido?.id ?? ''}</h1>
-            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Data:</strong> ${pedido?.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
-            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Cliente:</strong> ${String(pedido?.cliente_nome || 'Cliente')}</div>
-            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>WhatsApp:</strong> ${String(pedido?.whatsapp || 'Nao informado')}</div>
-            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
-            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
-            ${observacao ? `<div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Observacao:</strong> ${observacao}</div>` : ''}
-            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
-            <div style="font-size:11px;margin-bottom:1mm;line-height:1.18;font-weight:400;word-break:break-word;"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
+            <h1 style="margin:0 0 2mm;font-size:16px;text-align:center;line-height:1.1;font-weight:700;">Dulelis - Pedido #${pedidoCompleto?.id ?? ''}</h1>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Data:</strong> ${pedidoCompleto?.created_at ? new Date(pedidoCompleto.created_at).toLocaleString('pt-BR') : 'Nao informada'}</div>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Cliente:</strong> ${String(pedidoCompleto?.cliente_nome || 'Cliente')}</div>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>WhatsApp:</strong> ${String(pedidoCompleto?.whatsapp || 'Nao informado')}</div>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Endereco:</strong> ${enderecoCompleto || 'Nao informado'}</div>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Bairro:</strong> ${bairro || 'Nao informado'}</div>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Cidade:</strong> ${cidade || 'Nao informado'}</div>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>CEP:</strong> ${cep || 'Nao informado'}</div>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
+            ${aniversarioFormatado ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Nascimento:</strong> ${aniversarioFormatado}</div>` : ''}
+            ${observacao ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Observacao:</strong> ${observacao}</div>` : ''}
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
+            <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
             <table>
-              <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:11px;padding:1.1mm 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:400;word-break:break-word;line-height:1.16;"')}</tbody>
+              <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:12px;padding:1.3mm 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:500;word-break:break-word;line-height:1.2;"')}</tbody>
             </table>
-            <div style="font-weight:700;font-size:14px;margin-top:2mm;line-height:1.1;">Total: R$ ${Number(pedido?.total || 0).toFixed(2)}</div>
+            <div style="font-weight:700;font-size:15px;margin-top:2.2mm;line-height:1.12;">Total: R$ ${Number(pedidoCompleto?.total || 0).toFixed(2)}</div>
           </div>
           <script>
             window.onload = () => {
