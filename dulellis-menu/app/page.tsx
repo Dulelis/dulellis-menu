@@ -450,6 +450,7 @@ function ClientePageContent() {
   const [cliente, setCliente] = useState<Cliente>(CLIENTE_INICIAL);
   const [enderecoSalvoCliente, setEnderecoSalvoCliente] = useState<Cliente | null>(null);
   const [modoEnderecoEntrega, setModoEnderecoEntrega] = useState<"saved" | "new">("saved");
+  const cadastroManualRef = useRef(false);
   const [formaPagamento, setFormaPagamento] = useState("");
   const [referenciaPagamento, setReferenciaPagamento] = useState("");
   const [vitrineSlideIndex, setVitrineSlideIndex] = useState(0);
@@ -649,7 +650,7 @@ function ClientePageContent() {
   }, []);
 
   const executarBuscaCep = useCallback(
-    async (valor: string) => {
+    async (valor: string, options?: { forcarPreenchimento?: boolean }) => {
       const cepLimpo = normalizarNumero(valor).slice(0, 8);
       setCliente((prev) => ({ ...prev, cep: cepLimpo }));
 
@@ -662,7 +663,7 @@ function ClientePageContent() {
 
         const data = (await res.json()) as CepApiResponse;
 
-        if (data.address) {
+        if (data.address && (options?.forcarPreenchimento || !cadastroManualRef.current)) {
           setCliente((prev) => ({
             ...prev,
             endereco: prev.endereco.trim() ? prev.endereco : (data.address ?? prev.endereco),
@@ -720,6 +721,7 @@ function ClientePageContent() {
   );
 
   const atualizarCepDigitado = useCallback((valor: string) => {
+    cadastroManualRef.current = true;
     const cepLimpo = normalizarNumero(valor).slice(0, 8);
     setCliente((prev) => ({ ...prev, cep: cepLimpo }));
   }, []);
@@ -777,7 +779,7 @@ function ClientePageContent() {
   }, [cliente.bairro, cliente.cidade, cliente.endereco, executarBuscaCep]);
 
   const executarBuscaCliente = useCallback(
-    async (zap: string) => {
+    async (zap: string, options?: { forcarAplicacao?: boolean }) => {
       setBuscandoCliente(true);
       try {
         const res = await fetch(`/api/public/customer?whatsapp=${encodeURIComponent(zap)}`, {
@@ -808,19 +810,21 @@ function ClientePageContent() {
         const aniversarioRaw = String(clienteEncontradoDb.data_aniversario ?? "").trim();
         const aniversarioNormalizado = aniversarioRaw ? aniversarioRaw.slice(0, 10) : "";
 
-        setCliente((prev) => ({
-          ...prev,
-          nome: String(clienteEncontradoDb.nome ?? ""),
-          whatsapp: zap,
-          cep: cepNormalizado,
-          endereco: enderecoFinal,
-          numero: String(clienteEncontradoDb.numero ?? ""),
-          bairro: String(clienteEncontradoDb.bairro ?? ""),
-          cidade: String(clienteEncontradoDb.cidade ?? DEFAULT_CITY),
-          ponto_referencia: pontoFinal,
-          observacao: String(clienteEncontradoDb.observacao ?? ""),
-          data_aniversario: aniversarioNormalizado,
-        }));
+        if (options?.forcarAplicacao || !cadastroManualRef.current) {
+          setCliente((prev) => ({
+            ...prev,
+            nome: String(clienteEncontradoDb.nome ?? ""),
+            whatsapp: zap,
+            cep: cepNormalizado,
+            endereco: enderecoFinal,
+            numero: String(clienteEncontradoDb.numero ?? ""),
+            bairro: String(clienteEncontradoDb.bairro ?? ""),
+            cidade: String(clienteEncontradoDb.cidade ?? DEFAULT_CITY),
+            ponto_referencia: pontoFinal,
+            observacao: String(clienteEncontradoDb.observacao ?? ""),
+            data_aniversario: aniversarioNormalizado,
+          }));
+        }
         setEnderecoSalvoCliente(
           normalizarClienteParaEntrega({
             nome: String(clienteEncontradoDb.nome ?? ""),
@@ -835,11 +839,13 @@ function ClientePageContent() {
             data_aniversario: aniversarioNormalizado,
           }),
         );
-        setModoEnderecoEntrega("saved");
+        if (options?.forcarAplicacao || !cadastroManualRef.current) {
+          setModoEnderecoEntrega("saved");
+        }
         setClienteEncontrado(true);
 
         if (!aplicarTaxaUltimoPedido(clienteEncontradoDb.ultima_taxa_entrega) && cepNormalizado.length === 8) {
-          await executarBuscaCep(cepNormalizado);
+          await executarBuscaCep(cepNormalizado, { forcarPreenchimento: Boolean(options?.forcarAplicacao) });
         }
       } catch {
         setClienteEncontrado(false);
@@ -909,19 +915,21 @@ function ClientePageContent() {
 
       const dados = json.data;
       setSessaoCliente(dados);
-      setCliente((prev) => ({
-        ...prev,
-        nome: dados.nome || prev.nome,
-        whatsapp: dados.whatsapp || prev.whatsapp,
-        cep: dados.cep || prev.cep,
-        endereco: dados.endereco || prev.endereco,
-        numero: dados.numero || prev.numero,
-        bairro: dados.bairro || prev.bairro,
-        cidade: dados.cidade || prev.cidade || DEFAULT_CITY,
-        ponto_referencia: dados.ponto_referencia || prev.ponto_referencia,
-        observacao: dados.observacao || prev.observacao,
-        data_aniversario: dados.data_aniversario || prev.data_aniversario,
-      }));
+      if (!cadastroManualRef.current) {
+        setCliente((prev) => ({
+          ...prev,
+          nome: dados.nome || prev.nome,
+          whatsapp: dados.whatsapp || prev.whatsapp,
+          cep: dados.cep || prev.cep,
+          endereco: dados.endereco || prev.endereco,
+          numero: dados.numero || prev.numero,
+          bairro: dados.bairro || prev.bairro,
+          cidade: dados.cidade || prev.cidade || DEFAULT_CITY,
+          ponto_referencia: dados.ponto_referencia || prev.ponto_referencia,
+          observacao: dados.observacao || prev.observacao,
+          data_aniversario: dados.data_aniversario || prev.data_aniversario,
+        }));
+      }
       const clienteSessao = normalizarClienteParaEntrega({
         nome: dados.nome,
         whatsapp: dados.whatsapp,
@@ -936,7 +944,9 @@ function ClientePageContent() {
       });
       if (clienteTemEnderecoSalvo(clienteSessao)) {
         setEnderecoSalvoCliente(clienteSessao);
-        setModoEnderecoEntrega("saved");
+        if (!cadastroManualRef.current) {
+          setModoEnderecoEntrega("saved");
+        }
         if (!aplicarTaxaUltimoPedido(dados.ultima_taxa_entrega) && dados.cep) {
           await executarBuscaCep(dados.cep);
         }
@@ -1008,6 +1018,7 @@ function ClientePageContent() {
   }, []);
 
   const aplicarEnderecoSalvo = useCallback((base: Cliente) => {
+    cadastroManualRef.current = false;
     const pontoFinal = String(base.ponto_referencia || "").trim() || extrairPontoReferenciaDeEndereco(base.endereco);
     const enderecoFinal = limparEnderecoDePontoReferencia(base.endereco);
     setCliente((prev) => ({
@@ -1026,6 +1037,7 @@ function ClientePageContent() {
   }, []);
 
   const prepararNovoEndereco = useCallback(() => {
+    cadastroManualRef.current = true;
     setCliente((prev) => ({
       ...prev,
       cep: "",
@@ -2612,9 +2624,10 @@ function ClientePageContent() {
                     placeholder="WhatsApp *"
                     className="w-full p-5 pl-14 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                     value={cliente.whatsapp}
-                    onChange={(e) =>
-                      setCliente((prev) => ({ ...prev, whatsapp: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      cadastroManualRef.current = true;
+                      setCliente((prev) => ({ ...prev, whatsapp: e.target.value }));
+                    }}
                     disabled={Boolean(sessaoCliente)}
                   />
                   {buscandoCliente && (
@@ -2631,7 +2644,8 @@ function ClientePageContent() {
                     onClick={() => {
                       const zapLimpo = normalizarNumero(cliente.whatsapp);
                       if (zapLimpo.length >= 10) {
-                        void executarBuscaCliente(zapLimpo);
+                        cadastroManualRef.current = false;
+                        void executarBuscaCliente(zapLimpo, { forcarAplicacao: true });
                         return;
                       }
                       setClienteEncontrado(false);
@@ -2662,7 +2676,10 @@ function ClientePageContent() {
                     placeholder="Seu Nome Completo *"
                     className="w-full p-5 pl-14 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                     value={cliente.nome}
-                    onChange={(e) => setCliente((prev) => ({ ...prev, nome: e.target.value }))}
+                    onChange={(e) => {
+                      cadastroManualRef.current = true;
+                      setCliente((prev) => ({ ...prev, nome: e.target.value }));
+                    }}
                   />
                 </div>
 
@@ -2765,9 +2782,10 @@ function ClientePageContent() {
                     placeholder="Rua *"
                     value={cliente.endereco}
                     className="col-span-3 w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                    onChange={(e) =>
-                      setCliente((prev) => ({ ...prev, endereco: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      cadastroManualRef.current = true;
+                      setCliente((prev) => ({ ...prev, endereco: e.target.value }));
+                    }}
                   />
                   <label htmlFor="numero" className="sr-only">Número</label>
                   <input
@@ -2775,9 +2793,10 @@ function ClientePageContent() {
                     placeholder="Nº *"
                     value={cliente.numero}
                     className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold text-center"
-                    onChange={(e) =>
-                      setCliente((prev) => ({ ...prev, numero: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      cadastroManualRef.current = true;
+                      setCliente((prev) => ({ ...prev, numero: e.target.value }));
+                    }}
                   />
                 </div>
 
@@ -2787,7 +2806,10 @@ function ClientePageContent() {
                   placeholder="Bairro *"
                   value={cliente.bairro}
                   className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                  onChange={(e) => setCliente((prev) => ({ ...prev, bairro: e.target.value }))}
+                  onChange={(e) => {
+                    cadastroManualRef.current = true;
+                    setCliente((prev) => ({ ...prev, bairro: e.target.value }));
+                  }}
                 />
 
                 <label htmlFor="ponto_referencia" className="sr-only">Ponto de Referência</label>
@@ -2796,9 +2818,10 @@ function ClientePageContent() {
                   placeholder="Ponto de Referência *"
                   value={cliente.ponto_referencia}
                   className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                  onChange={(e) =>
-                    setCliente((prev) => ({ ...prev, ponto_referencia: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    cadastroManualRef.current = true;
+                    setCliente((prev) => ({ ...prev, ponto_referencia: e.target.value }));
+                  }}
                 />
 
                 <label htmlFor="observacao_entrega" className="sr-only">Observacao da entrega</label>
@@ -2807,9 +2830,10 @@ function ClientePageContent() {
                   placeholder="Observacao da entrega"
                   value={cliente.observacao}
                   className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold min-h-28 resize-none"
-                  onChange={(e) =>
-                    setCliente((prev) => ({ ...prev, observacao: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    cadastroManualRef.current = true;
+                    setCliente((prev) => ({ ...prev, observacao: e.target.value }));
+                  }}
                 />
 
                 <div
