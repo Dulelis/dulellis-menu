@@ -34,7 +34,16 @@ const DIAS_SEMANA = [
   { key: 'sexta', label: 'Sexta' },
   { key: 'sabado', label: 'Sabado' },
 ] as const;
-const CATEGORIAS_ESTOQUE = ['Bolos', 'Doces', 'Salgados', 'Bebidas', 'Produtos naturais'] as const;
+const CATEGORIAS_ESTOQUE = ['Bolos', 'Doces', 'Salgados', 'Bebidas', 'Produtos naturais', 'Personalizado'] as const;
+
+function categoriaParaId(categoria: string) {
+  return categoria
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-');
+}
 const STATUS_PEDIDO_LABELS: Record<string, string> = {
   aguardando_aceite: 'Aguardando aceite',
   recebido: 'Recebido',
@@ -1598,12 +1607,22 @@ export default function AdminPage() {
 
         {activeTab === 'estoque' && (
           <div className="space-y-8">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              {estoquePorCategoria.map(({ categoria, itens }) => (
+                <div key={categoria} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{categoria}</p>
+                  <p className="mt-2 text-2xl font-black text-slate-800">{itens.length}</p>
+                  <p className="text-xs font-medium text-slate-500">itens no estoque</p>
+                </div>
+              ))}
+            </div>
+
             <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
               <div className="flex flex-wrap gap-2">
                 {CATEGORIAS_ESTOQUE.map((categoria) => (
                   <a
                     key={categoria}
-                    href={`#categoria-${categoria.toLowerCase()}`}
+                    href={`#categoria-${categoriaParaId(categoria)}`}
                     className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 text-xs font-black uppercase hover:bg-pink-50 hover:text-pink-700 transition-colors"
                   >
                     {categoria}
@@ -1613,7 +1632,7 @@ export default function AdminPage() {
             </div>
 
             {estoquePorCategoria.map(({ categoria, itens }) => (
-              <section key={categoria} id={`categoria-${categoria.toLowerCase()}`} className="space-y-4 scroll-mt-28">
+              <section key={categoria} id={`categoria-${categoriaParaId(categoria)}`} className="space-y-4 scroll-mt-28">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-black text-slate-800 uppercase tracking-wide">{categoria}</h2>
                   <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">{itens.length} itens</span>
@@ -2251,7 +2270,7 @@ export default function AdminPage() {
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Categoria</label>
                 <select className="w-full p-4 rounded-2xl bg-slate-100 border-none font-bold text-slate-700 focus:ring-2 focus:ring-pink-500 outline-none" value={novoItem.categoria} onChange={e => setNovoItem({...novoItem, categoria: e.target.value})}>
-                  <option value="Doces">Doces</option><option value="Bolos">Bolos</option><option value="Salgados">Salgados</option><option value="Bebidas">Bebidas</option><option value="Produtos naturais">Produtos naturais</option>
+                  <option value="Doces">Doces</option><option value="Bolos">Bolos</option><option value="Salgados">Salgados</option><option value="Bebidas">Bebidas</option><option value="Produtos naturais">Produtos naturais</option><option value="Personalizado">Personalizado</option>
                 </select>
               </div>
               <textarea placeholder="Descrição (Ex: Massa de chocolate com recheio de ninho)" className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 font-medium text-slate-700" rows={2} value={novoItem.descricao} onChange={e => setNovoItem({...novoItem, descricao: e.target.value})} />

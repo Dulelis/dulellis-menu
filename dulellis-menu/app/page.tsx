@@ -27,14 +27,15 @@ const LOJA_LNG = -48.6538;
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
 const CIDADE_ATENDIDA = "Navegantes";
-const CATEGORIAS = ["Todos", "Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais"];
-const ORDEM_VITRINE_CATEGORIAS = ["Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais"];
+const CATEGORIAS = ["Todos", "Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais", "Personalizado"];
+const ORDEM_VITRINE_CATEGORIAS = ["Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais", "Personalizado"];
 const DESCRICOES_CATEGORIA: Record<string, string> = {
   Bolos: "Bolos",
   Doces: "Doces",
   Salgados: "Salgados",
   Bebidas: "Bebidas",
   "Produtos naturais": "Produtos naturais",
+  Personalizado: "Personalizado",
 };
 const DIAS_SEMANA_CHAVES = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"] as const;
 const DIAS_SEMANA_LABELS: Record<(typeof DIAS_SEMANA_CHAVES)[number], string> = {
@@ -1730,6 +1731,19 @@ function ClientePageContent() {
     [promocoesAtivasHoje],
   );
 
+  const renderResumoPromocao = useCallback((resumo: string) => {
+    const texto = String(resumo || "").trim();
+    const match = texto.match(/^(\d+%)(.*)$/);
+    if (!match) return texto;
+
+    return (
+      <>
+        <span className="text-[13px] leading-none">{match[1]}</span>
+        <span className="text-[8px] leading-none">{match[2]}</span>
+      </>
+    );
+  }, []);
+
   const formOk = Boolean(
     cliente.nome &&
       normalizarNumero(cliente.whatsapp).length >= 10 &&
@@ -2149,8 +2163,8 @@ function ClientePageContent() {
                           {prod.categoria}
                         </span>
                         {resumoPromocaoProduto(prod.id) && (
-                          <span className="ml-1.5 text-[7px] font-black text-emerald-700 uppercase tracking-[0.2em] bg-emerald-50 px-2 py-0.5 rounded-full">
-                            {resumoPromocaoProduto(prod.id)}
+                          <span className="ml-1.5 inline-flex items-center gap-1 font-black text-emerald-800 uppercase tracking-[0.16em] bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full shadow-sm">
+                            {renderResumoPromocao(resumoPromocaoProduto(prod.id))}
                           </span>
                         )}
                         <h3 className="font-black text-slate-800 text-[clamp(0.86rem,3vw,1.2rem)] leading-[1.08] mt-1 tracking-[-0.01em] whitespace-nowrap">
@@ -2209,6 +2223,15 @@ function ClientePageContent() {
                   </p>
                   <p className="mt-2 text-lg font-black text-slate-800">
                     Produtos naturais em construcao. Estamos preparando essa novidade para voce.
+                  </p>
+                </div>
+              ) : secao.categoria === "Personalizado" ? (
+                <div className="rounded-[1.8rem] border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-orange-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(245,158,11,0.08)]">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-600">
+                    Em producao
+                  </p>
+                  <p className="mt-2 text-lg font-black text-slate-800">
+                    Personalizados em producao. Estamos preparando essa novidade para voce.
                   </p>
                 </div>
               ) : null}
