@@ -2320,7 +2320,7 @@ function ClientePageContent() {
               </button>
             </div>
 
-            {!authEsqueciSenha && (
+            {!authEsqueciSenha && (authModoCadastro || authClienteEncontrado) && (
               <div
                 className={`mb-4 rounded-[2rem] border px-4 py-3 ${
                   authModoCadastro
