@@ -466,6 +466,7 @@ function ClientePageContent() {
   const [authWhatsapp, setAuthWhatsapp] = useState("");
   const [authDataAniversario, setAuthDataAniversario] = useState("");
   const [authSenha, setAuthSenha] = useState("");
+  const [authClienteEncontrado, setAuthClienteEncontrado] = useState(false);
   const [authCarregando, setAuthCarregando] = useState(false);
   const [sessaoCliente, setSessaoCliente] = useState<SessaoCliente | null>(null);
   const [authEsqueciSenha, setAuthEsqueciSenha] = useState(false);
@@ -1081,6 +1082,7 @@ function ClientePageContent() {
     const zap = normalizarNumero(authWhatsapp);
     if (zap.length < 10) {
       setAuthModoCadastro(false);
+      setAuthClienteEncontrado(false);
       return false;
     }
 
@@ -1096,12 +1098,15 @@ function ClientePageContent() {
 
       if (clienteExistente) {
         setAuthModoCadastro(false);
+        setAuthClienteEncontrado(true);
         return true;
       }
 
       setAuthModoCadastro(true);
+      setAuthClienteEncontrado(false);
       return false;
     } catch {
+      setAuthClienteEncontrado(false);
       return false;
     }
   }, [authEsqueciSenha, authWhatsapp]);
@@ -1155,6 +1160,7 @@ function ClientePageContent() {
     } catch (error) {
       const mensagem = obterMensagemErro(error) || "Erro ao autenticar.";
       if (!authModoCadastro && mensagem.includes("Cadastro nao encontrado")) {
+        setAuthClienteEncontrado(false);
         setAuthModoCadastro(true);
         alert("Nao encontramos seu cadastro. Complete seus dados para criar a conta.");
       } else {
@@ -2303,6 +2309,7 @@ function ClientePageContent() {
                 onClick={() => {
                   setModalAuthAberto(false);
                   setAuthEsqueciSenha(false);
+                  setAuthClienteEncontrado(false);
                   setResetCodigoEnviado(false);
                   setResetToken("");
                   setResetNovaSenha("");
@@ -2331,12 +2338,14 @@ function ClientePageContent() {
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.22em]">
-                      {authModoCadastro ? "Novo cliente" : "Cliente encontrado"}
+                      {authModoCadastro ? "Novo cliente" : authClienteEncontrado ? "Cliente encontrado" : "Ja tem conta"}
                     </p>
                     <p className="mt-1 text-sm font-bold leading-snug">
                       {authModoCadastro
                         ? "Complete seu cadastro para liberar os pedidos e salvar seu endereco."
-                        : "Sua conta ja existe. Entre com sua senha para pedir mais rapido."}
+                        : authClienteEncontrado
+                          ? "Sua conta ja existe. Entre com sua senha para pedir mais rapido."
+                          : "Entre com seu WhatsApp e senha para continuar seu pedido."}
                     </p>
                   </div>
                 </div>
@@ -2374,7 +2383,10 @@ function ClientePageContent() {
                   placeholder="WhatsApp"
                   className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
                   value={authWhatsapp}
-                  onChange={(e) => setAuthWhatsapp(e.target.value)}
+                  onChange={(e) => {
+                    setAuthWhatsapp(e.target.value);
+                    setAuthClienteEncontrado(false);
+                  }}
                   onBlur={() => {
                     void verificarCadastroAuthPorWhatsapp();
                   }}
@@ -2480,6 +2492,7 @@ function ClientePageContent() {
                     onClick={() => {
                       setAuthModoCadastro((prev) => !prev);
                       setAuthEsqueciSenha(false);
+                      setAuthClienteEncontrado(false);
                       setResetCodigoEnviado(false);
                       setResetToken("");
                       setResetNovaSenha("");
@@ -2500,6 +2513,7 @@ function ClientePageContent() {
                       setResetCodigoEnviado(false);
                       setResetToken("");
                       setResetNovaSenha("");
+                      setAuthClienteEncontrado(false);
                       setAuthModoCadastro(false);
                     }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-1"
