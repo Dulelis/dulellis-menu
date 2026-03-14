@@ -5,6 +5,7 @@ Aplicacao Next.js do cardapio com pedido online, autenticacao de clientes e recu
 ## Rodar localmente
 
 ```bash
+# recomendado: Node 22.22.1
 cmd /c npm install
 cmd /c npm run dev
 ```
@@ -85,3 +86,10 @@ Esses scripts adicionam:
 - `cmd /c npx tsc --noEmit`
 
 Ultima verificacao local: lint e TypeScript ok em `2026-03-13`.
+
+## Checklist antes do deploy
+
+- confirmar Node `22.22.1`
+- rodar `cmd /c npm run lint`
+- rodar `cmd /c npm run typecheck`
+- fazer `git push origin main`
