@@ -44,13 +44,13 @@ export default function RetornoActions({
         Confirmar no WhatsApp
       </a>
       <p className="text-[11px] text-slate-600 mt-3 mb-3">
-        Voce recebera atualizacoes: pedido confirmado, em producao e saiu para entrega.
+        Você receberá atualizações: pedido confirmado, em produção e saiu para entrega.
       </p>
       <Link
         href="/"
         className="block w-full text-center bg-white border border-slate-200 text-slate-700 py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
       >
-        Voltar para o cardapio
+        Voltar para o cardápio
       </Link>
     </>
   );

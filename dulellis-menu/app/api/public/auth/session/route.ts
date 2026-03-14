@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
 
   if (!getCustomerAuthEnabled()) {
     return NextResponse.json(
-      { ok: false, error: "CUSTOMER_AUTH_SECRET nao configurado." },
+      { ok: false, error: "CUSTOMER_AUTH_SECRET não configurado." },
       { status: 500 },
     );
   }
@@ -239,16 +239,16 @@ export async function POST(request: NextRequest) {
   const nome = String(body.nome || "").trim();
   const dataAniversario = String(body.data_aniversario || "").slice(0, 10);
   if (action === "register" && !emailValido(email)) {
-    return NextResponse.json({ ok: false, error: "E-mail invalido." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "E-mail inválido." }, { status: 400 });
   }
   if (action === "login" && whatsapp.length < 10) {
-    return NextResponse.json({ ok: false, error: "Informe um WhatsApp valido." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Informe um WhatsApp válido." }, { status: 400 });
   }
   if (action === "register" && whatsapp.length < 10) {
-    return NextResponse.json({ ok: false, error: "WhatsApp invalido." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "WhatsApp inválido." }, { status: 400 });
   }
   if (password.length < 6) {
-    return NextResponse.json({ ok: false, error: "Senha deve ter no minimo 6 caracteres." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Senha deve ter no mínimo 6 caracteres." }, { status: 400 });
   }
 
   const senhaHash = await hashCustomerPassword(password);
@@ -274,7 +274,7 @@ export async function POST(request: NextRequest) {
       clienteId = Number(existente.id);
       const senhaAtual = String((existente as { senha_hash?: string }).senha_hash || "");
       if (senhaAtual && senhaAtual !== senhaHash) {
-        return NextResponse.json({ ok: false, error: "Cliente ja cadastrado. Use o login." }, { status: 409 });
+        return NextResponse.json({ ok: false, error: "Cliente já cadastrado. Use o login." }, { status: 409 });
       }
       const { error: erroUpdate } = await supabase
         .from("clientes")
@@ -340,7 +340,7 @@ export async function POST(request: NextRequest) {
   }
   const cliente = buscaLogin.cliente as { id?: number; whatsapp?: string | null; senha_hash?: string } | null;
   if (!cliente?.id) {
-    return NextResponse.json({ ok: false, error: "Cadastro nao encontrado. Crie sua conta." }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Cadastro não encontrado. Crie sua conta." }, { status: 404 });
   }
 
   const senhaAtual = String((cliente as { senha_hash?: string }).senha_hash || "");
@@ -348,12 +348,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Conta sem senha. Use 'Criar conta'." }, { status: 409 });
   }
   if (senhaAtual !== senhaHash) {
-    return NextResponse.json({ ok: false, error: "Senha invalida." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Senha inválida." }, { status: 401 });
   }
 
   const whatsappSessao = normalizarNumero(String(cliente.whatsapp || whatsapp || ""));
   if (whatsappSessao.length < 10) {
-    return NextResponse.json({ ok: false, error: "Conta sem WhatsApp valido." }, { status: 409 });
+    return NextResponse.json({ ok: false, error: "Conta sem WhatsApp válido." }, { status: 409 });
   }
 
   const token = buildCustomerSessionToken({

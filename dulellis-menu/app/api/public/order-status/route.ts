@@ -51,7 +51,7 @@ function statusResumo(pedido: PedidoStatus) {
     return { chave: "pendente", texto: "Aguardando pagamento" };
   }
   if (["rejected", "cancelled", "canceled", "failed", "negado"].includes(status)) {
-    return { chave: "recusado", texto: "Pagamento nao aprovado" };
+    return { chave: "recusado", texto: "Pagamento não aprovado" };
   }
   return { chave: "recebido", texto: "Pedido recebido" };
 }
@@ -100,7 +100,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const zap = normalizarNumero(url.searchParams.get("whatsapp") || "");
   if (zap.length < 10) {
-    return NextResponse.json({ ok: false, error: "WhatsApp invalido." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "WhatsApp inválido." }, { status: 400 });
   }
 
   const tentativasSelect = [

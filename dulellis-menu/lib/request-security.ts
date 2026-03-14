@@ -86,7 +86,7 @@ export function enforceSameOriginForWrite(request: Request): NextResponse | null
 
   const allowedOrigins = buildAllowedOrigins(expectedOrigin);
   if (!allowedOrigins.has(origin)) {
-    return NextResponse.json({ ok: false, error: "Origin nao permitido." }, { status: 403 });
+    return NextResponse.json({ ok: false, error: "Origin não permitido." }, { status: 403 });
   }
   return null;
 }

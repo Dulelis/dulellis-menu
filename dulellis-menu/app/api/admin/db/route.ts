@@ -24,7 +24,7 @@ type AdminDbBody = {
 export async function POST(request: NextRequest) {
   const autorizado = await isAdminRequestAuthorized(request);
   if (!autorizado) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Não autorizado." }, { status: 401 });
   }
 
   const supabase = getServiceSupabase();
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   const table = String(body.table || "");
 
   if (!action || !table || !TABELAS_PERMITIDAS.has(table)) {
-    return NextResponse.json({ ok: false, error: "Operacao invalida." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Operação inválida." }, { status: 400 });
   }
 
   try {
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, data: data || [] });
     }
 
-    return NextResponse.json({ ok: false, error: "Acao nao suportada." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Ação não suportada." }, { status: 400 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha na operacao.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

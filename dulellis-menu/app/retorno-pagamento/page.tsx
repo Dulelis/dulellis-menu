@@ -246,29 +246,29 @@ function montarMensagemWhatsappPadraoPedido(
     const itensFormatados =
       pedido.itens.length > 0
         ? pedido.itens.map((i) => `- ${i.qtd}x ${i.nome}`).join("\n")
-        : "- Itens nao informados";
+        : "- Itens não informados";
 
     return (
       `Pedido Dulelis\n\n` +
       `Cliente: ${pedido.clienteNome || fallback.clienteNome || "Cliente"}\n` +
-      `Endereco: ${pedido.enderecoCompleto || "Nao informado"}\n` +
-      `Ponto de Referencia: ${pedido.pontoReferencia || "Nao informado"}\n` +
+      `Endereço: ${pedido.enderecoCompleto || "Não informado"}\n` +
+      `Ponto de Referência: ${pedido.pontoReferencia || "Não informado"}\n` +
       `Pagamento: ${pedido.formaPagamento || "Pix"}\n\n` +
       `Itens:\n${itensFormatados}\n\n` +
       `Total: R$ ${pedido.total.toFixed(2)}\n` +
-      `Referencia do pedido: ${pedido.referencia}\n` +
-      (fallback.transactionId ? `Transacao: ${fallback.transactionId}\n` : "") +
-      `Status do pagamento: ${fallback.status || "indisponivel"}.\n` +
+      `Referência do pedido: ${pedido.referencia}\n` +
+      (fallback.transactionId ? `Transação: ${fallback.transactionId}\n` : "") +
+      `Status do pagamento: ${fallback.status || "indisponível"}.\n` +
       `Pode confirmar meu pedido, por favor?`
     );
   }
 
   return [
-    fallback.clienteNome ? `Ola, sou ${fallback.clienteNome.replace(/\+/g, " ").trim()}.` : "Ola!",
+    fallback.clienteNome ? `Olá, sou ${fallback.clienteNome.replace(/\+/g, " ").trim()}.` : "Olá!",
     `${fallback.tituloStatus}.`,
     fallback.status ? `Status do pagamento: ${fallback.status}.` : "",
-    fallback.transactionId ? `Transacao: ${fallback.transactionId}.` : "",
-    fallback.referencia ? `Referencia do pedido: ${fallback.referencia}.` : "",
+    fallback.transactionId ? `Transação: ${fallback.transactionId}.` : "",
+    fallback.referencia ? `Referência do pedido: ${fallback.referencia}.` : "",
     "Pode confirmar meu pedido, por favor?",
   ]
     .filter(Boolean)

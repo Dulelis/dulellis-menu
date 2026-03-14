@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
   if (!getAdminAuthEnabled()) {
     return NextResponse.json(
-      { ok: false, error: "ADMIN_PASSWORD nao configurada no ambiente." },
+      { ok: false, error: "ADMIN_PASSWORD não configurada no ambiente." },
       { status: 500 },
     );
   }
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     const validPassword = await verifyAdminPassword(password);
     if (!validPassword) {
       return NextResponse.json(
-        { ok: false, error: "Senha invalida." },
+        { ok: false, error: "Senha inválida." },
         { status: 401 },
       );
     }

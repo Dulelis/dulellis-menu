@@ -40,15 +40,15 @@ export async function POST(request: NextRequest) {
   const newPassword = String(body.new_password || "");
 
   if (!token) {
-    return NextResponse.json({ ok: false, error: "Token invalido." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Token inválido." }, { status: 400 });
   }
   if (newPassword.length < 6) {
-    return NextResponse.json({ ok: false, error: "Senha deve ter no minimo 6 caracteres." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Senha deve ter no mínimo 6 caracteres." }, { status: 400 });
   }
 
   const payload = verifyCustomerPasswordResetToken(token);
   if (!payload) {
-    return NextResponse.json({ ok: false, error: "Token invalido ou expirado." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Token inválido ou expirado." }, { status: 401 });
   }
 
   const email = String(payload.email || "").trim().toLowerCase();
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (erroToken || !tokenAtual) {
-    return NextResponse.json({ ok: false, error: "Token nao encontrado. Solicite um novo link." }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Token não encontrado. Solicite um novo link." }, { status: 404 });
   }
 
   const expira = new Date(String(tokenAtual.expira_em || "")).getTime();
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
         usado_em: invalida ? new Date().toISOString() : null,
       })
       .eq("id", tokenAtual.id);
-    return NextResponse.json({ ok: false, error: "Token invalido ou expirado." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Token inválido ou expirado." }, { status: 401 });
   }
 
   const novaSenhaHash = await hashCustomerPassword(newPassword);
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
   const clienteId = Number(exato?.id || 0);
 
   if (!clienteId) {
-    return NextResponse.json({ ok: false, error: "Cliente nao encontrado." }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Cliente não encontrado." }, { status: 404 });
   }
 
   const { error: erroUpdate } = await supabase

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
   if (!getEmailOtpEnabled()) {
     return NextResponse.json(
-      { ok: false, error: "Canal de e-mail para recuperacao nao configurado." },
+      { ok: false, error: "Canal de e-mail para recuperação não configurado." },
       { status: 500 },
     );
   }
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as { email?: string };
   const email = normalizarEmail(body.email || "");
   if (!emailValido(email)) {
-    return NextResponse.json({ ok: false, error: "E-mail invalido." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "E-mail inválido." }, { status: 400 });
   }
 
   const { data: exato } = await supabase
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       data: { sent: true },
-      message: "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperacao em instantes.",
+      message: "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperação em instantes.",
     });
   }
 
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: "A recuperacao de senha esta temporariamente indisponivel. Tente novamente em alguns minutos.",
+        error: "A recuperação de senha está temporariamente indisponível. Tente novamente em alguns minutos.",
       },
       { status: 500 },
     );
@@ -112,13 +112,13 @@ export async function POST(request: NextRequest) {
   try {
     await enviarLinkRecuperacaoPorEmail({ email, minutos: 10, resetUrl });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Falha ao enviar link de recuperacao.";
+    const message = error instanceof Error ? error.message : "Falha ao enviar link de recuperação.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 
   return NextResponse.json({
     ok: true,
     data: { sent: true },
-    message: "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperacao em instantes.",
+    message: "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperação em instantes.",
   });
 }

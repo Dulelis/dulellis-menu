@@ -5,7 +5,7 @@ import { getServiceSupabase } from "@/lib/server-supabase";
 export async function GET(request: NextRequest) {
   const autorizado = await isAdminRequestAuthorized(request);
   if (!autorizado) {
-    return NextResponse.json({ ok: false, error: "Nao autorizado." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Não autorizado." }, { status: 401 });
   }
 
   const supabase = getServiceSupabase();

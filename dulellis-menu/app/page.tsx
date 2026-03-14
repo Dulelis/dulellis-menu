@@ -416,7 +416,7 @@ function descricaoPromocaoVitrine(promo: Promocao) {
   if (tipo === "aniversariante") return `${valor}% para aniversariante`;
   if (tipo === "frete_gratis") {
     const minimo = Number(promo.valor_minimo_pedido || 0);
-    return `Frete gratis acima de R$ ${minimo.toFixed(2)}`;
+    return `Frete grátis acima de R$ ${minimo.toFixed(2)}`;
   }
   return "Oferta especial por tempo limitado";
 }
@@ -488,7 +488,7 @@ function ClientePageContent() {
     setUltimaTaxaEntregaSalva(taxaFinal);
     setDistanciaKm(null);
     setTaxaEntrega(taxaFinal);
-    setMsgTaxa(`Entrega: R$ ${taxaFinal.toFixed(2)} (ultimo pedido)`);
+    setMsgTaxa(`Entrega: R$ ${taxaFinal.toFixed(2)} (último pedido)`);
     return true;
   }, []);
 
@@ -742,7 +742,7 @@ function ClientePageContent() {
       const url = `https://viacep.com.br/ws/SC/${encodeURIComponent(cidadeAtual)}/${encodeURIComponent(rua)}/json/`;
       const res = await fetch(url);
       if (!res.ok) {
-        throw new Error("Falha ao buscar CEP pelo endereco.");
+        throw new Error("Falha ao buscar CEP pelo endereço.");
       }
 
       const resultados = (await res.json().catch(() => [])) as Array<{
@@ -753,7 +753,7 @@ function ClientePageContent() {
       }>;
 
       if (!Array.isArray(resultados) || !resultados.length || "erro" in (resultados[0] || {})) {
-        throw new Error("CEP nao encontrado para esse endereco.");
+        throw new Error("CEP não encontrado para esse endereço.");
       }
 
       const resultado =
@@ -765,15 +765,15 @@ function ClientePageContent() {
 
       const cepEncontrado = normalizarNumero(String(resultado.cep || "")).slice(0, 8);
       if (cepEncontrado.length !== 8) {
-        throw new Error("CEP nao encontrado para esse endereco.");
+        throw new Error("CEP não encontrado para esse endereço.");
       }
 
       await executarBuscaCep(cepEncontrado);
     } catch (error) {
       setDistanciaKm(null);
       setTaxaEntrega(0);
-      setMsgTaxa("Nao foi possivel localizar o CEP pelo endereco.");
-      alert(obterMensagemErro(error) || "Nao foi possivel localizar o CEP pelo endereco.");
+      setMsgTaxa("Não foi possível localizar o CEP pelo endereço.");
+      alert(obterMensagemErro(error) || "Não foi possível localizar o CEP pelo endereço.");
     } finally {
       setBuscandoCep(false);
     }
@@ -1071,7 +1071,7 @@ function ClientePageContent() {
 
       setDistanciaKm(null);
       setTaxaEntrega(0);
-      setMsgTaxa("Nao foi possivel calcular o frete para o endereco salvo.");
+      setMsgTaxa("Não foi possível calcular o frete para o endereço salvo.");
     },
     [aplicarEnderecoSalvo, aplicarTaxaUltimoPedido, executarBuscaCep, ultimaTaxaEntregaSalva],
   );
@@ -1120,15 +1120,15 @@ function ClientePageContent() {
       return;
     }
     if (zap.length < 10) {
-      alert("Informe um WhatsApp valido.");
+      alert("Informe um WhatsApp válido.");
       return;
     }
     if (authModoCadastro && !emailValido(email)) {
-      alert("Informe um e-mail valido.");
+      alert("Informe um e-mail válido.");
       return;
     }
     if (authSenha.length < 6) {
-      alert("Senha deve ter no minimo 6 caracteres.");
+      alert("Senha deve ter no mínimo 6 caracteres.");
       return;
     }
 
@@ -1159,10 +1159,10 @@ function ClientePageContent() {
       setAuthDataAniversario("");
     } catch (error) {
       const mensagem = obterMensagemErro(error) || "Erro ao autenticar.";
-      if (!authModoCadastro && mensagem.includes("Cadastro nao encontrado")) {
+      if (!authModoCadastro && mensagem.includes("Cadastro não encontrado")) {
         setAuthClienteEncontrado(false);
         setAuthModoCadastro(true);
-        alert("Nao encontramos seu cadastro. Complete seus dados para criar a conta.");
+        alert("Não encontramos seu cadastro. Complete seus dados para criar a conta.");
       } else {
         alert(mensagem);
       }
@@ -1203,7 +1203,7 @@ function ClientePageContent() {
   const solicitarTokenRecuperacao = useCallback(async () => {
     const email = String(authEmail || "").trim().toLowerCase();
     if (!emailValido(email)) {
-      alert("Informe um e-mail valido.");
+      alert("Informe um e-mail válido.");
       return;
     }
     setAuthCarregando(true);
@@ -1225,9 +1225,9 @@ function ClientePageContent() {
         throw new Error(json.error || json.message || bruto || "Falha ao solicitar token.");
       }
       setResetCodigoEnviado(true);
-      alert(json.message || "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperacao em instantes.");
+      alert(json.message || "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperação em instantes.");
     } catch (error) {
-      alert(obterMensagemErro(error) || "Nao foi possivel enviar o link.");
+      alert(obterMensagemErro(error) || "Não foi possível enviar o link.");
     } finally {
       setAuthCarregando(false);
     }
@@ -1236,11 +1236,11 @@ function ClientePageContent() {
   const redefinirSenhaComToken = useCallback(async () => {
     const token = String(resetToken || "").trim();
     if (!token) {
-      alert("Token de recuperacao ausente. Abra o link enviado por e-mail.");
+      alert("Token de recuperação ausente. Abra o link enviado por e-mail.");
       return;
     }
     if (resetNovaSenha.length < 6) {
-      alert("Nova senha deve ter no minimo 6 caracteres.");
+      alert("Nova senha deve ter no mínimo 6 caracteres.");
       return;
     }
     setAuthCarregando(true);
@@ -1263,7 +1263,7 @@ function ClientePageContent() {
       setResetNovaSenha("");
       setResetCodigoEnviado(false);
     } catch (error) {
-      alert(obterMensagemErro(error) || "Nao foi possivel redefinir senha.");
+      alert(obterMensagemErro(error) || "Não foi possível redefinir a senha.");
     } finally {
       setAuthCarregando(false);
     }
@@ -1374,7 +1374,7 @@ function ClientePageContent() {
       try {
         const liberou = await atualizarQuantidadeEstoque(id, 1);
         if (!liberou) {
-          alert("Nao foi possivel atualizar o estoque agora. Tente novamente.");
+          alert("Não foi possível atualizar o estoque agora. Tente novamente.");
           await carregarDadosIniciais();
           return;
         }
@@ -1424,7 +1424,7 @@ function ClientePageContent() {
       }
 
       if (houveFalha) {
-        alert("Alguns itens nao puderam ser liberados do estoque. Tente limpar novamente.");
+        alert("Alguns itens não puderam ser liberados do estoque. Tente limpar novamente.");
         await carregarDadosIniciais();
         return;
       }
@@ -1469,7 +1469,7 @@ function ClientePageContent() {
   const consultarAcompanhamentoPedido = useCallback(async () => {
     const zap = normalizarNumero(whatsappAcompanhamento);
     if (zap.length < 10) {
-      alert("Informe um WhatsApp valido.");
+      alert("Informe um WhatsApp válido.");
       return;
     }
 
@@ -1488,7 +1488,7 @@ function ClientePageContent() {
       }
       setPedidoAcompanhamento((json.data || null) as PedidoAcompanhamento | null);
     } catch (error) {
-      const mensagem = obterMensagemErro(error) || "Nao foi possivel consultar o pedido.";
+      const mensagem = obterMensagemErro(error) || "Não foi possível consultar o pedido.";
       alert(mensagem);
     } finally {
       setCarregandoAcompanhamento(false);
@@ -1572,7 +1572,7 @@ function ClientePageContent() {
       aplicarEnderecoSalvo(enderecoAtualizado);
       setPasso(2);
     } catch (error) {
-      const mensagem = obterMensagemErro(error) || "Nao foi possivel salvar seu cadastro.";
+      const mensagem = obterMensagemErro(error) || "Não foi possível salvar seu cadastro.";
       console.error("Erro ao salvar cliente antes do resumo:", error);
       alert(mensagem);
     } finally {
@@ -1802,7 +1802,7 @@ function ClientePageContent() {
       {
         id: -1,
         titulo: "Novidades da Semana",
-        descricao: "Confira os doces e bolos que acabaram de entrar no cardapio.",
+        descricao: "Confira os doces e bolos que acabaram de entrar no cardápio.",
         imagem_url: "",
         botao_texto: "",
         botao_link: "",
@@ -1850,7 +1850,7 @@ function ClientePageContent() {
         faixa,
         aberto: false,
         fechando: false,
-        mensagem: "Loja fechada no momento. Retornamos no proximo dia.",
+        mensagem: "Loja fechada no momento. Retornamos no próximo dia.",
       };
     }
     if (!hojeAtivo) {
@@ -1982,7 +1982,7 @@ function ClientePageContent() {
           <div className="text-left min-h-[20px]">
             {sessaoCliente?.nome ? (
               <p className="text-base sm:text-lg font-black text-slate-800 leading-none">
-                Ola, {primeiroNome(sessaoCliente.nome)}
+                Olá, {primeiroNome(sessaoCliente.nome)}
               </p>
             ) : null}
           </div>
@@ -2198,7 +2198,7 @@ function ClientePageContent() {
                         </p>
                         {Number(prod.quantidade ?? 0) === 1 && (
                           <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-500 mt-1">
-                            Tem so mais um
+                            Ultima unidade
                           </p>
                         )}
                         <div className="mt-1 flex items-center justify-between gap-2">
@@ -2242,19 +2242,19 @@ function ClientePageContent() {
               ) : secao.categoria === "Produtos naturais" ? (
                 <div className="rounded-[1.8rem] border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-lime-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(16,185,129,0.08)]">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-500">
-                    Em construcao
+                    Em construção
                   </p>
                   <p className="mt-2 text-lg font-black text-slate-800">
-                    Produtos naturais em construcao. Estamos preparando essa novidade para voce.
+                    Produtos naturais em construção. Estamos preparando essa novidade para você.
                   </p>
                 </div>
               ) : secao.categoria === "Personalizado" ? (
                 <div className="rounded-[1.8rem] border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-orange-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(245,158,11,0.08)]">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-600">
-                    Em producao
+                    Em produção
                   </p>
                   <p className="mt-2 text-lg font-black text-slate-800">
-                    Personalizados em producao. Estamos preparando essa novidade para voce.
+                    Personalizados em produção. Estamos preparando essa novidade para você.
                   </p>
                 </div>
               ) : null}
@@ -2338,13 +2338,13 @@ function ClientePageContent() {
                   </div>
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.22em]">
-                      {authModoCadastro ? "Novo cliente" : authClienteEncontrado ? "Cliente encontrado" : "Ja tem conta"}
+                      {authModoCadastro ? "Novo cliente" : authClienteEncontrado ? "Cliente encontrado" : "Já tem conta"}
                     </p>
                     <p className="mt-1 text-sm font-bold leading-snug">
                       {authModoCadastro
-                        ? "Complete seu cadastro para liberar os pedidos e salvar seu endereco."
+                        ? "Complete seu cadastro para liberar os pedidos e salvar seu endereço."
                         : authClienteEncontrado
-                          ? "Sua conta ja existe. Entre com sua senha para pedir mais rapido."
+                          ? "Sua conta já existe. Entre com sua senha para pedir mais rápido."
                           : "Entre com seu WhatsApp e senha para continuar seu pedido."}
                     </p>
                   </div>
@@ -2406,12 +2406,12 @@ function ClientePageContent() {
                   {resetCodigoEnviado ? (
                     <>
                       <p className="text-[11px] rounded-2xl bg-amber-50 border border-amber-100 p-3 text-amber-700 font-bold">
-                        Se o e-mail estiver cadastrado, voce recebera um link de recuperacao. Ao abrir o link, volte aqui
+                        Se o e-mail estiver cadastrado, você receberá um link de recuperação. Ao abrir o link, volte aqui
                         para definir a nova senha.
                       </p>
                       {resetToken ? (
                         <p className="text-[11px] rounded-2xl bg-blue-50 border border-blue-100 p-3 text-blue-700 font-bold">
-                          Link de recuperacao validado. Defina sua nova senha.
+                          Link de recuperação validado. Defina sua nova senha.
                         </p>
                       ) : (
                         <input
@@ -2441,7 +2441,7 @@ function ClientePageContent() {
                   ) : (
                     <>
                       <p className="text-[11px] rounded-2xl bg-slate-50 border border-slate-200 p-3 text-slate-600 font-bold">
-                        Informe o e-mail cadastrado para receber o link de recuperacao de senha.
+                        Informe o e-mail cadastrado para receber o link de recuperação de senha.
                       </p>
                       <button
                         type="button"
@@ -2504,7 +2504,7 @@ function ClientePageContent() {
                     }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
                   >
-                    {authModoCadastro ? "Ja tenho conta" : "Criar minha conta"}
+                    {authModoCadastro ? "Já tenho conta" : "Criar minha conta"}
                   </button>
                   <button
                     type="button"
@@ -2583,12 +2583,12 @@ function ClientePageContent() {
                 >
                   {pedidoAcompanhamento.status_texto}
                 </p>
-                <p className="text-xs font-bold text-slate-700">Cliente: {pedidoAcompanhamento.cliente_nome || "Nao informado"}</p>
+                <p className="text-xs font-bold text-slate-700">Cliente: {pedidoAcompanhamento.cliente_nome || "Não informado"}</p>
                 <p className="text-xs font-bold text-slate-700">Pedido: #{pedidoAcompanhamento.id}</p>
-                <p className="text-xs font-bold text-slate-700">Pagamento: {pedidoAcompanhamento.forma_pagamento || "Nao informado"}</p>
+                <p className="text-xs font-bold text-slate-700">Pagamento: {pedidoAcompanhamento.forma_pagamento || "Não informado"}</p>
                 <p className="text-xs font-bold text-slate-700">Total: R$ {Number(pedidoAcompanhamento.total || 0).toFixed(2)}</p>
                 <p className="text-xs font-bold text-slate-700">
-                  Data: {pedidoAcompanhamento.created_at ? new Date(pedidoAcompanhamento.created_at).toLocaleString("pt-BR") : "Nao informada"}
+                  Data: {pedidoAcompanhamento.created_at ? new Date(pedidoAcompanhamento.created_at).toLocaleString("pt-BR") : "Não informada"}
                 </p>
                 {pedidoAcompanhamento.pagamento_referencia ? (
                   <p className="text-[11px] font-mono break-all text-slate-500">
@@ -2598,7 +2598,7 @@ function ClientePageContent() {
               </div>
             ) : (
               <p className="mt-5 text-xs font-bold text-slate-500">
-                Informe seu WhatsApp para consultar o ultimo pedido.
+                Informe seu WhatsApp para consultar o último pedido.
               </p>
             )}
           </div>
@@ -2610,7 +2610,7 @@ function ClientePageContent() {
           <div className="bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-8 max-h-[95vh] overflow-y-auto shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-3xl font-black italic text-slate-800">
-                {passo === 1 ? "Endereco para entrega" : "Resumo"}
+                {passo === 1 ? "Endereço para entrega" : "Resumo"}
               </h3>
               <button
                 type="button"
@@ -2625,7 +2625,7 @@ function ClientePageContent() {
               <div className="space-y-4">
                 <div className="bg-blue-50 text-blue-800 p-4 rounded-3xl border border-blue-100 gentle-blink">
                   <p className="text-[12px] font-bold tracking-wide">
-                    Escolha seu endereco salvo ou informe um novo endereco para esta entrega.
+                    Escolha seu endereço salvo ou informe um novo endereço para esta entrega.
                   </p>
                 </div>
                 <div className="relative">
@@ -2704,7 +2704,7 @@ function ClientePageContent() {
                         Entrega
                       </p>
                       <p className="mt-1 text-sm font-bold text-slate-700">
-                        Escolha usar o endereco salvo ou preencher outro para este pedido.
+                        Escolha usar o endereço salvo ou preencher outro para este pedido.
                       </p>
                       {resumoEnderecoSalvo ? (
                         <p className="mt-1 text-xs font-medium text-slate-500">{resumoEnderecoSalvo}</p>
@@ -2722,7 +2722,7 @@ function ClientePageContent() {
                             : "bg-white text-slate-600 border border-slate-200"
                         }`}
                       >
-                        Endereco salvo
+                        Endereço salvo
                       </button>
                       <button
                         type="button"
@@ -2736,7 +2736,7 @@ function ClientePageContent() {
                             : "bg-white text-slate-600 border border-slate-200"
                         }`}
                       >
-                        Novo endereco
+                        Novo endereço
                       </button>
                     </div>
                   </div>
@@ -2777,7 +2777,7 @@ function ClientePageContent() {
                   disabled={buscandoCep || normalizarNumero(cliente.cep).slice(0, 8).length !== 8}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
                 >
-                  Buscar endereco pelo CEP
+                  Buscar endereço pelo CEP
                 </button>
 
                 <button
@@ -2786,7 +2786,7 @@ function ClientePageContent() {
                   disabled={buscandoCep || !cliente.endereco.trim()}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
                 >
-                  Nao sei o CEP, localizar pelo endereco
+                  Não sei o CEP, localizar pelo endereço
                 </button>
 
                 <div className="grid grid-cols-4 gap-3">
