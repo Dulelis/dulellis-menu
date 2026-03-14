@@ -61,9 +61,9 @@ Se nenhum canal estiver configurado, `POST /api/public/auth/forgot-password` res
 
 Rode estes arquivos no SQL Editor:
 
-1. [sql/upgrade_clientes_auth.sql](/c:/Users/edijp/OneDrive/Desktop/DELIVERY%20DULELIS/App-Dulelis/projetos/dulellis-menu/sql/upgrade_clientes_auth.sql)
-2. [sql/upgrade_clientes_password_reset.sql](/c:/Users/edijp/OneDrive/Desktop/DELIVERY%20DULELIS/App-Dulelis/projetos/dulellis-menu/sql/upgrade_clientes_password_reset.sql)
-3. [sql/upgrade_clientes_auth_email.sql](/c:/Users/edijp/OneDrive/Desktop/DELIVERY%20DULELIS/App-Dulelis/projetos/dulellis-menu/sql/upgrade_clientes_auth_email.sql)
+1. `sql/upgrade_clientes_auth.sql`
+2. `sql/upgrade_clientes_password_reset.sql`
+3. `sql/upgrade_clientes_auth_email.sql`
 
 Esses scripts adicionam:
 
@@ -82,5 +82,6 @@ Esses scripts adicionam:
 ## Verificacao rapida
 
 - `cmd /c npm run lint`
+- `cmd /c npx tsc --noEmit`
 
-Ultima verificacao local: lint ok em `2026-03-10`.
+Ultima verificacao local: lint e TypeScript ok em `2026-03-13`.
