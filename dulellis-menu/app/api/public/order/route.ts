@@ -91,7 +91,7 @@ function calcularDescontoPromocoes(
 }
 
 async function tentarAtualizarPedidoPosInsert(
-  supabase: ReturnType<typeof getServiceSupabase>,
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
   pedidoId: number,
   payload: Record<string, unknown>,
 ) {
@@ -101,14 +101,9 @@ async function tentarAtualizarPedidoPosInsert(
       forma_pagamento: payload.forma_pagamento,
       pagamento_referencia: payload.pagamento_referencia,
       status_pagamento: payload.status_pagamento,
-      taxa_entrega: payload.taxa_entrega,
-      observacao: payload.observacao,
-      status_pedido: payload.status_pedido,
     },
     {
       forma_pagamento: payload.forma_pagamento,
-      taxa_entrega: payload.taxa_entrega,
-      status_pedido: payload.status_pedido,
     },
   ];
 

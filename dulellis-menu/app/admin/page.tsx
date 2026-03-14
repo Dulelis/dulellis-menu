@@ -5,10 +5,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Script from 'next/script';
 import { supabase } from '@/lib/supabase';
-import { 
-  Package, Users, PlusCircle, Minus, Plus, 
-  Trash2, Pencil, Loader2, Camera, Image as ImageIcon, 
-  Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map, RotateCcw, ChevronDown, ChevronUp, BadgePercent, Megaphone, Clock3
+import {
+  Package, Users, PlusCircle, Minus, Plus,
+  Trash2, Pencil, Loader2, Camera, Image as ImageIcon,
+  Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map as MapIcon, RotateCcw, ChevronDown, ChevronUp, BadgePercent, Megaphone, Clock3
 } from 'lucide-react';
 
 const QZ_TRAY_SCRIPT_URL = 'https://unpkg.com/qz-tray@2.2.4/qz-tray.js';
@@ -147,6 +147,7 @@ export default function AdminPage() {
   const [pedidoAtualizandoId, setPedidoAtualizandoId] = useState<number | null>(null);
   const recarregarRealtimeRef = useRef<number | null>(null);
   const qzConectandoRef = useRef<Promise<void> | null>(null);
+  const imprimirPedidoAceitoRef = useRef<(pedido: any, popupExistente?: Window | null) => Promise<void>>(async () => {});
   const assinaturasPedidosRef = useRef<Map<number, string>>(new Map());
   const pedidosPixImpressosRef = useRef<Set<number>>(new Set());
   const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
@@ -282,7 +283,7 @@ export default function AdminPage() {
           !pedidosPixImpressosRef.current.has(pedidoId)
         ) {
           pedidosPixImpressosRef.current.add(pedidoId);
-          void imprimirPedidoAceito({ ...pedidoAtualizado, status_pedido: 'recebido' });
+          void imprimirPedidoAceitoRef.current({ ...pedidoAtualizado, status_pedido: 'recebido' });
         }
       }
 
@@ -310,7 +311,7 @@ export default function AdminPage() {
       }
       void supabase.removeChannel(channel);
     };
-  }, [carregarDados, imprimirPedidoAceito]);
+  }, [carregarDados]);
 
   useEffect(() => {
     if (!QZ_PRINTER_NAME) return;
@@ -1232,6 +1233,10 @@ export default function AdminPage() {
     popup.document.close();
   }, [completarPedidoComCliente, garantirQzPronto, montarCupomPedido]);
 
+  useEffect(() => {
+    imprimirPedidoAceitoRef.current = imprimirPedidoAceito;
+  }, [imprimirPedidoAceito]);
+
   const irParaCadastroCliente = (whatsapp?: string, nome?: string) => {
     const zap = normalizarNumero(String(whatsapp || ''));
     const nomeCliente = String(nome || '').trim();
@@ -1719,7 +1724,7 @@ export default function AdminPage() {
           <button onClick={() => setActiveTab('propagandas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'propagandas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Megaphone size={20}/> Propaganda </button>
           <button onClick={() => setActiveTab('horario')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'horario' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Clock3 size={20}/> Horario </button>
           <button onClick={() => setActiveTab('clientes')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'clientes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Users size={20}/> Lista de Clientes </button>
-          <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'taxas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Map size={20}/> Taxas de Entrega </button>
+          <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'taxas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <MapIcon size={20}/> Taxas de Entrega </button>
           <button onClick={() => setActiveTab('vendas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'vendas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <ShoppingBag size={20}/> Vendas </button>
           <button onClick={() => setActiveTab('relatorios')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'relatorios' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <TrendingUp size={20}/> Relatorios </button>
         </nav>
