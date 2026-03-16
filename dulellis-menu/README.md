@@ -65,11 +65,14 @@ Rode estes arquivos no SQL Editor:
 1. `sql/upgrade_clientes_auth.sql`
 2. `sql/upgrade_clientes_password_reset.sql`
 3. `sql/upgrade_clientes_auth_email.sql`
+4. `sql/upgrade_clientes_privacidade.sql`
 
 Esses scripts adicionam:
 
 - `clientes.senha_hash`
 - `clientes.email`
+- `clientes.politica_privacidade_aceita_em`
+- `clientes.politica_privacidade_versao`
 - `clientes_password_reset_tokens`
 
 ## Fluxo implementado

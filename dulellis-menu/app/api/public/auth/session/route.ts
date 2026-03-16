@@ -8,6 +8,7 @@ import {
   hashCustomerPassword,
   verifyCustomerPassword,
 } from "@/lib/customer-auth";
+import { PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { getCustomerSessionFromRequest } from "@/lib/customer-request";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-security";
@@ -35,6 +36,51 @@ function whatsappEquivalente(a: string, b: string): boolean {
 function isSchemaColumnError(message: string) {
   const lower = String(message || "").toLowerCase();
   return lower.includes("column") || lower.includes("schema cache");
+}
+
+async function atualizarClienteComFallback(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  clienteId: number,
+  payloadCompleto: Record<string, unknown>,
+  payloadLegado: Record<string, unknown>,
+) {
+  const { error } = await supabase.from("clientes").update(payloadCompleto).eq("id", clienteId);
+  if (!error) return { ok: true, error: "" };
+  if (!isSchemaColumnError(error.message)) {
+    return { ok: false, error: error.message };
+  }
+
+  const { error: fallbackError } = await supabase.from("clientes").update(payloadLegado).eq("id", clienteId);
+  if (!fallbackError) return { ok: true, error: "" };
+  return { ok: false, error: fallbackError.message };
+}
+
+async function inserirClienteComFallback(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  payloadCompleto: Record<string, unknown>,
+  payloadLegado: Record<string, unknown>,
+) {
+  const tentativaCompleta = await supabase
+    .from("clientes")
+    .insert([payloadCompleto])
+    .select("id,nome,email,whatsapp")
+    .maybeSingle();
+  if (!tentativaCompleta.error) {
+    return { data: tentativaCompleta.data, error: "" };
+  }
+  if (!isSchemaColumnError(tentativaCompleta.error.message)) {
+    return { data: null, error: tentativaCompleta.error.message };
+  }
+
+  const tentativaLegada = await supabase
+    .from("clientes")
+    .insert([payloadLegado])
+    .select("id,nome,email,whatsapp")
+    .maybeSingle();
+  if (!tentativaLegada.error) {
+    return { data: tentativaLegada.data, error: "" };
+  }
+  return { data: null, error: tentativaLegada.error.message };
 }
 
 function extrairPontoReferenciaDeEndereco(endereco: string) {
@@ -225,6 +271,8 @@ export async function POST(request: NextRequest) {
     password?: string;
     nome?: string;
     data_aniversario?: string;
+    aceitou_politica_privacidade?: boolean;
+    politica_privacidade_versao?: string;
   };
 
   const action = String(body.action || "login");
@@ -239,6 +287,8 @@ export async function POST(request: NextRequest) {
   const password = String(body.password || "");
   const nome = String(body.nome || "").trim();
   const dataAniversario = String(body.data_aniversario || "").slice(0, 10);
+  const aceitouPoliticaPrivacidade = Boolean(body.aceitou_politica_privacidade);
+  const politicaPrivacidadeVersao = String(body.politica_privacidade_versao || "").trim() || PRIVACY_POLICY_VERSION;
   if (action === "register" && !emailValido(email)) {
     return NextResponse.json({ ok: false, error: "E-mail inválido." }, { status: 400 });
   }
@@ -250,6 +300,13 @@ export async function POST(request: NextRequest) {
   }
   if (password.length < 6) {
     return NextResponse.json({ ok: false, error: "Senha deve ter no mínimo 6 caracteres." }, { status: 400 });
+  }
+
+  if (action === "register" && !aceitouPoliticaPrivacidade) {
+    return NextResponse.json(
+      { ok: false, error: "Voce precisa aceitar a Politica de Privacidade para criar sua conta." },
+      { status: 400 },
+    );
   }
 
   const senhaHash = await hashCustomerPassword(password);
@@ -279,45 +336,44 @@ export async function POST(request: NextRequest) {
       if (senhaAtual && !validacaoSenha.valid) {
         return NextResponse.json({ ok: false, error: "Cliente já cadastrado. Use o login." }, { status: 409 });
       }
-      const { error: erroUpdate } = await supabase
-        .from("clientes")
-        .update({
-          senha_hash: senhaHash,
-          nome: nome || String(existente.nome || ""),
-          email,
-          data_aniversario: dataAniversario,
-        })
-        .eq("id", clienteId);
-      if (erroUpdate) {
-        if (isSchemaColumnError(erroUpdate.message)) {
-          return NextResponse.json(
-            { ok: false, error: "Coluna senha_hash ausente. Rode sql/upgrade_clientes_auth.sql." },
-            { status: 500 },
-          );
-        }
-        return NextResponse.json({ ok: false, error: erroUpdate.message }, { status: 500 });
+      const payloadBase = {
+        senha_hash: senhaHash,
+        nome: nome || String(existente.nome || ""),
+        email,
+        data_aniversario: dataAniversario,
+      };
+      const updateResult = await atualizarClienteComFallback(
+        supabase,
+        clienteId,
+        {
+          ...payloadBase,
+          politica_privacidade_aceita_em: new Date().toISOString(),
+          politica_privacidade_versao: politicaPrivacidadeVersao,
+        },
+        payloadBase,
+      );
+      if (!updateResult.ok) {
+        return NextResponse.json({ ok: false, error: updateResult.error }, { status: 500 });
       }
     } else {
-      const payload = {
+      const payloadBase = {
         nome: nome || "Cliente",
         email,
         whatsapp,
         senha_hash: senhaHash,
         data_aniversario: dataAniversario,
       };
-      const { data: criado, error: erroCriar } = await supabase
-        .from("clientes")
-        .insert([payload])
-        .select("id,nome,email,whatsapp")
-        .maybeSingle();
+      const { data: criado, error: erroCriar } = await inserirClienteComFallback(
+        supabase,
+        {
+          ...payloadBase,
+          politica_privacidade_aceita_em: new Date().toISOString(),
+          politica_privacidade_versao: politicaPrivacidadeVersao,
+        },
+        payloadBase,
+      );
       if (erroCriar) {
-        if (isSchemaColumnError(erroCriar.message)) {
-          return NextResponse.json(
-            { ok: false, error: "Coluna senha_hash ausente. Rode sql/upgrade_clientes_auth.sql." },
-            { status: 500 },
-          );
-        }
-        return NextResponse.json({ ok: false, error: erroCriar.message }, { status: 500 });
+        return NextResponse.json({ ok: false, error: erroCriar }, { status: 500 });
       }
       clienteId = Number(criado?.id || 0);
       if (!clienteId) {

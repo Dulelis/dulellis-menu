@@ -2,7 +2,9 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { supabase } from "@/lib/supabase";
 import {
   AlertTriangle,
@@ -178,6 +180,7 @@ type AuthDraft = {
   email: string;
   whatsapp: string;
   data_aniversario: string;
+  aceitou_politica_privacidade: boolean;
 };
 
 const CLIENTE_INICIAL: Cliente = {
@@ -467,6 +470,7 @@ function ClientePageContent() {
   const [authWhatsapp, setAuthWhatsapp] = useState("");
   const [authDataAniversario, setAuthDataAniversario] = useState("");
   const [authSenha, setAuthSenha] = useState("");
+  const [authAceitouPoliticaPrivacidade, setAuthAceitouPoliticaPrivacidade] = useState(false);
   const [authClienteEncontrado, setAuthClienteEncontrado] = useState(false);
   const [authCarregando, setAuthCarregando] = useState(false);
   const [sessaoCliente, setSessaoCliente] = useState<SessaoCliente | null>(null);
@@ -1014,6 +1018,7 @@ function ClientePageContent() {
       setAuthEmail(String(draft.email || ""));
       setAuthWhatsapp(String(draft.whatsapp || ""));
       setAuthDataAniversario(String(draft.data_aniversario || ""));
+      setAuthAceitouPoliticaPrivacidade(Boolean(draft.aceitou_politica_privacidade));
     } catch {
       window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
     }
@@ -1029,18 +1034,27 @@ function ClientePageContent() {
       email: authEmail,
       whatsapp: authWhatsapp,
       data_aniversario: authDataAniversario,
+      aceitou_politica_privacidade: authAceitouPoliticaPrivacidade,
     };
 
-    const temConteudo = [draft.nome, draft.email, draft.whatsapp, draft.data_aniversario].some((value) =>
-      String(value).trim(),
-    );
+    const temConteudo =
+      draft.aceitou_politica_privacidade ||
+      [draft.nome, draft.email, draft.whatsapp, draft.data_aniversario].some((value) => String(value).trim());
     if (!temConteudo && !draft.modalAberto && !draft.modoCadastro) {
       window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
       return;
     }
 
     window.localStorage.setItem(AUTH_DRAFT_STORAGE_KEY, JSON.stringify(draft));
-  }, [authDataAniversario, authEmail, authModoCadastro, authNome, authWhatsapp, modalAuthAberto]);
+  }, [
+    authAceitouPoliticaPrivacidade,
+    authDataAniversario,
+    authEmail,
+    authModoCadastro,
+    authNome,
+    authWhatsapp,
+    modalAuthAberto,
+  ]);
 
   const limparRascunhoAuth = useCallback(() => {
     window.localStorage.removeItem(AUTH_DRAFT_STORAGE_KEY);
@@ -1155,6 +1169,10 @@ function ClientePageContent() {
       alert("Informe um e-mail válido.");
       return;
     }
+    if (authModoCadastro && !authAceitouPoliticaPrivacidade) {
+      alert("Você precisa aceitar a Política de Privacidade para criar sua conta.");
+      return;
+    }
     if (authSenha.length < 6) {
       alert("Senha deve ter no mínimo 6 caracteres.");
       return;
@@ -1172,6 +1190,8 @@ function ClientePageContent() {
           password: authSenha,
           nome: authNome.trim(),
           data_aniversario: dataAniversario,
+          aceitou_politica_privacidade: authAceitouPoliticaPrivacidade,
+          politica_privacidade_versao: PRIVACY_POLICY_VERSION,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -1186,6 +1206,7 @@ function ClientePageContent() {
       setAuthNome("");
       setAuthEmail("");
       setAuthDataAniversario("");
+      setAuthAceitouPoliticaPrivacidade(false);
     } catch (error) {
       const mensagem = obterMensagemErro(error) || "Erro ao autenticar.";
       if (!authModoCadastro && mensagem.includes("Cadastro não encontrado")) {
@@ -1200,6 +1221,7 @@ function ClientePageContent() {
     }
   }, [
     authDataAniversario,
+    authAceitouPoliticaPrivacidade,
     authEmail,
     authModoCadastro,
     authNome,
@@ -2352,6 +2374,7 @@ function ClientePageContent() {
                   setResetCodigoEnviado(false);
                   setResetToken("");
                   setResetNovaSenha("");
+                  setAuthAceitouPoliticaPrivacidade(false);
                 }}
                 className="bg-slate-50 p-3 rounded-full text-slate-300"
               >
@@ -2415,6 +2438,26 @@ function ClientePageContent() {
                       onChange={(e) => setAuthDataAniversario(e.target.value)}
                     />
                   </div>
+                  <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-600">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-pink-600 focus:ring-pink-400"
+                      checked={authAceitouPoliticaPrivacidade}
+                      onChange={(e) => setAuthAceitouPoliticaPrivacidade(e.target.checked)}
+                    />
+                    <span className="leading-6">
+                      Li e aceito a{" "}
+                      <Link
+                        href={PRIVACY_POLICY_PATH}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-black text-pink-600 underline underline-offset-4"
+                      >
+                        Politica de Privacidade
+                      </Link>{" "}
+                      para criacao e uso da minha conta.
+                    </span>
+                  </label>
                 </>
               )}
               {!authEsqueciSenha && (
@@ -2539,6 +2582,7 @@ function ClientePageContent() {
                         setAuthEmail("");
                         setAuthNome("");
                         setAuthDataAniversario("");
+                        setAuthAceitouPoliticaPrivacidade(false);
                       }
                     }}
                     className="w-full text-[10px] uppercase tracking-widest font-black text-slate-500 p-2"
