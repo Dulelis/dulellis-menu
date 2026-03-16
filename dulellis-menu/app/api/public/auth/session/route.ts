@@ -6,6 +6,7 @@ import {
   getCustomerLogoutCookie,
   getCustomerSessionCookie,
   hashCustomerPassword,
+  verifyCustomerPassword,
 } from "@/lib/customer-auth";
 import { getCustomerSessionFromRequest } from "@/lib/customer-request";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
@@ -193,7 +194,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `public-auth-post:${ip}`,
     limit: 20,
     windowMs: 60_000,
@@ -273,7 +274,9 @@ export async function POST(request: NextRequest) {
     if (existente?.id) {
       clienteId = Number(existente.id);
       const senhaAtual = String((existente as { senha_hash?: string }).senha_hash || "");
-      if (senhaAtual && senhaAtual !== senhaHash) {
+      const validacaoSenha =
+        senhaAtual ? await verifyCustomerPassword(password, senhaAtual) : { valid: true, needsUpgrade: false };
+      if (senhaAtual && !validacaoSenha.valid) {
         return NextResponse.json({ ok: false, error: "Cliente já cadastrado. Use o login." }, { status: 409 });
       }
       const { error: erroUpdate } = await supabase
@@ -347,8 +350,16 @@ export async function POST(request: NextRequest) {
   if (!senhaAtual) {
     return NextResponse.json({ ok: false, error: "Conta sem senha. Use 'Criar conta'." }, { status: 409 });
   }
-  if (senhaAtual !== senhaHash) {
+  const validacaoSenha = await verifyCustomerPassword(password, senhaAtual);
+  if (!validacaoSenha.valid) {
     return NextResponse.json({ ok: false, error: "Senha inválida." }, { status: 401 });
+  }
+
+  if (validacaoSenha.needsUpgrade) {
+    await supabase
+      .from("clientes")
+      .update({ senha_hash: senhaHash })
+      .eq("id", Number(cliente.id));
   }
 
   const whatsappSessao = normalizarNumero(String(cliente.whatsapp || whatsapp || ""));
@@ -364,3 +375,4 @@ export async function POST(request: NextRequest) {
   resp.cookies.set(getCustomerSessionCookie(token));
   return resp;
 }
+

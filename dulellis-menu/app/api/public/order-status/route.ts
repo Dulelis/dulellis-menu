@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-security";
+import { getCustomerSessionFromRequest } from "@/lib/customer-request";
 
 type PedidoStatus = {
   id?: number;
@@ -11,8 +12,6 @@ type PedidoStatus = {
   forma_pagamento?: string | null;
   status_pedido?: string | null;
   status_pagamento?: string | null;
-  pagamento_referencia?: string | null;
-  pagamento_id?: string | null;
   created_at?: string | null;
 };
 
@@ -51,7 +50,7 @@ function statusResumo(pedido: PedidoStatus) {
     return { chave: "pendente", texto: "Aguardando pagamento" };
   }
   if (["rejected", "cancelled", "canceled", "failed", "negado"].includes(status)) {
-    return { chave: "recusado", texto: "Pagamento não aprovado" };
+    return { chave: "recusado", texto: "Pagamento nao aprovado" };
   }
   return { chave: "recebido", texto: "Pedido recebido" };
 }
@@ -78,9 +77,14 @@ function pedidoEhDoDiaCorrente(createdAt: string) {
 }
 
 export async function GET(request: Request) {
+  const sessao = getCustomerSessionFromRequest(request);
+  if (!sessao) {
+    return NextResponse.json({ ok: false, error: "Login obrigatorio para acompanhar pedido." }, { status: 401 });
+  }
+
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `public-order-status-get:${ip}`,
     limit: 40,
     windowMs: 60_000,
@@ -97,18 +101,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
-  const url = new URL(request.url);
-  const zap = normalizarNumero(url.searchParams.get("whatsapp") || "");
+  const zap = normalizarNumero(String(sessao.whatsapp || ""));
   if (zap.length < 10) {
-    return NextResponse.json({ ok: false, error: "WhatsApp inválido." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Sessao sem WhatsApp valido." }, { status: 400 });
   }
 
   const tentativasSelect = [
-    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,pagamento_id,created_at",
-    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,created_at",
-    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,pagamento_referencia,created_at",
-    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,pagamento_referencia,created_at",
-    "id,cliente_nome,whatsapp,total,forma_pagamento,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,created_at",
     "id,cliente_nome,whatsapp,total,created_at",
   ];
 
@@ -122,9 +123,7 @@ export async function GET(request: Request) {
       .limit(1)
       .maybeSingle();
 
-    if (erroExato) {
-      continue;
-    }
+    if (erroExato) continue;
     if (exato) {
       pedidoFinal = exato as PedidoStatus;
       break;
@@ -138,9 +137,7 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .limit(30);
 
-    if (erroCandidatos) {
-      continue;
-    }
+    if (erroCandidatos) continue;
 
     const equivalente =
       ((candidatos || []) as PedidoStatus[]).find((p) =>
@@ -170,11 +167,10 @@ export async function GET(request: Request) {
       forma_pagamento: String(pedidoFinal.forma_pagamento || "").trim(),
       status_pedido: String(pedidoFinal.status_pedido || "").trim(),
       status_pagamento: String(pedidoFinal.status_pagamento || "").trim(),
-      pagamento_referencia: String(pedidoFinal.pagamento_referencia || "").trim(),
-      pagamento_id: String(pedidoFinal.pagamento_id || "").trim(),
       created_at: String(pedidoFinal.created_at || ""),
       status_chave: resumo.chave,
       status_texto: resumo.texto,
     },
   });
 }
+

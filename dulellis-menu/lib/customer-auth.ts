@@ -1,9 +1,15 @@
-import { createHmac, randomUUID, timingSafeEqual } from "crypto";
+import { createHmac, randomBytes, randomUUID, scrypt as nodeScrypt, timingSafeEqual } from "crypto";
 import jwt from "jsonwebtoken";
+import { promisify } from "util";
 
 const CUSTOMER_COOKIE_NAME = "customer_session";
 const CUSTOMER_SESSION_DURATION_SECONDS = 60 * 60 * 24 * 15; // 15 dias
 const CUSTOMER_PASSWORD_RESET_DURATION_SECONDS = 10 * 60; // 10 minutos
+const CUSTOMER_PASSWORD_HASH_PREFIX = "scrypt";
+const CUSTOMER_PASSWORD_SALT_BYTES = 16;
+const CUSTOMER_PASSWORD_KEYLEN = 64;
+
+const scryptAsync = promisify(nodeScrypt);
 
 type CustomerSessionPayload = {
   clienteId: number;
@@ -41,6 +47,12 @@ export function getCustomerAuthEnabled() {
   return Boolean(getAuthSecret());
 }
 
+function hashLegacyCustomerPassword(password: string) {
+  const secret = getAuthSecret();
+  if (!secret) return "";
+  return createHmac("sha256", secret).update(password).digest("hex");
+}
+
 function signPayload(payloadBase64: string) {
   const secret = getAuthSecret();
   if (!secret) return "";
@@ -48,9 +60,50 @@ function signPayload(payloadBase64: string) {
 }
 
 export async function hashCustomerPassword(password: string) {
-  const secret = getAuthSecret();
-  if (!secret) return "";
-  return createHmac("sha256", secret).update(password).digest("hex");
+  if (!getAuthSecret()) return "";
+  const salt = randomBytes(CUSTOMER_PASSWORD_SALT_BYTES).toString("hex");
+  const derivado = (await scryptAsync(password, salt, CUSTOMER_PASSWORD_KEYLEN)) as Buffer;
+  return `${CUSTOMER_PASSWORD_HASH_PREFIX}$${salt}$${derivado.toString("hex")}`;
+}
+
+export async function verifyCustomerPassword(password: string, storedHash: string) {
+  const atual = String(storedHash || "").trim();
+  if (!atual || !getAuthSecret()) {
+    return { valid: false, needsUpgrade: false };
+  }
+
+  if (!atual.startsWith(`${CUSTOMER_PASSWORD_HASH_PREFIX}$`)) {
+    const legado = hashLegacyCustomerPassword(password);
+    const recebidoBuf = Buffer.from(atual, "utf-8");
+    const esperadoBuf = Buffer.from(legado, "utf-8");
+    if (!legado || recebidoBuf.length !== esperadoBuf.length) {
+      return { valid: false, needsUpgrade: false };
+    }
+    return {
+      valid: timingSafeEqual(recebidoBuf, esperadoBuf),
+      needsUpgrade: true,
+    };
+  }
+
+  const [, saltHex, hashHex] = atual.split("$");
+  if (!saltHex || !hashHex) {
+    return { valid: false, needsUpgrade: false };
+  }
+
+  const esperadoBuf = Buffer.from(hashHex, "hex");
+  if (!esperadoBuf.length) {
+    return { valid: false, needsUpgrade: false };
+  }
+
+  const derivado = (await scryptAsync(password, saltHex, esperadoBuf.length)) as Buffer;
+  if (derivado.length !== esperadoBuf.length) {
+    return { valid: false, needsUpgrade: false };
+  }
+
+  return {
+    valid: timingSafeEqual(derivado, esperadoBuf),
+    needsUpgrade: false,
+  };
 }
 
 export async function hashCustomerResetTokenId(jti: string) {

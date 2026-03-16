@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `public-stock-post:${ip}`,
     limit: 180,
     windowMs: 60_000,
@@ -88,3 +88,4 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ ok: true, updated: false, reason: "retry_limit" });
 }
+

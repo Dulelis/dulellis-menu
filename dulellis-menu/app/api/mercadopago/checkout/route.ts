@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 
     cleanupExpiredBuckets();
     const ip = getClientIp(request);
-    const rate = checkRateLimit({
+    const rate = await checkRateLimit({
       key: `mp-checkout-post:${ip}`,
       limit: 20,
       windowMs: 5 * 60_000,
@@ -124,10 +124,12 @@ export async function POST(request: Request) {
     };
     if (baseEhPublico) {
       payload.auto_return = "approved";
-      const webhookToken = process.env.MERCADOPAGO_WEBHOOK_TOKEN;
-      payload.notification_url = webhookToken
-        ? `${baseUrl}/api/mercadopago/webhook?token=${encodeURIComponent(webhookToken)}`
-        : `${baseUrl}/api/mercadopago/webhook`;
+      const webhookSecret = String(process.env.MERCADOPAGO_WEBHOOK_SECRET || "").trim();
+      const webhookToken = String(process.env.MERCADOPAGO_WEBHOOK_TOKEN || "").trim();
+      payload.notification_url =
+        !webhookSecret && webhookToken
+          ? `${baseUrl}/api/mercadopago/webhook?token=${encodeURIComponent(webhookToken)}`
+          : `${baseUrl}/api/mercadopago/webhook`;
     }
 
     const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {
@@ -159,3 +161,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+

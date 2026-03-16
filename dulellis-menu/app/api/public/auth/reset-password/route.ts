@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `public-auth-reset:${ip}`,
     limit: 12,
     windowMs: 15 * 60_000,
@@ -125,3 +125,4 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ ok: true, message: "Senha redefinida com sucesso." });
 }
+

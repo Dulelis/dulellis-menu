@@ -79,9 +79,14 @@ function whatsappEquivalente(a: string, b: string): boolean {
 }
 
 export async function GET(request: Request) {
+  const sessao = getCustomerSessionFromRequest(request as NextRequest);
+  if (!sessao) {
+    return NextResponse.json({ ok: false, error: "Login obrigatorio para consultar cadastro." }, { status: 401 });
+  }
+
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `public-customer-get:${ip}`,
     limit: 60,
     windowMs: 60_000,
@@ -98,15 +103,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
-  const url = new URL(request.url);
-  const zap = normalizarNumero(url.searchParams.get("whatsapp") || "");
+  const zap = normalizarNumero(String(sessao.whatsapp || ""));
   if (zap.length < 10) {
-    return NextResponse.json({ ok: true, data: null });
+    return NextResponse.json({ ok: false, error: "Sessao sem WhatsApp valido." }, { status: 400 });
   }
 
   const { data: exato, error: erroExato } = await supabase
     .from("clientes")
-    .select("*")
+    .select("id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,observacao,data_aniversario")
     .eq("whatsapp", zap)
     .maybeSingle();
   if (erroExato) {
@@ -118,7 +122,7 @@ export async function GET(request: Request) {
     const sufixo = zap.slice(-8);
     const { data: candidatos, error: erroCandidatos } = await supabase
       .from("clientes")
-      .select("*")
+      .select("id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,observacao,data_aniversario")
       .ilike("whatsapp", `%${sufixo}%`)
       .order("created_at", { ascending: false })
       .limit(30);
@@ -168,7 +172,7 @@ export async function POST(request: NextRequest) {
 
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `public-customer-post:${ip}`,
     limit: 40,
     windowMs: 60_000,
@@ -258,3 +262,4 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ ok: false, error: ultimoErro || "Falha ao salvar cliente." }, { status: 500 });
 }
+

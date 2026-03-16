@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `public-auth-forgot:${ip}`,
     limit: 8,
     windowMs: 15 * 60_000,
@@ -122,3 +122,4 @@ export async function POST(request: NextRequest) {
     message: "Se encontrarmos uma conta com esse e-mail, enviaremos um link de recuperação em instantes.",
   });
 }
+

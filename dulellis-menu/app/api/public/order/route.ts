@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
 
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `public-order-post:${ip}`,
     limit: 25,
     windowMs: 5 * 60_000,
@@ -374,3 +374,4 @@ export async function POST(request: NextRequest) {
     },
   });
 }
+

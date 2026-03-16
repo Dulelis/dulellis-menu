@@ -11,7 +11,7 @@ import { getClientIp } from "@/lib/request-security";
 export async function POST(request: Request) {
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
-  const rate = checkRateLimit({
+  const rate = await checkRateLimit({
     key: `admin-login:${ip}`,
     limit: 10,
     windowMs: 60_000,
@@ -59,3 +59,4 @@ export async function POST(request: Request) {
     );
   }
 }
+
