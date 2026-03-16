@@ -1,9 +1,11 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @next/next/no-img-element */
+'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Script from 'next/script';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
   Package, Users, PlusCircle, Minus, Plus,
@@ -65,8 +67,16 @@ const STATUS_PEDIDO_FLUXO: Record<string, { label: string; proximo: string } | n
   saiu_entrega: null,
 };
 
+const ADMIN_TABS = ['estoque', 'promocoes', 'propagandas', 'horario', 'clientes', 'taxas', 'vendas', 'relatorios'] as const;
+type AdminTab = (typeof ADMIN_TABS)[number];
+
+function normalizarAdminTab(valor: string | null): AdminTab {
+  return ADMIN_TABS.includes(valor as AdminTab) ? (valor as AdminTab) : 'estoque';
+}
+
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState('estoque');
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<AdminTab>('estoque');
   const [saindo, setSaindo] = useState(false);
   const [estoque, setEstoque] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
@@ -131,11 +141,6 @@ export default function AdminPage() {
     data_fim: '',
     ativa: true,
   });
-  const [filtrosRelatorio, setFiltrosRelatorio] = useState({
-    dia: true,
-    semana: true,
-    aniversariantes: true,
-  });
   const hojeRef = new Date();
   const [mesRelatorio, setMesRelatorio] = useState(hojeRef.getMonth());
   const [anoRelatorio, setAnoRelatorio] = useState(hojeRef.getFullYear());
@@ -158,6 +163,7 @@ export default function AdminPage() {
     const categoria = String(item.categoria || '').trim().toLowerCase();
     return !CATEGORIAS_ESTOQUE.some((base) => base.toLowerCase() === categoria);
   });
+  const salesView = searchParams.get('salesView') === 'extras' ? 'extras' : 'dia';
 
   const normalizarHorarioInput = (valor?: string | null) => {
     const texto = String(valor || '').trim();
@@ -252,6 +258,10 @@ export default function AdminPage() {
       });
     }
   }, []);
+
+  useEffect(() => {
+    setActiveTab(normalizarAdminTab(searchParams.get('tab')));
+  }, [searchParams]);
 
   useEffect(() => {
     void carregarDados();
@@ -812,75 +822,6 @@ export default function AdminPage() {
     if (tipo === 'frete_gratis') return `Frete gratis acima de R$ ${Number(promo.valor_minimo_pedido || 0).toFixed(2)}`;
     return 'Regra personalizada';
   };
-
-  const alternarFiltroRelatorio = (chave: 'dia' | 'semana' | 'aniversariantes') => {
-    setFiltrosRelatorio((prev) => ({ ...prev, [chave]: !prev[chave] }));
-  };
-
-  const limparRelatorio = () => {
-    setFiltrosRelatorio({ dia: false, semana: false, aniversariantes: false });
-  };
-
-  const limparRelatorioDefinitivo = async () => {
-    const idsPedidos = new Set<number>();
-    if (filtrosRelatorio.dia) {
-      pedidosDoDia.forEach((p) => {
-        if (typeof p.id === 'number') idsPedidos.add(p.id);
-      });
-    }
-    if (filtrosRelatorio.semana) {
-      pedidosDaSemana.forEach((p) => {
-        if (typeof p.id === 'number') idsPedidos.add(p.id);
-      });
-    }
-
-    const idsClientesNiver = filtrosRelatorio.aniversariantes
-      ? aniversariantesDoMesVigente
-          .map((c) => c.id)
-          .filter((id): id is number => typeof id === 'number')
-      : [];
-
-    if (idsPedidos.size === 0 && idsClientesNiver.length === 0) {
-      alert('Marque ao menos um bloco do relatorio com dados para limpar.');
-      return;
-    }
-
-    const confirmar = confirm(
-      `Limpeza definitiva:\n` +
-      `- Pedidos: ${idsPedidos.size}\n` +
-      `- Clientes sem data de aniversario: ${idsClientesNiver.length}\n\n` +
-      `Deseja continuar?`,
-    );
-    if (!confirmar) return;
-
-    if (idsPedidos.size > 0) {
-      try {
-        await adminDb({
-          action: 'delete_in',
-          table: 'pedidos',
-          in: { column: 'id', values: Array.from(idsPedidos) },
-        });
-      } catch (error: any) {
-        alert(`Erro ao limpar pedidos: ${error.message}`);
-        return;
-      }
-    }
-
-    if (idsClientesNiver.length > 0) {
-      const { error } = await supabase
-        .from('clientes')
-        .update({ data_aniversario: null })
-        .in('id', idsClientesNiver);
-      if (error) {
-        alert(`Erro ao limpar aniversariantes: ${error.message}`);
-        return;
-      }
-    }
-
-    await carregarDados();
-    alert('Limpeza definitiva concluida.');
-  };
-
   const normalizarNumero = (valor: string) => valor.replace(/\D/g, '');
   const normalizarStatusPedido = (pedido: any) => {
     const status = String(pedido?.status_pedido || '').trim().toLowerCase();
@@ -1357,7 +1298,6 @@ export default function AdminPage() {
   };
 
   // Lógica dos Relatórios
-  const mesVigente = new Date().getMonth();
   const anoVigente = new Date().getFullYear();
   const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   
@@ -1415,19 +1355,6 @@ export default function AdminPage() {
 
   const rankingProdutos = Object.entries(vendasPorProduto).map(([nome, dados]) => ({ nome, ...dados })).sort((a, b) => b.qtd - a.qtd);
   const rankingClientes = Object.values(comprasPorCliente).sort((a, b) => b.valorGasto - a.valorGasto);
-  const ultimasVendasSemana = pedidosDaSemana.slice(0, 8);
-  const aniversariantesDoMesVigente = clientes
-    .filter((c) => {
-      if (!c.data_aniversario) return false;
-      const base = String(c.data_aniversario).slice(0, 10);
-      const dataNiver = new Date(`${base}T00:00:00`);
-      return !Number.isNaN(dataNiver.getTime()) && dataNiver.getMonth() === mesVigente;
-    })
-    .sort((a, b) => {
-      const dataA = new Date(`${String(a.data_aniversario).slice(0, 10)}T00:00:00`).getDate();
-      const dataB = new Date(`${String(b.data_aniversario).slice(0, 10)}T00:00:00`).getDate();
-      return dataA - dataB;
-    });
 
   const historicoPorWhatsapp = React.useMemo(() => {
     const mapa: Record<string, any[]> = {};
@@ -1500,30 +1427,10 @@ export default function AdminPage() {
   const desmarcarPedidosCliente = (clienteId: number) => {
     setPedidosSelecionadosPorCliente((prev) => ({ ...prev, [clienteId]: [] }));
   };
-
-  const idsVendasVisiveis = React.useMemo(() => {
-    const ids = new Set<number>();
-    if (filtrosRelatorio.dia) {
-      pedidosDoDia.forEach((p) => {
-        if (typeof p.id === 'number') ids.add(p.id);
-      });
-    }
-    if (filtrosRelatorio.semana) {
-      ultimasVendasSemana.forEach((p) => {
-        if (typeof p.id === 'number') ids.add(p.id);
-      });
-    }
-    return Array.from(ids);
-  }, [filtrosRelatorio.dia, filtrosRelatorio.semana, pedidosDoDia, ultimasVendasSemana]);
-
   const alternarSelecaoVenda = (pedidoId: number) => {
     setPedidosSelecionadosVendas((prev) =>
       prev.includes(pedidoId) ? prev.filter((id) => id !== pedidoId) : [...prev, pedidoId],
     );
-  };
-
-  const marcarVendasVisiveis = () => {
-    setPedidosSelecionadosVendas((prev) => Array.from(new Set([...prev, ...idsVendasVisiveis])));
   };
 
   const desmarcarVendasSelecionadas = () => {
@@ -1726,7 +1633,6 @@ export default function AdminPage() {
           <button onClick={() => setActiveTab('clientes')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'clientes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Users size={20}/> Lista de Clientes </button>
           <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'taxas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <MapIcon size={20}/> Taxas de Entrega </button>
           <button onClick={() => setActiveTab('vendas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'vendas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <ShoppingBag size={20}/> Vendas </button>
-          <button onClick={() => setActiveTab('relatorios')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'relatorios' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <TrendingUp size={20}/> Relatorios </button>
         </nav>
       </aside>
 
@@ -1759,6 +1665,15 @@ export default function AdminPage() {
             {activeTab === 'promocoes' && (
               <button onClick={() => { fecharModalPromocao(); setMostrarModalPromocao(true); }} className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Nova Promocao 
+              </button>
+            )}
+            {activeTab === 'vendas' && (
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/admin/vendas'; }}
+                className="w-full sm:w-auto bg-white text-slate-700 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm border border-slate-200 hover:bg-slate-50 transition-all"
+              >
+                <TrendingUp size={18} /> Mais em Vendas
               </button>
             )}
             {activeTab === 'propagandas' && (
@@ -2215,144 +2130,95 @@ export default function AdminPage() {
         {activeTab === 'vendas' && (
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <h2 className="text-xl font-black text-slate-500 uppercase tracking-widest">Vendas de {nomesMeses[mesVigente]} / {anoVigente}</h2>
+              <div>
+                <h2 className="text-xl font-black text-slate-500 uppercase tracking-widest">Vendas do Dia</h2>
+                <p className="mt-1 text-sm font-bold text-slate-400">Tela focada em aceitar pedidos e acompanhar os 10 mais recentes.</p>
+              </div>
               <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <button onClick={marcarVendasVisiveis} className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all">Marcar</button>
+                <button onClick={() => setPedidosSelecionadosVendas(pedidosDoDia.slice(0, 10).map((pedido) => pedido.id))} className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all">Marcar 10</button>
                 <button onClick={desmarcarVendasSelecionadas} className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all">Desmarcar</button>
                 <button onClick={imprimirVendasSelecionadas} className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all"><Printer size={18} /> Imprimir Vendas</button>
-                <button onClick={() => void limparRelatorioDefinitivo()} className="w-full sm:w-auto bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all"><Trash2 size={18} /> Limpar Relatorio (Definitivo)</button>
-                <button onClick={limparRelatorio} className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"><RotateCcw size={18} /> Resetar Marcacoes</button>
+                <button onClick={() => { window.location.href = '/admin/vendas'; }} className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"><TrendingUp size={18} /> Outras Visoes</button>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className={`p-5 rounded-[2rem] border transition-all ${filtrosRelatorio.dia ? 'bg-pink-50 border-pink-200' : 'bg-white border-slate-200'}`}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-5 rounded-[2rem] border border-pink-200 bg-pink-50">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-black text-slate-700 uppercase tracking-widest text-xs">Vendas do Dia</p>
-                  <input type="checkbox" className="w-4 h-4 accent-pink-600" checked={filtrosRelatorio.dia} onChange={() => alternarFiltroRelatorio('dia')} />
+                  <ShoppingBag size={18} className="text-pink-500" />
                 </div>
                 <p className="text-2xl font-black text-slate-800">{pedidosDoDia.length} pedidos</p>
                 <p className="text-lg font-black text-green-600 mt-1">R$ {faturamentoDia.toFixed(2)}</p>
               </div>
-              <div className={`p-5 rounded-[2rem] border transition-all ${filtrosRelatorio.semana ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-200'}`}>
+              <div className="p-5 rounded-[2rem] border border-slate-200 bg-white">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="font-black text-slate-700 uppercase tracking-widest text-xs">Vendas da Semana</p>
-                  <input type="checkbox" className="w-4 h-4 accent-pink-600" checked={filtrosRelatorio.semana} onChange={() => alternarFiltroRelatorio('semana')} />
+                  <p className="font-black text-slate-700 uppercase tracking-widest text-xs">Painel Operacional</p>
+                  <Clock3 size={18} className="text-slate-400" />
                 </div>
-                <p className="text-2xl font-black text-slate-800">{pedidosDaSemana.length} pedidos</p>
-                <p className="text-lg font-black text-green-600 mt-1">R$ {faturamentoSemana.toFixed(2)}</p>
-              </div>
-              <div className={`p-5 rounded-[2rem] border transition-all ${filtrosRelatorio.aniversariantes ? 'bg-yellow-50 border-yellow-200' : 'bg-white border-slate-200'}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-black text-slate-700 uppercase tracking-widest text-xs">Aniversariantes do Mês</p>
-                  <input type="checkbox" className="w-4 h-4 accent-pink-600" checked={filtrosRelatorio.aniversariantes} onChange={() => alternarFiltroRelatorio('aniversariantes')} />
-                </div>
-                <p className="text-2xl font-black text-slate-800">{aniversariantesDoMesVigente.length} clientes</p>
-                <p className="text-xs font-bold text-slate-500 mt-2">Marque para incluir no relatório</p>
+                <p className="text-base font-black text-slate-800">Ultimos 10 pedidos em destaque</p>
+                <p className="text-sm font-bold text-slate-500 mt-1">Semana, aniversariantes e relatorios foram movidos para a subpasta <span className="text-slate-700">/admin/vendas</span>.</p>
               </div>
             </div>
-            {(filtrosRelatorio.dia || filtrosRelatorio.semana || filtrosRelatorio.aniversariantes) ? (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {filtrosRelatorio.dia && (
-                  <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
-                    <h3 className="font-black text-base text-slate-800 mb-3">Vendas do Dia</h3>
-                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {pedidosDoDia.length > 0 ? pedidosDoDia.map((pedido) => (
-                        <div key={pedido.id} className="w-full p-3 rounded-xl border border-slate-100 bg-slate-50">
-                          <div className="flex items-start justify-between gap-2">
-                            <button type="button" onClick={() => irParaCadastroCliente(pedido.whatsapp, pedido.cliente_nome)} className="text-left flex-1 hover:opacity-80 transition-opacity">
-                              <p className="text-sm font-black text-slate-800 leading-tight">{pedido.cliente_nome || 'Cliente sem nome'}</p>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{pedido.whatsapp || 'sem número'}</p>
-                              <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterClasseStatusPedido(pedido)}`}>
-                                {obterRotuloStatusPedido(pedido)}
-                              </div>
-                              <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterResumoPagamento(pedido).classe}`}>
-                                {obterResumoPagamento(pedido).titulo}
-                              </div>
-                              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                {obterResumoPagamento(pedido).detalhe}
-                              </p>
-                              <p className="text-sm font-black text-green-600 mt-1">R$ {Number(pedido.total || 0).toFixed(2)}</p>
-                            </button>
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 accent-pink-600 mt-1"
-                              checked={pedidosSelecionadosVendas.includes(pedido.id)}
-                              onChange={() => alternarSelecaoVenda(pedido.id)}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void imprimirPedidoAceito(pedido)}
-                            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
-                          >
-                            Imprimir
-                          </button>
-                          {obterProximoFluxoPedido(pedido) ? (
-                            <button
-                              type="button"
-                              onClick={() => void atualizarStatusPedido(pedido.id, obterProximoFluxoPedido(pedido)?.proximo || 'recebido')}
-                              disabled={pedidoAtualizandoId === pedido.id}
-                              className="mt-3 w-full rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {pedidoAtualizandoId === pedido.id ? 'Atualizando...' : obterProximoFluxoPedido(pedido)?.label}
-                            </button>
-                          ) : (
-                            <p className="mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                              Fluxo operacional concluido
-                            </p>
-                          )}
-                        </div>
-                      )) : <p className="text-slate-400 italic text-sm text-center py-6">Sem vendas hoje.</p>}
-                    </div>
-                  </div>
-                )}
-                {filtrosRelatorio.semana && (
-                  <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
-                    <h3 className="font-black text-base text-slate-800 mb-3">Vendas da Semana</h3>
-                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {ultimasVendasSemana.length > 0 ? ultimasVendasSemana.map((pedido) => (
-                        <div key={pedido.id} className="w-full p-3 rounded-xl border border-slate-100 bg-slate-50">
-                          <div className="flex items-start justify-between gap-2">
-                            <button type="button" onClick={() => irParaCadastroCliente(pedido.whatsapp, pedido.cliente_nome)} className="text-left flex-1 hover:opacity-80 transition-opacity">
-                              <p className="text-sm font-black text-slate-800 leading-tight">{pedido.cliente_nome || 'Cliente sem nome'}</p>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{pedido.whatsapp || 'sem número'}</p>
-                              <p className="text-sm font-black text-green-600 mt-1">R$ {Number(pedido.total || 0).toFixed(2)}</p>
-                            </button>
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 accent-pink-600 mt-1"
-                              checked={pedidosSelecionadosVendas.includes(pedido.id)}
-                              onChange={() => alternarSelecaoVenda(pedido.id)}
-                            />
-                          </div>
-                        </div>
-                      )) : <p className="text-slate-400 italic text-sm text-center py-6">Sem vendas na semana.</p>}
-                    </div>
-                  </div>
-                )}
-                {filtrosRelatorio.aniversariantes && (
-                  <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
-                    <h3 className="font-black text-base text-slate-800 mb-3">Aniversariantes do Mês</h3>
-                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {aniversariantesDoMesVigente.length > 0 ? aniversariantesDoMesVigente.map((cliente) => (
-                        <div key={cliente.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50">
-                          <p className="text-sm font-black text-slate-800 leading-tight">{cliente.nome || 'Cliente sem nome'}</p>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{cliente.whatsapp || 'sem número'}</p>
-                          <p className="text-xs font-bold text-pink-600 mt-1">Niver: {new Date(`${String(cliente.data_aniversario).slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</p>
-                        </div>
-                      )) : <p className="text-slate-400 italic text-sm text-center py-6">Sem aniversariantes neste mês.</p>}
-                    </div>
-                  </div>
-                )}
+            {salesView === 'extras' ? (
+              <div className="bg-white p-6 rounded-[2rem] border border-dashed border-slate-300 text-center text-slate-400 font-medium">
+                Esta visualizacao complementar foi movida para <span className="font-black text-slate-700">/admin/vendas</span>.
               </div>
             ) : (
-              <div className="bg-white p-6 rounded-[2rem] border border-dashed border-slate-300 text-center text-slate-400 font-medium">
-                Marque pelo menos uma caixa para gerar o relatório.
+              <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+                <h3 className="font-black text-base text-slate-800 mb-3">Ultimos 10 pedidos do dia</h3>
+                <div className="space-y-3 max-h-[72vh] overflow-y-auto pr-1">
+                  {pedidosDoDia.length > 0 ? pedidosDoDia.slice(0, 10).map((pedido) => (
+                    <div key={pedido.id} className="w-full p-4 rounded-2xl border border-slate-100 bg-slate-50">
+                      <div className="flex items-start justify-between gap-3">
+                        <button type="button" onClick={() => irParaCadastroCliente(pedido.whatsapp, pedido.cliente_nome)} className="text-left flex-1 hover:opacity-80 transition-opacity">
+                          <p className="text-base font-black text-slate-800 leading-tight">{pedido.cliente_nome || 'Cliente sem nome'}</p>
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{pedido.whatsapp || 'sem numero'}</p>
+                          <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterClasseStatusPedido(pedido)}`}>
+                            {obterRotuloStatusPedido(pedido)}
+                          </div>
+                          <div className={`mt-2 ml-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterResumoPagamento(pedido).classe}`}>
+                            {obterResumoPagamento(pedido).titulo}
+                          </div>
+                          <p className="mt-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">{obterResumoPagamento(pedido).detalhe}</p>
+                          <p className="text-base font-black text-green-600 mt-2">R$ {Number(pedido.total || 0).toFixed(2)}</p>
+                        </button>
+                        <input
+                          type="checkbox"
+                          className="w-5 h-5 accent-pink-600 mt-1"
+                          checked={pedidosSelecionadosVendas.includes(pedido.id)}
+                          onChange={() => alternarSelecaoVenda(pedido.id)}
+                        />
+                      </div>
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void imprimirPedidoAceito(pedido)}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
+                        >
+                          Imprimir
+                        </button>
+                        {obterProximoFluxoPedido(pedido) ? (
+                          <button
+                            type="button"
+                            onClick={() => void atualizarStatusPedido(pedido.id, obterProximoFluxoPedido(pedido)?.proximo || 'recebido')}
+                            disabled={pedidoAtualizandoId === pedido.id}
+                            className="w-full rounded-xl bg-slate-900 px-3 py-3 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {pedidoAtualizandoId === pedido.id ? 'Atualizando...' : obterProximoFluxoPedido(pedido)?.label}
+                          </button>
+                        ) : (
+                          <p className="flex items-center justify-center rounded-xl bg-slate-100 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Fluxo operacional concluido
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )) : <p className="text-slate-400 italic text-sm text-center py-10">Sem vendas hoje.</p>}
+                </div>
               </div>
             )}
           </div>
         )}
-
         {activeTab === 'relatorios' && (
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -2746,3 +2612,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+

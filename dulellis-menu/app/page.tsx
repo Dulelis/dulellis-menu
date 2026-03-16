@@ -476,6 +476,7 @@ function ClientePageContent() {
   const authDraftRestauradoRef = useRef(false);
   const recarregarVitrineRef = useRef<number | null>(null);
   const recarregarAcompanhamentoRef = useRef<number | null>(null);
+  const topoVitrineRef = useRef<HTMLElement | null>(null);
 
   const aplicarTaxaUltimoPedido = useCallback((valor: number | string | null | undefined) => {
     const taxa = Number(valor);
@@ -1200,6 +1201,14 @@ function ClientePageContent() {
     }
   }, []);
 
+  const voltarParaInicioVitrine = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    window.requestAnimationFrame(() => {
+      topoVitrineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
+
   const solicitarTokenRecuperacao = useCallback(async () => {
     const email = String(authEmail || "").trim().toLowerCase();
     if (!emailValido(email)) {
@@ -1682,6 +1691,7 @@ function ClientePageContent() {
       setReferenciaPagamento("");
 
       await carregarDadosIniciais();
+      voltarParaInicioVitrine();
     } catch (error) {
       if (janelaPagamento && !janelaPagamento.closed) {
         janelaPagamento.close();
@@ -1692,7 +1702,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega]);
+  }, [aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, voltarParaInicioVitrine]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -1941,7 +1951,7 @@ function ClientePageContent() {
 
   return (
     <div className="min-h-screen bg-[#FDFCFD] pb-24 font-sans text-slate-900">
-      <header className="p-8 text-center bg-white border-b border-pink-50 relative overflow-hidden">
+      <header ref={topoVitrineRef} className="p-8 text-center bg-white border-b border-pink-50 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-200 via-pink-500 to-pink-200"></div>
         <div className="absolute top-4 right-4 z-10 flex gap-2">
           {!sessaoCliente ? (
@@ -1995,7 +2005,7 @@ function ClientePageContent() {
               setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
             }}
             disabled={!sessaoCliente || !podeAcompanharPedido}
-            className={`px-3 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest ${
+            className={`px-5 py-3 rounded-2xl font-black uppercase text-[11px] tracking-[0.18em] shadow-lg transition-all sm:text-xs ${
               sessaoCliente && podeAcompanharPedido
                 ? "bg-slate-900 text-white"
                 : "bg-slate-200 text-slate-500 shadow-none"
