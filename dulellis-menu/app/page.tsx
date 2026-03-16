@@ -4,6 +4,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { CUSTOMER_PASSWORD_RULES_TEXT, validateCustomerPassword } from "@/lib/customer-password-policy";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { supabase } from "@/lib/supabase";
 import {
@@ -1173,9 +1174,12 @@ function ClientePageContent() {
       alert("Você precisa aceitar a Política de Privacidade para criar sua conta.");
       return;
     }
-    if (authSenha.length < 6) {
-      alert("Senha deve ter no mínimo 6 caracteres.");
-      return;
+    if (authModoCadastro) {
+      const validacaoSenha = validateCustomerPassword(authSenha);
+      if (!validacaoSenha.valid) {
+        alert(validacaoSenha.error);
+        return;
+      }
     }
 
     setAuthCarregando(true);
@@ -1298,8 +1302,9 @@ function ClientePageContent() {
       alert("Token de recuperação ausente. Abra o link enviado por e-mail.");
       return;
     }
-    if (resetNovaSenha.length < 6) {
-      alert("Nova senha deve ter no mínimo 6 caracteres.");
+    const validacaoSenha = validateCustomerPassword(resetNovaSenha);
+    if (!validacaoSenha.valid) {
+      alert(validacaoSenha.error);
       return;
     }
     setAuthCarregando(true);
@@ -2505,11 +2510,14 @@ function ClientePageContent() {
                       )}
                       <input
                         type="password"
-                        placeholder="Nova senha (min. 6)"
+                        placeholder="Nova senha"
                         className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
                         value={resetNovaSenha}
                         onChange={(e) => setResetNovaSenha(e.target.value)}
                       />
+                      <p className="text-[11px] rounded-2xl bg-slate-50 border border-slate-200 p-3 text-slate-600 font-bold">
+                        {CUSTOMER_PASSWORD_RULES_TEXT}
+                      </p>
                       <button
                         type="button"
                         onClick={() => void redefinirSenhaComToken()}
@@ -2555,11 +2563,16 @@ function ClientePageContent() {
                 <>
                   <input
                     type="password"
-                    placeholder="Senha (min. 6)"
+                    placeholder="Senha"
                     className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
                     value={authSenha}
                     onChange={(e) => setAuthSenha(e.target.value)}
                   />
+                  {authModoCadastro && (
+                    <p className="text-[11px] rounded-2xl bg-slate-50 border border-slate-200 p-3 text-slate-600 font-bold">
+                      {CUSTOMER_PASSWORD_RULES_TEXT}
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={() => void autenticarCliente()}

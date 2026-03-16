@@ -7,6 +7,7 @@ import {
   hashCustomerResetTokenId,
   verifyCustomerPasswordResetToken,
 } from "@/lib/customer-auth";
+import { validateCustomerPassword } from "@/lib/customer-password-policy";
 
 export async function POST(request: NextRequest) {
   const originError = enforceSameOriginForWrite(request);
@@ -42,8 +43,9 @@ export async function POST(request: NextRequest) {
   if (!token) {
     return NextResponse.json({ ok: false, error: "Token inválido." }, { status: 400 });
   }
-  if (newPassword.length < 6) {
-    return NextResponse.json({ ok: false, error: "Senha deve ter no mínimo 6 caracteres." }, { status: 400 });
+  const validacaoSenhaNova = validateCustomerPassword(newPassword);
+  if (!validacaoSenhaNova.valid) {
+    return NextResponse.json({ ok: false, error: validacaoSenhaNova.error }, { status: 400 });
   }
 
   const payload = verifyCustomerPasswordResetToken(token);

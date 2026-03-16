@@ -8,6 +8,7 @@ import {
   hashCustomerPassword,
   verifyCustomerPassword,
 } from "@/lib/customer-auth";
+import { validateCustomerPassword } from "@/lib/customer-password-policy";
 import { PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { getCustomerSessionFromRequest } from "@/lib/customer-request";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
@@ -298,8 +299,11 @@ export async function POST(request: NextRequest) {
   if (action === "register" && whatsapp.length < 10) {
     return NextResponse.json({ ok: false, error: "WhatsApp inválido." }, { status: 400 });
   }
-  if (password.length < 6) {
-    return NextResponse.json({ ok: false, error: "Senha deve ter no mínimo 6 caracteres." }, { status: 400 });
+  if (action === "register") {
+    const validacaoSenhaNova = validateCustomerPassword(password);
+    if (!validacaoSenhaNova.valid) {
+      return NextResponse.json({ ok: false, error: validacaoSenhaNova.error }, { status: 400 });
+    }
   }
 
   if (action === "register" && !aceitouPoliticaPrivacidade) {
