@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -74,7 +74,7 @@ function normalizarAdminTab(valor: string | null): AdminTab {
   return ADMIN_TABS.includes(valor as AdminTab) ? (valor as AdminTab) : 'estoque';
 }
 
-export default function AdminPage() {
+function AdminPageContent() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<AdminTab>('estoque');
   const [saindo, setSaindo] = useState(false);
@@ -2610,6 +2610,14 @@ export default function AdminPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-slate-50" />}>
+      <AdminPageContent />
+    </Suspense>
   );
 }
 
