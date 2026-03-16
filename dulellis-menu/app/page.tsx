@@ -455,6 +455,7 @@ function ClientePageContent() {
   const [referenciaPagamento, setReferenciaPagamento] = useState("");
   const [vitrineSlideIndex, setVitrineSlideIndex] = useState(0);
   const [modalAcompanhamentoAberto, setModalAcompanhamentoAberto] = useState(false);
+  const [modalPedidoFinalizadoAberto, setModalPedidoFinalizadoAberto] = useState(false);
   const [whatsappAcompanhamento, setWhatsappAcompanhamento] = useState("");
   const [carregandoAcompanhamento, setCarregandoAcompanhamento] = useState(false);
   const [pedidoAcompanhamento, setPedidoAcompanhamento] = useState<PedidoAcompanhamento | null>(null);
@@ -1691,6 +1692,7 @@ function ClientePageContent() {
       setReferenciaPagamento("");
 
       await carregarDadosIniciais();
+      setModalPedidoFinalizadoAberto(true);
       voltarParaInicioVitrine();
     } catch (error) {
       if (janelaPagamento && !janelaPagamento.closed) {
@@ -2611,6 +2613,46 @@ function ClientePageContent() {
                 Informe seu WhatsApp para consultar o último pedido.
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {modalPedidoFinalizadoAberto && (
+        <div className="fixed inset-0 z-[66] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+          <div className="w-full max-w-xl rounded-[3rem] bg-white p-8 text-center shadow-2xl sm:p-10">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-green-600">
+              <CheckCircle2 size={40} />
+            </div>
+            <h3 className="mt-6 text-3xl font-black italic text-slate-800 sm:text-4xl">
+              Pedido finalizado com sucesso!
+            </h3>
+            <p className="mt-4 text-base font-bold leading-relaxed text-slate-600 sm:text-lg">
+              Agradecemos pelo seu pedido. Estamos preparando tudo com carinho para você.
+            </p>
+            <p className="mt-2 text-sm font-black uppercase tracking-widest text-pink-500 sm:text-base">
+              Acompanhe seu pedido aqui na vitrine sempre que quiser.
+            </p>
+            <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalPedidoFinalizadoAberto(false);
+                  setPedidoAcompanhamento(null);
+                  setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
+                  setModalAcompanhamentoAberto(true);
+                }}
+                className="w-full rounded-[2rem] bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
+              >
+                Acompanhar Pedido
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalPedidoFinalizadoAberto(false)}
+                className="w-full rounded-[2rem] bg-slate-100 px-5 py-4 text-sm font-black uppercase tracking-widest text-slate-500 transition-colors hover:bg-slate-200"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
