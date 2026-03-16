@@ -6,82 +6,82 @@ import {
 
 const secoes = [
   {
-    titulo: "1. Identificacao da controladora",
+    titulo: "1. Identificação da controladora",
     itens: [
-      "A presente Politica de Privacidade regula o tratamento de dados pessoais realizado por Dulelis confeitaria, constituinte legal Edinelso Jose Pasa, inscrita no CNPJ sob o n. 43.782.331/0001-33.",
-      "Para os fins da Lei Geral de Protecao de Dados Pessoais (Lei n. 13.709/2018 - LGPD), a empresa atua como controladora dos dados pessoais tratados no contexto do cadastro de clientes, autenticacao de conta, realizacao de pedidos, entrega de produtos e atendimento.",
+      "A presente Política de Privacidade regula o tratamento de dados pessoais realizado por Dulelis confeitaria, constituinte legal Edinelso Jose Pasa, inscrita no CNPJ sob o n. 43.782.331/0001-33.",
+      "Para os fins da Lei Geral de Proteção de Dados Pessoais (Lei n. 13.709/2018 - LGPD), a empresa atua como controladora dos dados pessoais tratados no contexto do cadastro de clientes, autenticação de conta, realização de pedidos, entrega de produtos e atendimento.",
     ],
   },
   {
     titulo: "2. Dados pessoais tratados",
     itens: [
-      "Podem ser tratados dados cadastrais e de identificacao, tais como nome, numero de WhatsApp, endereco de e-mail, data de nascimento e demais informacoes fornecidas diretamente pelo titular no momento do cadastro.",
-      "Tambem podem ser tratados dados relacionados a entrega e atendimento, incluindo CEP, endereco, numero, bairro, cidade, ponto de referencia e observacoes eventualmente informadas pelo cliente.",
-      "No contexto da compra, podem ser tratados dados referentes aos produtos solicitados, valores, forma de pagamento, status do pedido, historico de compras e demais informacoes indispensaveis para a execucao do servico.",
-      "Adicionalmente, poderao ser coletados e tratados dados tecnicos e de seguranca, como registros de acesso, endereco IP, identificadores de sessao e informacoes necessarias a prevencao de fraudes, abusos e incidentes de seguranca.",
+      "Podem ser tratados dados cadastrais e de identificação, tais como nome, número de WhatsApp, endereço de e-mail, data de nascimento e demais informações fornecidas diretamente pelo titular no momento do cadastro.",
+      "Também podem ser tratados dados relacionados à entrega e ao atendimento, incluindo CEP, endereço, número, bairro, cidade, ponto de referência e observações eventualmente informadas pelo cliente.",
+      "No contexto da compra, podem ser tratados dados referentes aos produtos solicitados, valores, forma de pagamento, status do pedido, histórico de compras e demais informações indispensáveis para a execução do serviço.",
+      "Adicionalmente, poderão ser coletados e tratados dados técnicos e de segurança, como registros de acesso, endereço IP, identificadores de sessão e informações necessárias à prevenção de fraudes, abusos e incidentes de segurança.",
     ],
   },
   {
     titulo: "3. Finalidades do tratamento",
     itens: [
-      "Os dados pessoais sao tratados para possibilitar a criacao e manutencao da conta do cliente, autenticar o acesso a area do usuario e permitir procedimentos de recuperacao de senha, quando solicitados.",
-      "As informacoes sao igualmente utilizadas para receber, processar, confirmar e acompanhar pedidos, calcular taxas de entrega, organizar a logistica operacional e prestar suporte ao cliente antes, durante e apos a contratacao.",
-      "Os dados poderao ainda ser tratados para cumprimento de obrigacoes legais e regulatorias, exercicio regular de direitos em procedimentos administrativos, arbitrais ou judiciais, bem como para garantir a seguranca da plataforma e prevenir fraudes.",
+      "Os dados pessoais são tratados para possibilitar a criação e manutenção da conta do cliente, autenticar o acesso à área do usuário e permitir procedimentos de recuperação de senha, quando solicitados.",
+      "As informações são igualmente utilizadas para receber, processar, confirmar e acompanhar pedidos, calcular taxas de entrega, organizar a logística operacional e prestar suporte ao cliente antes, durante e após a contratação.",
+      "Os dados poderão ainda ser tratados para cumprimento de obrigações legais e regulatórias, exercício regular de direitos em procedimentos administrativos, arbitrais ou judiciais, bem como para garantir a segurança da plataforma e prevenir fraudes.",
     ],
   },
   {
     titulo: "4. Bases legais do tratamento",
     itens: [
-      "O tratamento dos dados pessoais podera ocorrer, conforme a finalidade aplicavel, com fundamento na execucao de contrato ou de procedimentos preliminares relacionados aos pedidos realizados pelo titular.",
-      "Tambem podera ser realizado com base no cumprimento de obrigacao legal ou regulatoria, no exercicio regular de direitos e no legitimo interesse da controladora, sempre observados os principios, limites e garantias previstos na LGPD.",
-      "Quando determinada operacao de tratamento depender de consentimento, este sera solicitado de forma livre, informada e inequívoca, podendo ser revogado pelo titular, sem prejuizo da legalidade dos tratamentos anteriormente realizados.",
+      "O tratamento dos dados pessoais poderá ocorrer, conforme a finalidade aplicável, com fundamento na execução de contrato ou de procedimentos preliminares relacionados aos pedidos realizados pelo titular.",
+      "Também poderá ser realizado com base no cumprimento de obrigação legal ou regulatória, no exercício regular de direitos e no legítimo interesse da controladora, sempre observados os princípios, limites e garantias previstos na LGPD.",
+      "Quando determinada operação de tratamento depender de consentimento, este será solicitado de forma livre, informada e inequívoca, podendo ser revogado pelo titular, sem prejuízo da legalidade dos tratamentos anteriormente realizados.",
     ],
   },
   {
     titulo: "5. Compartilhamento com terceiros",
     itens: [
-      "Os dados pessoais poderao ser compartilhados com operadores e prestadores de servico estritamente necessarios ao funcionamento da atividade, tais como provedores de hospedagem, banco de dados, servicos de e-mail, processamento de pagamentos, seguranca e suporte tecnologico.",
-      "O compartilhamento tambem podera ocorrer quando necessario ao cumprimento de obrigacao legal ou regulatoria, por determinacao de autoridade competente ou para o exercicio regular de direitos da controladora.",
-      "A controladora nao realiza a comercializacao de dados pessoais de seus clientes.",
+      "Os dados pessoais poderão ser compartilhados com operadores e prestadores de serviço estritamente necessários ao funcionamento da atividade, tais como provedores de hospedagem, banco de dados, serviços de e-mail, processamento de pagamentos, segurança e suporte tecnológico.",
+      "O compartilhamento também poderá ocorrer quando necessário ao cumprimento de obrigação legal ou regulatória, por determinação de autoridade competente ou para o exercício regular de direitos da controladora.",
+      "A controladora não realiza a comercialização de dados pessoais de seus clientes.",
     ],
   },
   {
-    titulo: "6. Armazenamento, retencao e seguranca",
+    titulo: "6. Armazenamento, retenção e segurança",
     itens: [
-      "Os dados pessoais serao armazenados pelo periodo necessario ao cumprimento das finalidades descritas nesta politica, bem como para atendimento de obrigacoes legais, regulatorias, contratuais, de prestacao de contas e defesa de direitos da controladora.",
-      "Quando aplicavel, registros de acesso a aplicacoes de internet poderao ser mantidos pelo prazo minimo de 6 (seis) meses, observado o art. 15 da Lei n. 12.965/2014 (Marco Civil da Internet). Documentos e informacoes de natureza fiscal, contábil e comercial poderao ser conservados pelos prazos exigidos na legislacao aplicavel, que em determinadas hipoteses podem alcancar 5 (cinco) anos ou prazo superior, conforme a obrigacao correspondente.",
-      "A empresa adota medidas tecnicas e administrativas razoaveis e compativeis com a natureza do tratamento para proteger os dados pessoais contra acessos nao autorizados, destruicao, perda, alteracao, comunicacao ou qualquer forma de tratamento inadequado ou ilicito.",
-      "Nao obstante os cuidados empregados, nenhum sistema informatizado esta integralmente imune a riscos, razao pela qual nao e possivel garantir seguranca absoluta contra eventos externos, falhas operacionais ou condutas maliciosas de terceiros.",
+      "Os dados pessoais serão armazenados pelo período necessário ao cumprimento das finalidades descritas nesta política, bem como para atendimento de obrigações legais, regulatórias, contratuais, de prestação de contas e defesa de direitos da controladora.",
+      "Quando aplicável, registros de acesso a aplicações de internet poderão ser mantidos pelo prazo mínimo de 6 (seis) meses, observado o art. 15 da Lei n. 12.965/2014 (Marco Civil da Internet). Documentos e informações de natureza fiscal, contábil e comercial poderão ser conservados pelos prazos exigidos na legislação aplicável, que em determinadas hipóteses podem alcançar 5 (cinco) anos ou prazo superior, conforme a obrigação correspondente.",
+      "A empresa adota medidas técnicas e administrativas razoáveis e compatíveis com a natureza do tratamento para proteger os dados pessoais contra acessos não autorizados, destruição, perda, alteração, comunicação ou qualquer forma de tratamento inadequado ou ilícito.",
+      "Não obstante os cuidados empregados, nenhum sistema informatizado está integralmente imune a riscos, razão pela qual não é possível garantir segurança absoluta contra eventos externos, falhas operacionais ou condutas maliciosas de terceiros.",
     ],
   },
   {
     titulo: "7. Cookies e tecnologias semelhantes",
     itens: [
-      "A plataforma pode utilizar cookies e tecnologias semelhantes estritamente necessarios ao seu funcionamento, incluindo autenticacao de sessao, seguranca, manutencao do carrinho, prevencao a fraudes e estabilidade da navegacao.",
-      "Caso venham a ser utilizados cookies analiticos, de desempenho, personalizacao ou marketing, esta politica e, se necessario, os mecanismos de consentimento da plataforma poderao ser atualizados para refletir essa utilizacao.",
-      "O titular podera, ainda, gerenciar parte dos cookies por meio das configuracoes do navegador, ciente de que a desativacao de cookies essenciais podera comprometer funcionalidades da plataforma.",
+      "A plataforma pode utilizar cookies e tecnologias semelhantes estritamente necessários ao seu funcionamento, incluindo autenticação de sessão, segurança, manutenção do carrinho, prevenção a fraudes e estabilidade da navegação.",
+      "Caso venham a ser utilizados cookies analíticos, de desempenho, personalização ou marketing, esta política e, se necessário, os mecanismos de consentimento da plataforma poderão ser atualizados para refletir essa utilização.",
+      "O titular poderá, ainda, gerenciar parte dos cookies por meio das configurações do navegador, ciente de que a desativação de cookies essenciais poderá comprometer funcionalidades da plataforma.",
     ],
   },
   {
     titulo: "8. Direitos do titular",
     itens: [
-      "Nos termos da LGPD e observadas as hipoteses legalmente aplicaveis, o titular podera solicitar a confirmacao da existencia de tratamento, o acesso aos dados, a correcao de dados incompletos, inexatos ou desatualizados, bem como a anonimização, o bloqueio ou a eliminacao de dados desnecessarios, excessivos ou tratados em desconformidade com a legislacao.",
-      "O titular tambem podera requerer informacoes sobre compartilhamento, portabilidade quando cabivel, revogacao do consentimento e eliminacao dos dados tratados com base nessa autorizacao, ressalvadas as hipoteses legais de conservacao.",
-      "As solicitacoes serao analisadas e respondidas na forma e nos limites previstos na legislacao aplicavel.",
+      "Nos termos da LGPD e observadas as hipóteses legalmente aplicáveis, o titular poderá solicitar a confirmação da existência de tratamento, o acesso aos dados, a correção de dados incompletos, inexatos ou desatualizados, bem como a anonimização, o bloqueio ou a eliminação de dados desnecessários, excessivos ou tratados em desconformidade com a legislação.",
+      "O titular também poderá requerer informações sobre compartilhamento, portabilidade quando cabível, revogação do consentimento e eliminação dos dados tratados com base nessa autorização, ressalvadas as hipóteses legais de conservação.",
+      "As solicitações serão analisadas e respondidas na forma e nos limites previstos na legislação aplicável.",
     ],
   },
   {
-    titulo: "9. Transferencia internacional de dados",
+    titulo: "9. Transferência internacional de dados",
     itens: [
-      "Em razao da utilizacao de determinados fornecedores de tecnologia, hospedagem em nuvem, envio de e-mails, armazenamento, monitoramento, seguranca ou processamento de dados, podera ocorrer transferencia internacional de dados pessoais para servidores localizados fora do Brasil.",
-      "Nessas hipoteses, a controladora buscara adotar medidas razoaveis para que a transferencia ocorra em conformidade com a LGPD, inclusive mediante utilizacao de fornecedores que apresentem garantias adequadas de seguranca e protecao de dados.",
+      "Em razão da utilização de determinados fornecedores de tecnologia, hospedagem em nuvem, envio de e-mails, armazenamento, monitoramento, segurança ou processamento de dados, poderá ocorrer transferência internacional de dados pessoais para servidores localizados fora do Brasil.",
+      "Nessas hipóteses, a controladora buscará adotar medidas razoáveis para que a transferência ocorra em conformidade com a LGPD, inclusive mediante utilização de fornecedores que apresentem garantias adequadas de segurança e proteção de dados.",
     ],
   },
   {
-    titulo: "10. Contato e atualizacoes desta politica",
+    titulo: "10. Contato e atualizações desta política",
     itens: [
-      "Para assuntos relacionados a privacidade, protecao de dados pessoais ou exercicio de direitos do titular, o canal oficial de contato e administracao@dulelisdelivery.com.br.",
-      "Esta Politica de Privacidade podera ser alterada a qualquer tempo para refletir atualizacoes legais, regulatorias, operacionais ou tecnicas. A versao vigente permanecera disponivel nesta pagina, com indicacao da respectiva data de vigencia.",
+      "Para assuntos relacionados à privacidade, proteção de dados pessoais ou exercício de direitos do titular, o canal oficial de contato é administracao@dulelisdelivery.com.br.",
+      "Esta Política de Privacidade poderá ser alterada a qualquer tempo para refletir atualizações legais, regulatórias, operacionais ou técnicas. A versão vigente permanecerá disponível nesta página, com indicação da respectiva data de vigência.",
     ],
   },
 ];
@@ -92,20 +92,20 @@ export default function PoliticaDePrivacidadePage() {
       <div className="mx-auto max-w-4xl">
         <div className="rounded-[2rem] border border-amber-200 bg-white/90 p-6 shadow-sm backdrop-blur">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-rose-500">
-            Politica de Privacidade
+            Política de Privacidade
           </p>
           <h1 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">
-            Politica de Privacidade
+            Política de Privacidade
           </h1>
           <p className="mt-4 text-sm font-medium leading-7 text-slate-600">
-            Este documento estabelece, de forma transparente, as regras aplicaveis ao tratamento de
+            Este documento estabelece, de forma transparente, as regras aplicáveis ao tratamento de
             dados pessoais realizado pela Dulelis confeitaria, constituinte legal Edinelso Jose Pasa,
-            CNPJ 43.782.331/0001-33, no contexto do cadastro de clientes, autenticacao de conta,
-            atendimento e realizacao de pedidos.
+            CNPJ 43.782.331/0001-33, no contexto do cadastro de clientes, autenticação de conta,
+            atendimento e realização de pedidos.
           </p>
           <div className="mt-5 flex flex-wrap gap-3 text-xs font-black uppercase tracking-widest text-slate-500">
-            <span className="rounded-full bg-slate-100 px-4 py-2">Versao {PRIVACY_POLICY_VERSION}</span>
-            <span className="rounded-full bg-slate-100 px-4 py-2">Vigencia {PRIVACY_POLICY_EFFECTIVE_DATE}</span>
+            <span className="rounded-full bg-slate-100 px-4 py-2">Versão {PRIVACY_POLICY_VERSION}</span>
+            <span className="rounded-full bg-slate-100 px-4 py-2">Vigência {PRIVACY_POLICY_EFFECTIVE_DATE}</span>
           </div>
         </div>
 

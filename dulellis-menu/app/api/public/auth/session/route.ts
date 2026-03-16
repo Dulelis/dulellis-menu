@@ -304,7 +304,7 @@ export async function POST(request: NextRequest) {
 
   if (action === "register" && !aceitouPoliticaPrivacidade) {
     return NextResponse.json(
-      { ok: false, error: "Voce precisa aceitar a Politica de Privacidade para criar sua conta." },
+      { ok: false, error: "Você precisa aceitar a Política de Privacidade para criar sua conta." },
       { status: 400 },
     );
   }

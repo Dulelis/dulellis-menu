@@ -2453,9 +2453,9 @@ function ClientePageContent() {
                         rel="noreferrer"
                         className="font-black text-pink-600 underline underline-offset-4"
                       >
-                        Politica de Privacidade
+                        Política de Privacidade
                       </Link>{" "}
-                      para criacao e uso da minha conta.
+                      para criação e uso da minha conta.
                     </span>
                   </label>
                 </>
