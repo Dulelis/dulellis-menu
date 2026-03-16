@@ -666,12 +666,27 @@ function ClientePageContent() {
 
         const data = (await res.json()) as CepApiResponse;
 
-        if (data.address && (options?.forcarPreenchimento || !cadastroManualRef.current)) {
+        if (data.address || data.district || data.city) {
           setCliente((prev) => ({
             ...prev,
-            endereco: prev.endereco.trim() ? prev.endereco : (data.address ?? prev.endereco),
-            bairro: prev.bairro.trim() ? prev.bairro : (data.district ?? prev.bairro),
-            cidade: prev.cidade.trim() ? prev.cidade : (data.city ?? prev.cidade),
+            endereco:
+              options?.forcarPreenchimento
+                ? (data.address ?? prev.endereco)
+                : prev.endereco.trim()
+                  ? prev.endereco
+                  : (data.address ?? prev.endereco),
+            bairro:
+              options?.forcarPreenchimento
+                ? (data.district ?? prev.bairro)
+                : prev.bairro.trim()
+                  ? prev.bairro
+                  : (data.district ?? prev.bairro),
+            cidade:
+              options?.forcarPreenchimento
+                ? (data.city ?? prev.cidade)
+                : prev.cidade.trim()
+                  ? prev.cidade
+                  : (data.city ?? prev.cidade),
           }));
         }
 
