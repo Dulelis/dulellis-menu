@@ -2368,8 +2368,8 @@ function ClientePageContent() {
       )}
 
       {modalAuthAberto && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[70] flex items-end sm:items-center sm:justify-center">
-          <div className="bg-white w-full max-w-md rounded-t-[3.2rem] sm:rounded-[3.2rem] p-7 shadow-2xl">
+        <div className="fixed inset-0 overflow-y-auto bg-slate-950/80 p-0 backdrop-blur-md z-[70] flex items-end sm:items-center sm:justify-center sm:p-4">
+          <div className="bg-white w-full max-w-md max-h-[92vh] overflow-y-auto rounded-t-[3.2rem] sm:rounded-[3.2rem] p-7 shadow-2xl">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-2xl font-black italic text-slate-800">
                 {authEsqueciSenha ? "Recuperar senha" : authModoCadastro ? "Criar conta" : "Entrar"}
