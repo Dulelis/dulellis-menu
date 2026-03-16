@@ -952,10 +952,6 @@ function AdminPageContent() {
     const bairro = String(pedidoCompleto?.bairro || '').trim();
     const cidade = String(pedidoCompleto?.cidade || '').trim();
     const cep = String(pedidoCompleto?.cep || '').trim();
-    const dataAniversario = String(pedidoCompleto?.data_aniversario || '').trim();
-    const aniversarioFormatado = dataAniversario
-      ? new Date(`${dataAniversario.slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
-      : '';
     const larguraLinha = 22;
 
     const quebrarLinha = (texto: string, largura = larguraLinha) => {
@@ -989,7 +985,6 @@ function AdminPageContent() {
       `CID: ${cidade || 'Nao informado'}`,
       `CEP: ${cep || 'Nao informado'}`,
       `REF: ${pontoReferencia || 'Nao informado'}`,
-      ...(aniversarioFormatado ? [`NASC: ${aniversarioFormatado}`] : []),
       ...(observacao ? [`OBS: ${observacao}`] : []),
       `PGTO: ${pagamento.titulo}`,
       `STATUS: ${pagamento.situacao}`,
@@ -1082,10 +1077,6 @@ function AdminPageContent() {
     const bairro = String(pedidoCompleto?.bairro || '').trim();
     const cidade = String(pedidoCompleto?.cidade || '').trim();
     const cep = String(pedidoCompleto?.cep || '').trim();
-    const dataAniversario = String(pedidoCompleto?.data_aniversario || '').trim();
-    const aniversarioFormatado = dataAniversario
-      ? new Date(`${dataAniversario.slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
-      : '';
     const itens = parseItensPedido(pedidoCompleto);
     const itensHtml = itens.length
       ? itens.map((item: any) => `<tr><td>${Number(item.qtd || 1)}x ${String(item.nome || 'Item')}</td><td style="text-align:right">R$ ${(Number(item.preco || 0) * Number(item.qtd || 0)).toFixed(2)}</td></tr>`).join('')
@@ -1149,7 +1140,6 @@ function AdminPageContent() {
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Cidade:</strong> ${cidade || 'Nao informado'}</div>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>CEP:</strong> ${cep || 'Nao informado'}</div>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Ponto:</strong> ${pontoReferencia || 'Nao informado'}</div>
-            ${aniversarioFormatado ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Nascimento:</strong> ${aniversarioFormatado}</div>` : ''}
             ${observacao ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Observacao:</strong> ${observacao}</div>` : ''}
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Status:</strong> ${pagamento.situacao}</div>
