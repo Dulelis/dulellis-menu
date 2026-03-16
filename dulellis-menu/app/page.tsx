@@ -4,6 +4,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { validateCustomerFullName } from "@/lib/customer-name-policy";
 import { CUSTOMER_PASSWORD_RULES_TEXT, validateCustomerPassword } from "@/lib/customer-password-policy";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { supabase } from "@/lib/supabase";
@@ -1158,9 +1159,12 @@ function ClientePageContent() {
     const zap = normalizarNumero(authWhatsapp);
     const email = String(authEmail || "").trim().toLowerCase();
     const dataAniversario = String(authDataAniversario || "").slice(0, 10);
-    if (authModoCadastro && !authNome.trim()) {
-      alert("Informe seu nome.");
-      return;
+    if (authModoCadastro) {
+      const validacaoNome = validateCustomerFullName(authNome);
+      if (!validacaoNome.valid) {
+        alert(validacaoNome.error);
+        return;
+      }
     }
     if (zap.length < 10) {
       alert("Informe um WhatsApp válido.");
@@ -2423,11 +2427,14 @@ function ClientePageContent() {
               {!authEsqueciSenha && authModoCadastro && (
                 <>
                   <input
-                    placeholder="Seu nome"
+                    placeholder="Nome e sobrenome"
                     className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-pink-300 font-bold"
                     value={authNome}
                     onChange={(e) => setAuthNome(e.target.value)}
                   />
+                  <p className="text-[11px] rounded-2xl bg-slate-50 border border-slate-200 p-3 text-slate-600 font-bold">
+                    Use o mesmo nome completo vinculado ao seu WhatsApp. Não é permitido trocar o nome em um número já cadastrado.
+                  </p>
                   <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3">
                     <label
                       htmlFor="auth-data-nascimento"

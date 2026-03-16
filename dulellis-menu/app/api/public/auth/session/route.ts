@@ -8,6 +8,7 @@ import {
   hashCustomerPassword,
   verifyCustomerPassword,
 } from "@/lib/customer-auth";
+import { customerNamesMatch, validateCustomerFullName } from "@/lib/customer-name-policy";
 import { validateCustomerPassword } from "@/lib/customer-password-policy";
 import { PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { getCustomerSessionFromRequest } from "@/lib/customer-request";
@@ -290,6 +291,12 @@ export async function POST(request: NextRequest) {
   const dataAniversario = String(body.data_aniversario || "").slice(0, 10);
   const aceitouPoliticaPrivacidade = Boolean(body.aceitou_politica_privacidade);
   const politicaPrivacidadeVersao = String(body.politica_privacidade_versao || "").trim() || PRIVACY_POLICY_VERSION;
+  if (action === "register") {
+    const validacaoNome = validateCustomerFullName(nome);
+    if (!validacaoNome.valid) {
+      return NextResponse.json({ ok: false, error: validacaoNome.error }, { status: 400 });
+    }
+  }
   if (action === "register" && !emailValido(email)) {
     return NextResponse.json({ ok: false, error: "E-mail inválido." }, { status: 400 });
   }
@@ -334,6 +341,13 @@ export async function POST(request: NextRequest) {
     let clienteId = 0;
     if (existente?.id) {
       clienteId = Number(existente.id);
+      const nomeExistente = String(existente.nome || "").trim();
+      if (nomeExistente && !customerNamesMatch(nome, nomeExistente)) {
+        return NextResponse.json(
+          { ok: false, error: "Este WhatsApp já está vinculado a outro nome. Use os dados já cadastrados." },
+          { status: 409 },
+        );
+      }
       const senhaAtual = String((existente as { senha_hash?: string }).senha_hash || "");
       const validacaoSenha =
         senhaAtual ? await verifyCustomerPassword(password, senhaAtual) : { valid: true, needsUpgrade: false };
@@ -342,7 +356,7 @@ export async function POST(request: NextRequest) {
       }
       const payloadBase = {
         senha_hash: senhaHash,
-        nome: nome || String(existente.nome || ""),
+        nome: nomeExistente || nome,
         email,
         data_aniversario: dataAniversario,
       };
