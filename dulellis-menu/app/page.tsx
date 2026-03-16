@@ -929,7 +929,7 @@ function ClientePageContent() {
     modal.scrollTo({ top: 0, behavior: "smooth" });
   }, [abaCarrinho, passo]);
 
-  const carregarSessaoCliente = useCallback(async () => {
+  const carregarSessaoCliente = useCallback(async (options?: { forcarAplicacao?: boolean }) => {
     try {
       const res = await fetch("/api/public/auth/session", { cache: "no-store" });
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: SessaoCliente | null };
@@ -944,7 +944,7 @@ function ClientePageContent() {
 
       const dados = json.data;
       setSessaoCliente(dados);
-      if (!cadastroManualRef.current) {
+      if (options?.forcarAplicacao || !cadastroManualRef.current) {
         setCliente((prev) => ({
           ...prev,
           nome: dados.nome || prev.nome,
@@ -973,11 +973,11 @@ function ClientePageContent() {
       });
       if (clienteTemEnderecoSalvo(clienteSessao)) {
         setEnderecoSalvoCliente(clienteSessao);
-        if (!cadastroManualRef.current) {
+        if (options?.forcarAplicacao || !cadastroManualRef.current) {
           setModoEnderecoEntrega("saved");
         }
         if (!aplicarTaxaUltimoPedido(dados.ultima_taxa_entrega) && dados.cep) {
-          await executarBuscaCep(dados.cep);
+          await executarBuscaCep(dados.cep, { forcarPreenchimento: Boolean(options?.forcarAplicacao) });
         }
       } else {
         setEnderecoSalvoCliente(null);
@@ -1178,7 +1178,8 @@ function ClientePageContent() {
       if (!res.ok || json.ok === false) {
         throw new Error(json.error || "Falha no login.");
       }
-      await carregarSessaoCliente();
+      cadastroManualRef.current = false;
+      await carregarSessaoCliente({ forcarAplicacao: true });
       setModalAuthAberto(false);
       setAuthSenha("");
       limparRascunhoAuth();
