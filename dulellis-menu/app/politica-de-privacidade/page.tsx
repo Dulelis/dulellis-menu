@@ -49,12 +49,21 @@ const secoes = [
     titulo: "6. Armazenamento, retencao e seguranca",
     itens: [
       "Os dados pessoais serao armazenados pelo periodo necessario ao cumprimento das finalidades descritas nesta politica, bem como para atendimento de obrigacoes legais, regulatorias, contratuais, de prestacao de contas e defesa de direitos da controladora.",
+      "Quando aplicavel, registros de acesso a aplicacoes de internet poderao ser mantidos pelo prazo minimo de 6 (seis) meses, observado o art. 15 da Lei n. 12.965/2014 (Marco Civil da Internet). Documentos e informacoes de natureza fiscal, contábil e comercial poderao ser conservados pelos prazos exigidos na legislacao aplicavel, que em determinadas hipoteses podem alcancar 5 (cinco) anos ou prazo superior, conforme a obrigacao correspondente.",
       "A empresa adota medidas tecnicas e administrativas razoaveis e compativeis com a natureza do tratamento para proteger os dados pessoais contra acessos nao autorizados, destruicao, perda, alteracao, comunicacao ou qualquer forma de tratamento inadequado ou ilicito.",
       "Nao obstante os cuidados empregados, nenhum sistema informatizado esta integralmente imune a riscos, razao pela qual nao e possivel garantir seguranca absoluta contra eventos externos, falhas operacionais ou condutas maliciosas de terceiros.",
     ],
   },
   {
-    titulo: "7. Direitos do titular",
+    titulo: "7. Cookies e tecnologias semelhantes",
+    itens: [
+      "A plataforma pode utilizar cookies e tecnologias semelhantes estritamente necessarios ao seu funcionamento, incluindo autenticacao de sessao, seguranca, manutencao do carrinho, prevencao a fraudes e estabilidade da navegacao.",
+      "Caso venham a ser utilizados cookies analiticos, de desempenho, personalizacao ou marketing, esta politica e, se necessario, os mecanismos de consentimento da plataforma poderao ser atualizados para refletir essa utilizacao.",
+      "O titular podera, ainda, gerenciar parte dos cookies por meio das configuracoes do navegador, ciente de que a desativacao de cookies essenciais podera comprometer funcionalidades da plataforma.",
+    ],
+  },
+  {
+    titulo: "8. Direitos do titular",
     itens: [
       "Nos termos da LGPD e observadas as hipoteses legalmente aplicaveis, o titular podera solicitar a confirmacao da existencia de tratamento, o acesso aos dados, a correcao de dados incompletos, inexatos ou desatualizados, bem como a anonimização, o bloqueio ou a eliminacao de dados desnecessarios, excessivos ou tratados em desconformidade com a legislacao.",
       "O titular tambem podera requerer informacoes sobre compartilhamento, portabilidade quando cabivel, revogacao do consentimento e eliminacao dos dados tratados com base nessa autorizacao, ressalvadas as hipoteses legais de conservacao.",
@@ -62,7 +71,14 @@ const secoes = [
     ],
   },
   {
-    titulo: "8. Contato e atualizacoes desta politica",
+    titulo: "9. Transferencia internacional de dados",
+    itens: [
+      "Em razao da utilizacao de determinados fornecedores de tecnologia, hospedagem em nuvem, envio de e-mails, armazenamento, monitoramento, seguranca ou processamento de dados, podera ocorrer transferencia internacional de dados pessoais para servidores localizados fora do Brasil.",
+      "Nessas hipoteses, a controladora buscara adotar medidas razoaveis para que a transferencia ocorra em conformidade com a LGPD, inclusive mediante utilizacao de fornecedores que apresentem garantias adequadas de seguranca e protecao de dados.",
+    ],
+  },
+  {
+    titulo: "10. Contato e atualizacoes desta politica",
     itens: [
       "Para assuntos relacionados a privacidade, protecao de dados pessoais ou exercicio de direitos do titular, o canal oficial de contato e administracao@dulelisdelivery.com.br.",
       "Esta Politica de Privacidade podera ser alterada a qualquer tempo para refletir atualizacoes legais, regulatorias, operacionais ou tecnicas. A versao vigente permanecera disponivel nesta pagina, com indicacao da respectiva data de vigencia.",
