@@ -2620,7 +2620,7 @@ function ClientePageContent() {
           <div className="bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-8 max-h-[95vh] overflow-y-auto shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-3xl font-black italic text-slate-800">
-                {passo === 1 ? "Endereço para entrega" : "Resumo"}
+                {passo === 1 ? "Endereço para entrega" : passo === 2 ? "Revisão do pedido" : "Pagamento"}
               </h3>
               <button
                 type="button"
@@ -2889,6 +2889,104 @@ function ClientePageContent() {
                   Próximo Passo <ChevronRight size={24} />
                 </button>
               </div>
+            ) : passo === 2 ? (
+              <div className="space-y-6">
+                <div className="bg-slate-50 rounded-[2.5rem] border border-slate-100 p-5 space-y-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Entrega</p>
+                    <p className="mt-1 text-sm font-black text-slate-800">
+                      {[cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereço não informado"}
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                      {cliente.ponto_referencia ? `Ponto de referência: ${cliente.ponto_referencia}` : "Sem ponto de referência"}
+                    </p>
+                  </div>
+                  <div className="border-t border-slate-200 pt-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Contato</p>
+                    <p className="mt-1 text-sm font-black text-slate-800">{cliente.nome || "Cliente"}</p>
+                    <p className="text-xs font-bold text-slate-500">{cliente.whatsapp || "WhatsApp não informado"}</p>
+                  </div>
+                </div>
+
+                <div className="max-h-56 overflow-y-auto space-y-3 p-4 bg-slate-50 rounded-[2.5rem] border border-slate-100">
+                  {carrinho.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-slate-50"
+                    >
+                      <div className="flex-1">
+                        <p className="font-black text-slate-800 text-sm">{item.nome}</p>
+                        <p className="text-[10px] font-black text-pink-400">
+                          {item.qtd} x R$ {item.preco.toFixed(2)}
+                        </p>
+                      </div>
+                      <p className="text-sm font-black text-green-600">
+                        R$ {(item.preco * item.qtd).toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl">
+                  <div className="space-y-3 relative">
+                    <div className="flex justify-between text-xs font-bold text-slate-400">
+                      <span>Subtotal</span>
+                      <span>R$ {subtotal.toFixed(2)}</span>
+                    </div>
+                    {descontoPromocoes > 0 && (
+                      <div className="flex justify-between text-xs font-bold text-green-400">
+                        <span>Descontos e Promocoes</span>
+                        <span>- R$ {descontoPromocoes.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-xs font-bold text-blue-400 border-b border-white/10 pb-3">
+                      <span>Taxa de Entrega</span>
+                      <span>R$ {taxaEntrega.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-end pt-3">
+                      <div>
+                        <p className="text-[10px] uppercase font-black text-pink-500 tracking-[0.2em]">
+                          Valor Total
+                        </p>
+                        <p className="text-4xl font-black">R$ {totalGeral.toFixed(2)}</p>
+                      </div>
+                      <CheckCircle2 className="text-green-500 mb-1" size={32} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPasso(1)}
+                    className="w-full bg-white border border-slate-200 text-slate-600 p-4 rounded-[2rem] font-black uppercase text-xs tracking-widest"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAbaCarrinho(false)}
+                    className="w-full bg-slate-100 text-slate-500 p-4 rounded-[2rem] font-black uppercase text-xs tracking-widest"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void limparCarrinho()}
+                    className="w-full bg-slate-100 text-slate-500 p-4 rounded-[2rem] font-black uppercase text-xs tracking-widest"
+                  >
+                    Limpar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPasso(3)}
+                    disabled={interacoesBloqueadas}
+                    className={`w-full p-4 rounded-[2rem] font-black uppercase text-xs tracking-widest ${interacoesBloqueadas ? "bg-slate-100 text-slate-300" : "bg-pink-600 text-white shadow-xl shadow-pink-100"}`}
+                  >
+                    Ir para o Pagamento
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="space-y-6">
                 <div className="max-h-56 overflow-y-auto space-y-3 p-4 bg-slate-50 rounded-[2.5rem] border border-slate-100">
@@ -2989,10 +3087,10 @@ function ClientePageContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPasso(1)}
+                  onClick={() => setPasso(2)}
                   className="w-full flex items-center justify-center gap-2 text-slate-400 font-bold text-[10px] uppercase p-2 tracking-widest"
                 >
-                  <ArrowLeft size={14} /> Alterar Dados
+                  <ArrowLeft size={14} /> Voltar para Revisão
                 </button>
               </div>
             )}
