@@ -478,6 +478,7 @@ function ClientePageContent() {
   const recarregarVitrineRef = useRef<number | null>(null);
   const recarregarAcompanhamentoRef = useRef<number | null>(null);
   const topoVitrineRef = useRef<HTMLElement | null>(null);
+  const modalCarrinhoRef = useRef<HTMLDivElement | null>(null);
 
   const aplicarTaxaUltimoPedido = useCallback((valor: number | string | null | undefined) => {
     const taxa = Number(valor);
@@ -917,6 +918,16 @@ function ClientePageContent() {
       }
     };
   }, [carregarDadosIniciais]);
+
+  useEffect(() => {
+    if (!abaCarrinho) return;
+    if (passo !== 2 && passo !== 3) return;
+
+    const modal = modalCarrinhoRef.current;
+    if (!modal) return;
+
+    modal.scrollTo({ top: 0, behavior: "smooth" });
+  }, [abaCarrinho, passo]);
 
   const carregarSessaoCliente = useCallback(async () => {
     try {
@@ -2674,7 +2685,10 @@ function ClientePageContent() {
 
       {abaCarrinho && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] flex items-end sm:items-center sm:justify-center">
-          <div className="bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-8 max-h-[95vh] overflow-y-auto shadow-2xl">
+          <div
+            ref={modalCarrinhoRef}
+            className="bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-8 max-h-[95vh] overflow-y-auto shadow-2xl"
+          >
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-3xl font-black italic text-slate-800">
                 {passo === 1 ? "Endereço para entrega" : passo === 2 ? "Revisão do pedido" : "Pagamento"}
