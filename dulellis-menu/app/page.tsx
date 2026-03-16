@@ -2690,6 +2690,14 @@ function ClientePageContent() {
 
             {passo === 1 ? (
               <div className="space-y-4">
+                <div className="rounded-[2rem] border border-pink-100 bg-pink-50 px-5 py-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-500">
+                    Endereço de Entrega
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-slate-700">
+                    Confira ou preencha o endereço onde vamos entregar seu pedido.
+                  </p>
+                </div>
                 <div className="bg-blue-50 text-blue-800 p-4 rounded-3xl border border-blue-100 gentle-blink">
                   <p className="text-[12px] font-bold tracking-wide">
                     Escolha seu endereço salvo ou informe um novo endereço para esta entrega.
@@ -2948,6 +2956,14 @@ function ClientePageContent() {
               </div>
             ) : passo === 2 ? (
               <div className="space-y-6">
+                <div className="rounded-[2rem] border border-amber-100 bg-amber-50 px-5 py-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-600">
+                    Revisão do Pedido
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-slate-700">
+                    Revise os itens, o endereço e o valor total antes de seguir.
+                  </p>
+                </div>
                 <div className="bg-slate-50 rounded-[2.5rem] border border-slate-100 p-5 space-y-3">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Entrega</p>
@@ -3046,6 +3062,14 @@ function ClientePageContent() {
               </div>
             ) : (
               <div className="space-y-6">
+                <div className="rounded-[2rem] border border-emerald-100 bg-emerald-50 px-5 py-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-600">
+                    Pagamento
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-slate-700">
+                    Escolha a forma de pagamento para finalizar seu pedido.
+                  </p>
+                </div>
                 <div className="max-h-56 overflow-y-auto space-y-3 p-4 bg-slate-50 rounded-[2.5rem] border border-slate-100">
                   {carrinho.map((item) => (
                     <div
