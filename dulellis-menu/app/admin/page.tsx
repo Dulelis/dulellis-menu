@@ -67,7 +67,7 @@ const STATUS_PEDIDO_FLUXO: Record<string, { label: string; proximo: string } | n
   saiu_entrega: null,
 };
 
-const ADMIN_TABS = ['estoque', 'promocoes', 'propagandas', 'horario', 'clientes', 'taxas', 'vendas', 'relatorios'] as const;
+const ADMIN_TABS = ['painel', 'estoque', 'promocoes', 'propagandas', 'horario', 'clientes', 'taxas', 'vendas', 'relatorios'] as const;
 type AdminTab = (typeof ADMIN_TABS)[number];
 
 function normalizarAdminTab(valor: string | null): AdminTab {
@@ -150,6 +150,7 @@ function AdminPageContent() {
   const [pedidosSelecionadosPorCliente, setPedidosSelecionadosPorCliente] = useState<Record<number, number[]>>({});
   const [pedidosSelecionadosVendas, setPedidosSelecionadosVendas] = useState<number[]>([]);
   const [pedidoAtualizandoId, setPedidoAtualizandoId] = useState<number | null>(null);
+  const [resetandoVitrine, setResetandoVitrine] = useState(false);
   const recarregarRealtimeRef = useRef<number | null>(null);
   const qzConectandoRef = useRef<Promise<void> | null>(null);
   const imprimirPedidoAceitoRef = useRef<(pedido: any, popupExistente?: Window | null) => Promise<void>>(async () => {});
@@ -1427,6 +1428,70 @@ function AdminPageContent() {
     setPedidosSelecionadosVendas([]);
   };
 
+  const marcarVendasEmDestaque = () => {
+    setPedidosSelecionadosVendas(
+      pedidosDoDia
+        .slice(0, 10)
+        .map((pedido) => Number(pedido.id))
+        .filter((id) => Number.isFinite(id)),
+    );
+  };
+
+  const excluirVendasSelecionadas = async () => {
+    const idsSelecionados = pedidosSelecionadosVendas.filter((id) => Number.isFinite(id));
+    if (!idsSelecionados.length) {
+      alert('Selecione ao menos uma venda para excluir.');
+      return;
+    }
+
+    if (!confirm(`Deseja excluir ${idsSelecionados.length} venda(s) selecionada(s)? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    await adminDb({
+      action: 'delete_in',
+      table: 'pedidos',
+      in: { column: 'id', values: idsSelecionados },
+    });
+    setPedidosSelecionadosVendas([]);
+    await carregarDados();
+    alert('Vendas selecionadas excluídas.');
+  };
+
+  const resetarDadosVitrine = async () => {
+    if (
+      !confirm(
+        'Deseja resetar os dados públicos da vitrine? Isso removerá clientes cadastrados, pedidos e tokens de recuperação de senha.',
+      )
+    ) {
+      return;
+    }
+
+    setResetandoVitrine(true);
+    try {
+      const res = await fetch('/api/admin/reset-vitrine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string };
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || 'Falha ao resetar os dados da vitrine.');
+      }
+
+      setClienteEmFoco(null);
+      setClienteExpandidoId(null);
+      setClienteHistoricoAbertoId(null);
+      setPedidosSelecionadosPorCliente({});
+      setPedidosSelecionadosVendas([]);
+      await carregarDados();
+      alert(json.message || 'Dados públicos da vitrine removidos com sucesso.');
+    } catch (error: any) {
+      alert(error?.message || 'Não foi possível resetar os dados da vitrine.');
+    } finally {
+      setResetandoVitrine(false);
+    }
+  };
+
   const imprimirVendasSelecionadas = () => {
     const selecionados = pedidos
       .filter((p) => pedidosSelecionadosVendas.includes(p.id))
@@ -1616,6 +1681,7 @@ function AdminPageContent() {
       <aside className="w-full bg-slate-900 text-white p-4 lg:w-64 lg:p-6 print:hidden">
         <h2 className="text-xl font-black text-pink-500 italic mb-4 text-center tracking-tighter lg:text-2xl lg:mb-10">DULELIS</h2>
         <nav className="flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button onClick={() => setActiveTab('painel')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'painel' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <RotateCcw size={20}/> Painel Geral </button>
           <button onClick={() => setActiveTab('estoque')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'estoque' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Package size={20}/> Estoque / Cardápio </button>
           <button onClick={() => setActiveTab('promocoes')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'promocoes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <BadgePercent size={20}/> Promocoes </button>
           <button onClick={() => setActiveTab('propagandas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'propagandas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Megaphone size={20}/> Propaganda </button>
@@ -1629,6 +1695,7 @@ function AdminPageContent() {
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto h-auto lg:h-screen print:h-auto print:p-0 print:overflow-visible">
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6 sm:mb-8 print:hidden">
           <h1 className="text-2xl sm:text-3xl font-black text-slate-800">
+            {activeTab === 'painel' && 'Painel Geral'}
             {activeTab === 'estoque' && 'Produtos'}
             {activeTab === 'promocoes' && 'Promocoes'}
             {activeTab === 'propagandas' && 'Propaganda'}
@@ -1640,6 +1707,17 @@ function AdminPageContent() {
           </h1>
 
           <div className="flex w-full flex-wrap items-center gap-2 sm:gap-3 md:w-auto">
+            {activeTab === 'painel' && (
+              <button
+                type="button"
+                onClick={() => void resetarDadosVitrine()}
+                disabled={resetandoVitrine}
+                className="w-full sm:w-auto bg-red-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-red-700 transition-all disabled:opacity-60"
+              >
+                {resetandoVitrine ? <Loader2 size={18} className="animate-spin" /> : <RotateCcw size={18} />}
+                Resetar dados da vitrine
+              </button>
+            )}
             {activeTab === 'estoque' && (
               <button onClick={() => { fecharModal(); setMostrarModalEstoque(true); }} className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all"> 
               <PlusCircle size={20} /> Adicionar
@@ -1682,6 +1760,50 @@ function AdminPageContent() {
             </button>
           </div>
         </header>
+
+        {activeTab === 'painel' && (
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Clientes da vitrine</p>
+                <p className="mt-2 text-3xl font-black text-slate-800">{clientes.length}</p>
+                <p className="text-sm font-bold text-slate-500">cadastros públicos salvos</p>
+              </div>
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pedidos salvos</p>
+                <p className="mt-2 text-3xl font-black text-slate-800">{pedidos.length}</p>
+                <p className="text-sm font-bold text-slate-500">histórico atual da vitrine</p>
+              </div>
+              <div className="rounded-[2rem] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Faturamento do dia</p>
+                <p className="mt-2 text-3xl font-black text-emerald-700">R$ {faturamentoDia.toFixed(2)}</p>
+                <p className="text-sm font-bold text-emerald-700/80">{pedidosDoDia.length} pedido(s) hoje</p>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-red-200 bg-red-50 p-6 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="max-w-3xl">
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-red-600">Painel Geral</p>
+                  <h2 className="mt-2 text-2xl font-black text-slate-800">Reset geral dos dados da vitrine</h2>
+                  <p className="mt-2 text-sm font-bold leading-6 text-slate-600">
+                    Este reset limpa os dados públicos gerados pelo uso da vitrine para reiniciar a operação.
+                    Serão removidos clientes cadastrados, pedidos e tokens de recuperação de senha.
+                    Estoque, taxas, horário, promoções e propagandas não são afetados por este botão.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void resetarDadosVitrine()}
+                  disabled={resetandoVitrine}
+                  className="w-full rounded-2xl bg-red-600 px-6 py-4 text-sm font-black uppercase tracking-widest text-white shadow-lg transition-all hover:bg-red-700 disabled:opacity-60 lg:w-auto"
+                >
+                  {resetandoVitrine ? 'Resetando...' : 'Resetar dados da vitrine'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {activeTab === 'estoque' && (
           <div className="space-y-8">
@@ -2125,8 +2247,9 @@ function AdminPageContent() {
                 <p className="mt-1 text-sm font-bold text-slate-400">Tela focada em aceitar pedidos e acompanhar os 10 mais recentes.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <button onClick={() => setPedidosSelecionadosVendas(pedidosDoDia.slice(0, 10).map((pedido) => pedido.id))} className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all">Marcar 10</button>
+                <button onClick={marcarVendasEmDestaque} className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all">Marcar</button>
                 <button onClick={desmarcarVendasSelecionadas} className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all">Desmarcar</button>
+                <button onClick={() => void excluirVendasSelecionadas()} className="w-full sm:w-auto bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all"><Trash2 size={18} /> Excluir</button>
                 <button onClick={imprimirVendasSelecionadas} className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all"><Printer size={18} /> Imprimir Vendas</button>
                 <button onClick={() => { window.location.href = '/admin/vendas'; }} className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"><TrendingUp size={18} /> Outras Visoes</button>
               </div>
