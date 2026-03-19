@@ -16,6 +16,11 @@ function tabelaAusente(error: { message?: string } | null) {
   );
 }
 
+function isSchemaColumnError(message: string) {
+  const texto = String(message || "").toLowerCase();
+  return texto.includes("column") || texto.includes("schema cache");
+}
+
 function montarLinkMaps(pedido: Record<string, unknown>) {
   const endereco = String(pedido.endereco || "").trim();
   const numero = String(pedido.numero || "").trim();
@@ -88,21 +93,51 @@ async function completarEnderecoPedido(
   const whatsapp = normalizarNumero(String(pedido.whatsapp || ""));
   if (whatsapp.length < 10) return pedido;
 
-  const { data: exato } = await supabase
-    .from("clientes")
-    .select("endereco,numero,bairro,cidade,cep,ponto_referencia,whatsapp")
-    .eq("whatsapp", whatsapp)
-    .maybeSingle();
+  const tentativasSelect = [
+    "endereco,numero,bairro,cidade,cep,ponto_referencia,whatsapp",
+    "endereco,numero,bairro,cidade,cep,whatsapp",
+    "endereco,bairro,cidade,cep,whatsapp",
+    "endereco,numero,whatsapp",
+    "endereco,whatsapp",
+  ];
+
+  async function buscarClientePorWhatsappEq(zap: string) {
+    let ultimoErro = "";
+    for (const selectCols of tentativasSelect) {
+      const { data, error } = await supabase
+        .from("clientes")
+        .select(selectCols)
+        .eq("whatsapp", zap)
+        .maybeSingle();
+      if (!error) return { data: (data || null) as Record<string, unknown> | null, error: null };
+      ultimoErro = error.message;
+      if (!isSchemaColumnError(error.message)) break;
+    }
+    return { data: null, error: ultimoErro };
+  }
+
+  async function buscarClientesPorWhatsappLike(sufixo: string) {
+    let ultimoErro = "";
+    for (const selectCols of tentativasSelect) {
+      const { data, error } = await supabase
+        .from("clientes")
+        .select(selectCols)
+        .ilike("whatsapp", `%${sufixo}%`)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (!error) return { data: ((data || []) as unknown as Record<string, unknown>[]), error: null };
+      ultimoErro = error.message;
+      if (!isSchemaColumnError(error.message)) break;
+    }
+    return { data: [] as Record<string, unknown>[], error: ultimoErro };
+  }
+
+  const { data: exato } = await buscarClientePorWhatsappEq(whatsapp);
 
   let cliente = exato as Record<string, unknown> | null;
   if (!cliente) {
     const sufixo = whatsapp.slice(-8);
-    const { data: candidatos } = await supabase
-      .from("clientes")
-      .select("endereco,numero,bairro,cidade,cep,ponto_referencia,whatsapp")
-      .ilike("whatsapp", `%${sufixo}%`)
-      .order("created_at", { ascending: false })
-      .limit(20);
+    const { data: candidatos } = await buscarClientesPorWhatsappLike(sufixo);
     cliente =
       ((candidatos || []) as Record<string, unknown>[]).find((item) =>
         whatsappEquivalente(String(item.whatsapp || ""), whatsapp),
