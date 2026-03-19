@@ -35,6 +35,19 @@ function whatsappEquivalente(a: string, b: string) {
   return wa.slice(-10) === wb.slice(-10);
 }
 
+function limparEnderecoDePontoReferencia(endereco: string) {
+  return String(endereco || "")
+    .replace(/\s*-\s*ponto\s+de\s+refer(?:e|ê)ncia:\s*.+$/i, "")
+    .replace(/\s*ponto\s+de\s+refer(?:e|ê)ncia:\s*.+$/i, "")
+    .trim();
+}
+
+function extrairPontoReferenciaDeEndereco(endereco: string) {
+  const texto = String(endereco || "");
+  const match = texto.match(/ponto\s+de\s+refer(?:e|ê)ncia:\s*(.+)$/i);
+  return String(match?.[1] || "").trim();
+}
+
 function montarPontoFinalEntrega(registro: Record<string, unknown>) {
   const endereco = String(registro.endereco || "").trim();
   const numero = String(registro.numero || "").trim();
@@ -57,14 +70,19 @@ async function completarEnderecoPedido(
   supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
   pedido: Record<string, unknown>,
 ) {
-  const endereco = String(pedido.endereco || "").trim();
+  const enderecoBruto = String(pedido.endereco || "").trim();
+  const endereco = limparEnderecoDePontoReferencia(enderecoBruto);
   const bairro = String(pedido.bairro || "").trim();
   const cidade = String(pedido.cidade || "").trim();
   const numero = String(pedido.numero || "").trim();
   const cep = String(pedido.cep || "").trim();
-  const ponto = String(pedido.ponto_referencia || "").trim();
+  const ponto = String(pedido.ponto_referencia || "").trim() || extrairPontoReferenciaDeEndereco(enderecoBruto);
   if (endereco && (bairro || cidade || numero || cep || ponto)) {
-    return pedido;
+    return {
+      ...pedido,
+      endereco,
+      ponto_referencia: ponto,
+    };
   }
 
   const whatsapp = normalizarNumero(String(pedido.whatsapp || ""));
@@ -93,14 +111,19 @@ async function completarEnderecoPedido(
 
   if (!cliente) return pedido;
 
+  const enderecoClienteBruto = String(cliente.endereco || "").trim();
+  const enderecoCliente = limparEnderecoDePontoReferencia(enderecoClienteBruto);
+  const pontoCliente =
+    String(cliente.ponto_referencia || "").trim() || extrairPontoReferenciaDeEndereco(enderecoClienteBruto);
+
   return {
     ...pedido,
-    endereco: endereco || String(cliente.endereco || ""),
+    endereco: endereco || enderecoCliente,
     numero: numero || String(cliente.numero || ""),
     bairro: bairro || String(cliente.bairro || ""),
     cidade: cidade || String(cliente.cidade || ""),
     cep: cep || String(cliente.cep || ""),
-    ponto_referencia: ponto || String(cliente.ponto_referencia || ""),
+    ponto_referencia: ponto || pontoCliente,
   };
 }
 
@@ -213,8 +236,8 @@ export async function POST(request: NextRequest) {
   if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
     return NextResponse.json({ ok: false, error: "Dados da entrega invalidos." }, { status: 400 });
   }
-  if (action === "accept" && (!Number.isInteger(entregadorId) || entregadorId <= 0 || phoneSuffix.length !== 4)) {
-    return NextResponse.json({ ok: false, error: "Selecione o entregador e informe os 4 digitos finais do telefone." }, { status: 400 });
+  if (action === "accept" && phoneSuffix.length !== 4) {
+    return NextResponse.json({ ok: false, error: "Informe os 4 digitos finais do telefone do entregador." }, { status: 400 });
   }
 
   const supabase = getServiceSupabase();
@@ -277,12 +300,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Esta entrega ja foi aceita." }, { status: 400 });
   }
 
-  const { data: entregador, error: erroEntregador } = await supabase
-    .from("entregadores")
-    .select("id,nome,ativo,whatsapp")
-    .eq("id", entregadorId)
-    .eq("ativo", true)
-    .maybeSingle();
+  let entregador = null as { id?: number | null; nome?: string | null; ativo?: boolean | null; whatsapp?: string | null } | null;
+  let erroEntregador = null as { message?: string } | null;
+
+  if (Number.isInteger(entregadorId) && entregadorId > 0) {
+    const resposta = await supabase
+      .from("entregadores")
+      .select("id,nome,ativo,whatsapp")
+      .eq("id", entregadorId)
+      .eq("ativo", true)
+      .maybeSingle();
+    entregador = resposta.data;
+    erroEntregador = resposta.error;
+  } else {
+    const { data: entregadoresPorCodigo, error } = await supabase
+      .from("entregadores")
+      .select("id,nome,ativo,whatsapp")
+      .eq("ativo", true)
+      .ilike("whatsapp", `%${phoneSuffix}`);
+    erroEntregador = error;
+    const candidatos = (entregadoresPorCodigo || []).filter((item) =>
+      normalizarNumero(String(item.whatsapp || "")).endsWith(phoneSuffix),
+    );
+    if (candidatos.length === 1) {
+      entregador = candidatos[0];
+    } else if (candidatos.length > 1) {
+      return NextResponse.json(
+        { ok: false, error: "Codigo duplicado entre motoboys. Cadastre finais de telefone diferentes para cada entregador." },
+        { status: 400 },
+      );
+    }
+  }
 
   if (erroEntregador || !entregador) {
     return NextResponse.json(
@@ -290,7 +338,7 @@ export async function POST(request: NextRequest) {
         ok: false,
         error: tabelaAusente(erroEntregador)
           ? "Cadastre as tabelas de entregadores no banco antes de usar o QR de entrega."
-          : erroEntregador?.message || "Entregador nao encontrado.",
+          : erroEntregador?.message || "Entregador nao encontrado para este codigo.",
       },
       { status: 404 },
     );
@@ -307,7 +355,7 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString();
   const payload = {
     pedido_id: pedidoId,
-    entregador_id: entregadorId,
+    entregador_id: Number(entregador.id || 0),
     status: "aceita",
     aceito_em: now,
     acerto_status: "pendente",

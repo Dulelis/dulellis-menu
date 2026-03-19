@@ -77,7 +77,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         setPedido(json.data.pedido);
         setEntrega(json.data.entrega || null);
         setEntregadores(json.data.entregadores || []);
-        setEntregadorId(Number(json.data.entrega?.entregador_id || json.data.entregadores?.[0]?.id || 0));
+        setEntregadorId(Number(json.data.entrega?.entregador_id || 0));
       } catch (error) {
         if (!ativo) return;
         setErro(error instanceof Error ? error.message : "Falha ao carregar a entrega.");
@@ -102,12 +102,10 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     entregadores.find((item) => Number(item.id) === Number(entrega?.entregador_id || entregadorId)) || null;
   const entregaAceita = Boolean(entrega?.aceito_em);
   const entregaFinalizada = String(entrega?.status || "").trim().toLowerCase() === "finalizada";
+  const enderecoCompleto = [pedido?.endereco, pedido?.numero].filter(Boolean).join(", ");
+  const localCompleto = [pedido?.bairro, pedido?.cidade].filter(Boolean).join(" - ");
 
   async function aceitarEntrega() {
-    if (!entregadorId) {
-      setErro("Selecione um entregador.");
-      return;
-    }
     if (codigoTelefone.replace(/\D/g, "").length !== 4) {
       setErro("Digite os 4 ultimos numeros do telefone do entregador.");
       return;
@@ -123,7 +121,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         body: JSON.stringify({
           action: "accept",
           pedido_id: pedidoId,
-          entregador_id: entregadorId,
           phone_suffix: codigoTelefone,
         }),
       });
@@ -214,8 +211,8 @@ export default function EntregaPageClient({ pedidoId }: Props) {
               <div className="mt-3 flex items-start gap-2 text-sm font-medium text-slate-700">
                 <MapPin size={16} className="mt-0.5 shrink-0 text-orange-500" />
                 <div>
-                  <p>{[pedido.endereco, pedido.numero].filter(Boolean).join(", ") || "Endereco nao informado"}</p>
-                  <p>{[pedido.bairro, pedido.cidade].filter(Boolean).join(" - ") || "Local nao informado"}</p>
+                  <p>{enderecoCompleto || "Endereco nao informado"}</p>
+                  <p>{localCompleto || "Local nao informado"}</p>
                   <p>CEP: {pedido.cep || "Nao informado"}</p>
                   <p>Ponto: {pedido.ponto_referencia || "Nao informado"}</p>
                 </div>
@@ -238,29 +235,15 @@ export default function EntregaPageClient({ pedidoId }: Props) {
               <p className="mt-1 text-sm font-bold text-slate-600">
                 {entregaAceita
                   ? "Entrega ja assumida. Finalize quando concluir."
-                  : "Selecione quem vai assumir a entrega e confirme com os 4 ultimos digitos do telefone."}
+                  : "Informe o codigo de 4 digitos do telefone do motoboy para assumir a entrega."}
               </p>
 
               {!entregaAceita ? (
                 <>
-                  <select
-                    className="mt-4 w-full rounded-2xl border border-orange-200 bg-white px-4 py-4 font-bold text-slate-700 outline-none"
-                    value={entregadorId}
-                    onChange={(event) => setEntregadorId(Number(event.target.value))}
-                  >
-                    <option value={0}>Selecione um entregador</option>
-                    {entregadores.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.nome}
-                        {item.modelo_moto ? ` - ${item.modelo_moto}` : ""}
-                        {item.placa_moto ? ` (${item.placa_moto})` : ""}
-                      </option>
-                    ))}
-                  </select>
                   <input
                     inputMode="numeric"
                     maxLength={4}
-                    placeholder="4 ultimos numeros do telefone"
+                    placeholder="Codigo do motoboy"
                     className="mt-3 w-full rounded-2xl border border-orange-200 bg-white px-4 py-4 font-black tracking-[0.35em] text-slate-700 outline-none"
                     value={codigoTelefone}
                     onChange={(event) => setCodigoTelefone(event.target.value.replace(/\D/g, "").slice(0, 4))}
