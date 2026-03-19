@@ -196,6 +196,13 @@ export default function EntregaPageClient({ pedidoId }: Props) {
           </div>
         ) : pedido ? (
           <div className="mt-6 space-y-5">
+            {entregaFinalizada ? (
+              <div className="rounded-[1.75rem] border border-emerald-200 bg-emerald-50 p-6 text-center">
+                <p className="text-xl font-black uppercase tracking-[0.2em] text-emerald-700">entrega concluida</p>
+              </div>
+            ) : null}
+
+            {!entregaFinalizada ? (
             <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -229,13 +236,13 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                 </a>
               ) : null}
             </div>
+            ) : null}
 
+            {!entregaFinalizada ? (
             <div className="rounded-[1.75rem] border border-orange-200 bg-orange-50 p-5">
               <p className="text-[11px] font-black uppercase tracking-[0.25em] text-orange-600">Entregador</p>
               <p className="mt-1 text-sm font-bold text-slate-600">
-                {entregaFinalizada
-                  ? "Entrega finalizada. O aceite fica bloqueado e esta pagina esta somente para consulta."
-                  : entregaAceita
+                {entregaAceita
                   ? "Entrega ja assumida. Finalize quando concluir."
                   : "Informe o codigo de 4 digitos do telefone do motoboy para assumir a entrega."}
               </p>
@@ -274,17 +281,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
               {entrega?.aceito_em ? (
                 <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
                   Entrega registrada em {new Date(String(entrega.aceito_em)).toLocaleString("pt-BR")}
-                  {entregaFinalizada && entrega?.concluido_em
-                    ? ` e finalizada em ${new Date(String(entrega.concluido_em)).toLocaleString("pt-BR")}.`
-                    : entrega?.acerto_status === "acertado"
-                      ? " e ja consta como acertada."
-                      : "."}
-                </div>
-              ) : null}
-
-              {entregaFinalizada ? (
-                <div className="mt-4 rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700">
-                  Aceite bloqueado apos a finalizacao da entrega.
+                  {entrega?.acerto_status === "acertado" ? " e ja consta como acertada." : "."}
                 </div>
               ) : null}
 
@@ -306,7 +303,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                 </button>
               ) : null}
 
-              {entregaAceita && !entregaFinalizada ? (
+              {entregaAceita ? (
                 <button
                   type="button"
                   onClick={() => void finalizarEntrega()}
@@ -324,6 +321,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                 </p>
               ) : null}
             </div>
+            ) : null}
           </div>
         ) : null}
       </section>
