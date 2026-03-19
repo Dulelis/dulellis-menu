@@ -27,6 +27,83 @@ function montarLinkMaps(pedido: Record<string, unknown>) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(partes.join(", "))}`;
 }
 
+function whatsappEquivalente(a: string, b: string) {
+  const wa = normalizarNumero(a);
+  const wb = normalizarNumero(b);
+  if (!wa || !wb) return false;
+  if (wa === wb) return true;
+  return wa.slice(-10) === wb.slice(-10);
+}
+
+function montarPontoFinalEntrega(registro: Record<string, unknown>) {
+  const endereco = String(registro.endereco || "").trim();
+  const numero = String(registro.numero || "").trim();
+  const bairro = String(registro.bairro || "").trim();
+  const cidade = String(registro.cidade || "").trim() || "Navegantes";
+  const cep = normalizarNumero(String(registro.cep || "")).slice(0, 8);
+  const ponto = String(registro.ponto_referencia || "").trim();
+  return [
+    [endereco, numero].filter(Boolean).join(", "),
+    bairro,
+    cidade,
+    cep ? `CEP ${cep}` : "",
+    ponto ? `Ponto: ${ponto}` : "",
+  ]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+async function completarEnderecoPedido(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  pedido: Record<string, unknown>,
+) {
+  const endereco = String(pedido.endereco || "").trim();
+  const bairro = String(pedido.bairro || "").trim();
+  const cidade = String(pedido.cidade || "").trim();
+  const numero = String(pedido.numero || "").trim();
+  const cep = String(pedido.cep || "").trim();
+  const ponto = String(pedido.ponto_referencia || "").trim();
+  if (endereco && (bairro || cidade || numero || cep || ponto)) {
+    return pedido;
+  }
+
+  const whatsapp = normalizarNumero(String(pedido.whatsapp || ""));
+  if (whatsapp.length < 10) return pedido;
+
+  const { data: exato } = await supabase
+    .from("clientes")
+    .select("endereco,numero,bairro,cidade,cep,ponto_referencia,whatsapp")
+    .eq("whatsapp", whatsapp)
+    .maybeSingle();
+
+  let cliente = exato as Record<string, unknown> | null;
+  if (!cliente) {
+    const sufixo = whatsapp.slice(-8);
+    const { data: candidatos } = await supabase
+      .from("clientes")
+      .select("endereco,numero,bairro,cidade,cep,ponto_referencia,whatsapp")
+      .ilike("whatsapp", `%${sufixo}%`)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    cliente =
+      ((candidatos || []) as Record<string, unknown>[]).find((item) =>
+        whatsappEquivalente(String(item.whatsapp || ""), whatsapp),
+      ) || null;
+  }
+
+  if (!cliente) return pedido;
+
+  return {
+    ...pedido,
+    endereco: endereco || String(cliente.endereco || ""),
+    numero: numero || String(cliente.numero || ""),
+    bairro: bairro || String(cliente.bairro || ""),
+    cidade: cidade || String(cliente.cidade || ""),
+    cep: cep || String(cliente.cep || ""),
+    ponto_referencia: ponto || String(cliente.ponto_referencia || ""),
+  };
+}
+
 export async function GET(request: NextRequest) {
   cleanupExpiredBuckets();
   const ip = getClientIp(request);
@@ -52,15 +129,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
-  const { data: pedido, error: erroPedido } = await supabase
+  const { data: pedidoBase, error: erroPedido } = await supabase
     .from("pedidos")
     .select("id,cliente_nome,whatsapp,endereco,numero,bairro,cidade,cep,ponto_referencia,status_pedido,total,taxa_entrega,created_at")
     .eq("id", pedidoId)
     .maybeSingle();
 
-  if (erroPedido || !pedido) {
+  if (erroPedido || !pedidoBase) {
     return NextResponse.json({ ok: false, error: erroPedido?.message || "Pedido nao encontrado." }, { status: 404 });
   }
+  const pedido = await completarEnderecoPedido(supabase, (pedidoBase || {}) as Record<string, unknown>);
 
   const { data: entregadores, error: erroEntregadores } = await supabase
     .from("entregadores")
@@ -82,7 +160,7 @@ export async function GET(request: NextRequest) {
 
   const { data: entrega, error: erroEntrega } = await supabase
     .from("entregas")
-    .select("id,pedido_id,entregador_id,status,aceito_em,acerto_status,acerto_em,observacao,created_at")
+    .select("id,pedido_id,entregador_id,status,aceito_em,concluido_em,acerto_status,acerto_em,observacao,created_at")
     .eq("pedido_id", pedidoId)
     .maybeSingle();
 
@@ -122,14 +200,21 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as {
+    action?: "accept" | "finish";
     pedido_id?: number;
     entregador_id?: number;
+    phone_suffix?: string;
   };
 
+  const action = String(body.action || "accept").trim().toLowerCase();
   const pedidoId = Number(body.pedido_id || 0);
   const entregadorId = Number(body.entregador_id || 0);
-  if (!Number.isInteger(pedidoId) || pedidoId <= 0 || !Number.isInteger(entregadorId) || entregadorId <= 0) {
+  const phoneSuffix = normalizarNumero(String(body.phone_suffix || "")).slice(-4);
+  if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
     return NextResponse.json({ ok: false, error: "Dados da entrega invalidos." }, { status: 400 });
+  }
+  if (action === "accept" && (!Number.isInteger(entregadorId) || entregadorId <= 0 || phoneSuffix.length !== 4)) {
+    return NextResponse.json({ ok: false, error: "Selecione o entregador e informe os 4 digitos finais do telefone." }, { status: 400 });
   }
 
   const supabase = getServiceSupabase();
@@ -137,19 +222,68 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
-  const [{ data: pedido, error: erroPedido }, { data: entregador, error: erroEntregador }] = await Promise.all([
-    supabase.from("pedidos").select("id,status_pedido").eq("id", pedidoId).maybeSingle(),
+  const [{ data: pedidoBase, error: erroPedido }, { data: entregaAtual, error: erroEntregaAtual }] = await Promise.all([
     supabase
-      .from("entregadores")
-      .select("id,nome,ativo")
-      .eq("id", entregadorId)
-      .eq("ativo", true)
+      .from("pedidos")
+      .select("id,status_pedido,cliente_nome,whatsapp,endereco,numero,bairro,cidade,cep,ponto_referencia")
+      .eq("id", pedidoId)
+      .maybeSingle(),
+    supabase
+      .from("entregas")
+      .select("id,pedido_id,entregador_id,status,aceito_em,concluido_em,acerto_status,acerto_em,observacao")
+      .eq("pedido_id", pedidoId)
       .maybeSingle(),
   ]);
 
-  if (erroPedido || !pedido) {
+  if (erroPedido || !pedidoBase) {
     return NextResponse.json({ ok: false, error: erroPedido?.message || "Pedido nao encontrado." }, { status: 404 });
   }
+  if (erroEntregaAtual && !tabelaAusente(erroEntregaAtual)) {
+    return NextResponse.json({ ok: false, error: erroEntregaAtual.message }, { status: 500 });
+  }
+
+  const pedido = await completarEnderecoPedido(supabase, (pedidoBase || {}) as Record<string, unknown>);
+  const pontoFinalEntrega = montarPontoFinalEntrega(pedido);
+
+  if (action === "finish") {
+    if (!entregaAtual) {
+      return NextResponse.json({ ok: false, error: "A entrega ainda nao foi aceita." }, { status: 400 });
+    }
+
+    if (String(entregaAtual.status || "").trim().toLowerCase() === "finalizada") {
+      return NextResponse.json({ ok: false, error: "Esta entrega ja foi finalizada." }, { status: 400 });
+    }
+
+    const now = new Date().toISOString();
+    const { data: entregaFinalizada, error: erroFinalizacao } = await supabase
+      .from("entregas")
+      .update({
+        status: "finalizada",
+        concluido_em: now,
+        observacao: pontoFinalEntrega,
+      })
+      .eq("id", Number(entregaAtual.id || 0))
+      .select("*")
+      .maybeSingle();
+
+    if (erroFinalizacao) {
+      return NextResponse.json({ ok: false, error: erroFinalizacao.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, data: { entrega: entregaFinalizada } });
+  }
+
+  if (entregaAtual) {
+    return NextResponse.json({ ok: false, error: "Esta entrega ja foi aceita." }, { status: 400 });
+  }
+
+  const { data: entregador, error: erroEntregador } = await supabase
+    .from("entregadores")
+    .select("id,nome,ativo,whatsapp")
+    .eq("id", entregadorId)
+    .eq("ativo", true)
+    .maybeSingle();
+
   if (erroEntregador || !entregador) {
     return NextResponse.json(
       {
@@ -162,6 +296,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const whatsappEntregador = normalizarNumero(String(entregador.whatsapp || ""));
+  if (whatsappEntregador.length < 4) {
+    return NextResponse.json({ ok: false, error: "Este entregador precisa ter WhatsApp valido no cadastro." }, { status: 400 });
+  }
+  if (!whatsappEntregador.endsWith(phoneSuffix)) {
+    return NextResponse.json({ ok: false, error: "Os 4 digitos informados nao conferem com o telefone do entregador." }, { status: 400 });
+  }
+
   const now = new Date().toISOString();
   const payload = {
     pedido_id: pedidoId,
@@ -170,11 +312,12 @@ export async function POST(request: NextRequest) {
     aceito_em: now,
     acerto_status: "pendente",
     acerto_em: null,
+    observacao: pontoFinalEntrega,
   };
 
   const { data: entrega, error: erroEntrega } = await supabase
     .from("entregas")
-    .upsert(payload, { onConflict: "pedido_id" })
+    .insert([payload])
     .select("*")
     .maybeSingle();
 

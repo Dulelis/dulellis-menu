@@ -17,7 +17,9 @@ type Entrega = {
   entregador_id?: number | null;
   status?: string | null;
   aceito_em?: string | null;
+  concluido_em?: string | null;
   acerto_status?: string | null;
+  observacao?: string | null;
 };
 
 type PedidoEntrega = {
@@ -57,6 +59,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const [entrega, setEntrega] = useState<Entrega | null>(null);
   const [entregadores, setEntregadores] = useState<Entregador[]>([]);
   const [entregadorId, setEntregadorId] = useState<number>(0);
+  const [codigoTelefone, setCodigoTelefone] = useState("");
 
   useEffect(() => {
     let ativo = true;
@@ -97,10 +100,16 @@ export default function EntregaPageClient({ pedidoId }: Props) {
 
   const entregadorAtual =
     entregadores.find((item) => Number(item.id) === Number(entrega?.entregador_id || entregadorId)) || null;
+  const entregaAceita = Boolean(entrega?.aceito_em);
+  const entregaFinalizada = String(entrega?.status || "").trim().toLowerCase() === "finalizada";
 
   async function aceitarEntrega() {
     if (!entregadorId) {
       setErro("Selecione um entregador.");
+      return;
+    }
+    if (codigoTelefone.replace(/\D/g, "").length !== 4) {
+      setErro("Digite os 4 ultimos numeros do telefone do entregador.");
       return;
     }
 
@@ -111,7 +120,12 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       const res = await fetch("/api/public/delivery", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pedido_id: pedidoId, entregador_id: entregadorId }),
+        body: JSON.stringify({
+          action: "accept",
+          pedido_id: pedidoId,
+          entregador_id: entregadorId,
+          phone_suffix: codigoTelefone,
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -127,8 +141,36 @@ export default function EntregaPageClient({ pedidoId }: Props) {
           ? `Entrega aceita por ${json.data.entregador.nome}.`
           : "Entrega aceita com sucesso.",
       );
+      setCodigoTelefone("");
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Falha ao aceitar entrega.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function finalizarEntrega() {
+    setSalvando(true);
+    setErro("");
+    setSucesso("");
+    try {
+      const res = await fetch("/api/public/delivery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "finish", pedido_id: pedidoId }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        data?: { entrega?: Entrega | null };
+      };
+      if (!res.ok || json.ok === false || !json.data?.entrega) {
+        throw new Error(json.error || "Nao foi possivel finalizar a entrega.");
+      }
+      setEntrega(json.data.entrega);
+      setSucesso("Entrega finalizada com sucesso.");
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : "Falha ao finalizar entrega.");
     } finally {
       setSalvando(false);
     }
@@ -194,23 +236,37 @@ export default function EntregaPageClient({ pedidoId }: Props) {
             <div className="rounded-[1.75rem] border border-orange-200 bg-orange-50 p-5">
               <p className="text-[11px] font-black uppercase tracking-[0.25em] text-orange-600">Entregador</p>
               <p className="mt-1 text-sm font-bold text-slate-600">
-                Selecione quem vai assumir esta entrega.
+                {entregaAceita
+                  ? "Entrega ja assumida. Finalize quando concluir."
+                  : "Selecione quem vai assumir a entrega e confirme com os 4 ultimos digitos do telefone."}
               </p>
 
-              <select
-                className="mt-4 w-full rounded-2xl border border-orange-200 bg-white px-4 py-4 font-bold text-slate-700 outline-none"
-                value={entregadorId}
-                onChange={(event) => setEntregadorId(Number(event.target.value))}
-              >
-                <option value={0}>Selecione um entregador</option>
-                {entregadores.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.nome}
-                    {item.modelo_moto ? ` - ${item.modelo_moto}` : ""}
-                    {item.placa_moto ? ` (${item.placa_moto})` : ""}
-                  </option>
-                ))}
-              </select>
+              {!entregaAceita ? (
+                <>
+                  <select
+                    className="mt-4 w-full rounded-2xl border border-orange-200 bg-white px-4 py-4 font-bold text-slate-700 outline-none"
+                    value={entregadorId}
+                    onChange={(event) => setEntregadorId(Number(event.target.value))}
+                  >
+                    <option value={0}>Selecione um entregador</option>
+                    {entregadores.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.nome}
+                        {item.modelo_moto ? ` - ${item.modelo_moto}` : ""}
+                        {item.placa_moto ? ` (${item.placa_moto})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder="4 ultimos numeros do telefone"
+                    className="mt-3 w-full rounded-2xl border border-orange-200 bg-white px-4 py-4 font-black tracking-[0.35em] text-slate-700 outline-none"
+                    value={codigoTelefone}
+                    onChange={(event) => setCodigoTelefone(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                  />
+                </>
+              ) : null}
 
               {entregadorAtual ? (
                 <div className="mt-4 rounded-2xl border border-white/70 bg-white/90 p-4 text-sm font-medium text-slate-700">
@@ -232,21 +288,44 @@ export default function EntregaPageClient({ pedidoId }: Props) {
 
               {entrega?.aceito_em ? (
                 <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
-                  Entrega registrada em{" "}
-                  {new Date(String(entrega.aceito_em)).toLocaleString("pt-BR")}
-                  {entrega?.acerto_status === "acertado" ? " e já consta como acertada." : "."}
+                  Entrega registrada em {new Date(String(entrega.aceito_em)).toLocaleString("pt-BR")}
+                  {entregaFinalizada && entrega?.concluido_em
+                    ? ` e finalizada em ${new Date(String(entrega.concluido_em)).toLocaleString("pt-BR")}.`
+                    : entrega?.acerto_status === "acertado"
+                      ? " e ja consta como acertada."
+                      : "."}
                 </div>
               ) : null}
 
-              <button
-                type="button"
-                onClick={() => void aceitarEntrega()}
-                disabled={salvando || !entregadores.length}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {salvando ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />}
-                {entrega?.entregador_id ? "Atualizar aceite" : "Aceitar entrega"}
-              </button>
+              {entrega?.observacao ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-600">
+                  <strong className="text-slate-900">Ponto final:</strong> {entrega.observacao}
+                </div>
+              ) : null}
+
+              {!entregaAceita ? (
+                <button
+                  type="button"
+                  onClick={() => void aceitarEntrega()}
+                  disabled={salvando || !entregadores.length}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {salvando ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />}
+                  Aceitar entrega
+                </button>
+              ) : null}
+
+              {entregaAceita && !entregaFinalizada ? (
+                <button
+                  type="button"
+                  onClick={() => void finalizarEntrega()}
+                  disabled={salvando}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {salvando ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />}
+                  Finalizar entrega
+                </button>
+              ) : null}
 
               {!entregadores.length ? (
                 <p className="mt-4 text-sm font-bold text-rose-600">

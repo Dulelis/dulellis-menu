@@ -804,6 +804,10 @@ function AdminPageContent() {
       alert('Informe o nome do entregador.');
       return;
     }
+    if (payload.whatsapp.length < 10) {
+      alert('Informe um WhatsApp valido para usar os 4 digitos no aceite da entrega.');
+      return;
+    }
 
     try {
       if (editandoEntregadorId) {
@@ -2333,6 +2337,10 @@ function AdminPageContent() {
                       Taxas do dia: <span className="text-slate-900">R$ {Number(entregador.valorTaxasHoje || 0).toFixed(2)}</span>
                     </div>
 
+                    <div className="mt-3 rounded-2xl border border-orange-100 bg-orange-50 p-3 text-xs font-bold text-orange-700">
+                      Codigo de aceite: {String(entregador.whatsapp || '').replace(/\D/g, '').slice(-4) || '----'}
+                    </div>
+
                     {entregador.observacao ? (
                       <p className="mt-3 text-xs font-medium italic text-slate-500">{entregador.observacao}</p>
                     ) : null}
@@ -2365,6 +2373,7 @@ function AdminPageContent() {
                 <div className="mt-4 space-y-3 max-h-[70vh] overflow-y-auto pr-1">
                   {entregasDetalhadas.length > 0 ? entregasDetalhadas.map((entrega) => {
                     const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
+                    const statusEntrega = String(entrega?.status || '').trim() || 'aceita';
                     return (
                       <div key={entrega.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                         <div className="flex items-start justify-between gap-3">
@@ -2386,7 +2395,8 @@ function AdminPageContent() {
                           <p><strong className="text-slate-800">Aceite:</strong> {entrega?.aceito_em ? new Date(entrega.aceito_em).toLocaleString('pt-BR') : 'Nao informado'}</p>
                           <p><strong className="text-slate-800">Taxa:</strong> R$ {Math.max(0, Number(entrega?.pedido?.taxa_entrega || 0)).toFixed(2)}</p>
                           <p><strong className="text-slate-800">Total pedido:</strong> R$ {Number(entrega?.pedido?.total || 0).toFixed(2)}</p>
-                          <p><strong className="text-slate-800">Status:</strong> {String(entrega?.pedido?.status_pedido || entrega?.status || 'aceita')}</p>
+                          <p><strong className="text-slate-800">Status:</strong> {statusEntrega}</p>
+                          <p><strong className="text-slate-800">Finalizada:</strong> {entrega?.concluido_em ? new Date(entrega.concluido_em).toLocaleString('pt-BR') : 'Nao'}</p>
                         </div>
 
                         {entrega?.pedido ? (
@@ -2394,6 +2404,12 @@ function AdminPageContent() {
                             {[String(entrega.pedido.endereco || '').trim(), String(entrega.pedido.numero || '').trim(), String(entrega.pedido.bairro || '').trim(), String(entrega.pedido.cidade || '').trim()]
                               .filter(Boolean)
                               .join(' - ')}
+                          </p>
+                        ) : null}
+
+                        {entrega?.observacao ? (
+                          <p className="mt-2 text-xs font-medium text-slate-500">
+                            <strong className="text-slate-700">Ponto final:</strong> {String(entrega.observacao)}
                           </p>
                         ) : null}
 
@@ -3117,6 +3133,9 @@ function AdminPageContent() {
                 value={novoEntregador.whatsapp}
                 onChange={e => setNovoEntregador({ ...novoEntregador, whatsapp: e.target.value })}
               />
+              <p className="text-[11px] font-bold text-slate-500">
+                Os 4 ultimos numeros do WhatsApp serao usados para o aceite da entrega no QR.
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <input
                   placeholder="Modelo da moto"
