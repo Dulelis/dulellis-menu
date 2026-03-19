@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 
 const QZ_TRAY_SCRIPT_URL = 'https://unpkg.com/qz-tray@2.2.4/qz-tray.js';
-const QRCODE_SCRIPT_URL = 'https://unpkg.com/qrcode@1.5.4/build/qrcode.min.js';
 const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
 
 type QzGlobal = {
@@ -1129,7 +1128,10 @@ function AdminPageContent() {
     const itensHtml = itens.length
       ? itens.map((item: any) => `<tr><td>${Number(item.qtd || 1)}x ${String(item.nome || 'Item')}</td><td style="text-align:right">R$ ${(Number(item.preco || 0) * Number(item.qtd || 0)).toFixed(2)}</td></tr>`).join('')
       : '<tr><td>Itens nao informados</td><td></td></tr>';
-    const linkMapsSerializado = JSON.stringify(linkMaps);
+    const qrCodeImageUrl = linkMaps
+      ? `https://quickchart.io/qr?size=160&margin=1&text=${encodeURIComponent(linkMaps)}`
+      : '';
+    const qrCodeImageUrlSerializado = JSON.stringify(qrCodeImageUrl);
 
     try {
       const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
@@ -1203,30 +1205,26 @@ function AdminPageContent() {
             ${linkMaps ? `
               <div style="margin-top:3.2mm;padding-top:2.4mm;border-top:1px dashed #cbd5e1;text-align:center;">
                 <div style="font-size:11px;font-weight:700;letter-spacing:.08em;">QR ENTREGA</div>
-                <canvas id="maps-qrcode" style="display:block;margin:2mm auto 1mm;"></canvas>
+                <img id="maps-qrcode" alt="QR de entrega" style="display:block;width:35mm;height:35mm;object-fit:contain;margin:2mm auto 1mm;" />
                 <div style="font-size:10px;line-height:1.25;font-weight:600;">Aponte a camera para abrir no Maps</div>
               </div>
             ` : ''}
           </div>
-          ${linkMaps ? `<script src="${QRCODE_SCRIPT_URL}"></script>` : ''}
           <script>
             window.onload = () => {
-              const mapsUrl = ${linkMapsSerializado};
+              const qrCodeImageUrl = ${qrCodeImageUrlSerializado};
               const imprimir = () => {
                 window.onafterprint = () => window.close();
                 window.print();
               };
-              if (mapsUrl && window.QRCode && document.getElementById('maps-qrcode')) {
-                window.QRCode.toCanvas(
-                  document.getElementById('maps-qrcode'),
-                  mapsUrl,
-                  { width: 140, margin: 1 },
-                  imprimir,
-                );
+              const qrImage = document.getElementById('maps-qrcode');
+              if (qrCodeImageUrl && qrImage instanceof HTMLImageElement) {
+                qrImage.onload = imprimir;
+                qrImage.onerror = imprimir;
+                qrImage.src = qrCodeImageUrl;
                 return;
               }
-              window.print();
-              window.onafterprint = () => window.close();
+              imprimir();
             };
           </script>
         </body>
