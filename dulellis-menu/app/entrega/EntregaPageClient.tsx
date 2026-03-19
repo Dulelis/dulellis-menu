@@ -233,7 +233,9 @@ export default function EntregaPageClient({ pedidoId }: Props) {
             <div className="rounded-[1.75rem] border border-orange-200 bg-orange-50 p-5">
               <p className="text-[11px] font-black uppercase tracking-[0.25em] text-orange-600">Entregador</p>
               <p className="mt-1 text-sm font-bold text-slate-600">
-                {entregaAceita
+                {entregaFinalizada
+                  ? "Entrega finalizada. O aceite fica bloqueado e esta pagina esta somente para consulta."
+                  : entregaAceita
                   ? "Entrega ja assumida. Finalize quando concluir."
                   : "Informe o codigo de 4 digitos do telefone do motoboy para assumir a entrega."}
               </p>
@@ -277,6 +279,12 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                     : entrega?.acerto_status === "acertado"
                       ? " e ja consta como acertada."
                       : "."}
+                </div>
+              ) : null}
+
+              {entregaFinalizada ? (
+                <div className="mt-4 rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700">
+                  Aceite bloqueado apos a finalizacao da entrega.
                 </div>
               ) : null}
 

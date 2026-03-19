@@ -332,7 +332,14 @@ export async function POST(request: NextRequest) {
   }
 
   if (entregaAtual) {
-    return NextResponse.json({ ok: false, error: "Esta entrega ja foi aceita." }, { status: 400 });
+    const statusEntregaAtual = String(entregaAtual.status || "").trim().toLowerCase();
+    return NextResponse.json(
+      {
+        ok: false,
+        error: statusEntregaAtual === "finalizada" ? "Esta entrega ja foi finalizada e nao aceita novo aceite." : "Esta entrega ja foi aceita.",
+      },
+      { status: 400 },
+    );
   }
 
   let entregador = null as { id?: number | null; nome?: string | null; ativo?: boolean | null; whatsapp?: string | null } | null;
