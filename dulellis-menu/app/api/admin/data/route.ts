@@ -2,6 +2,15 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isAdminRequestAuthorized } from "@/lib/admin-request";
 import { getServiceSupabase } from "@/lib/server-supabase";
 
+function tabelaAusente(error: { message?: string } | null) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    message.includes("does not exist") ||
+    message.includes("could not find the table") ||
+    message.includes("relation") && message.includes("does not exist")
+  );
+}
+
 export async function GET(request: NextRequest) {
   const autorizado = await isAdminRequestAuthorized(request);
   if (!autorizado) {
@@ -13,7 +22,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
-  const [resEst, resCli, resPed, resTaxas, resProm, resPropagandas, resHorario] = await Promise.all([
+  const [resEst, resCli, resPed, resTaxas, resProm, resPropagandas, resHorario, resEntregadores, resEntregas] = await Promise.all([
     supabase.from("estoque").select("*").order("nome"),
     supabase.from("clientes").select("*").order("created_at", { ascending: false }),
     supabase.from("pedidos").select("*").order("created_at", { ascending: false }),
@@ -26,6 +35,8 @@ export async function GET(request: NextRequest) {
       .order("id", { ascending: true })
       .limit(1)
       .maybeSingle(),
+    supabase.from("entregadores").select("*").order("nome"),
+    supabase.from("entregas").select("*").order("aceito_em", { ascending: false }),
   ]);
 
   const erro =
@@ -37,8 +48,14 @@ export async function GET(request: NextRequest) {
     resPropagandas.error ||
     resHorario.error;
 
-  if (erro) {
-    return NextResponse.json({ ok: false, error: erro.message }, { status: 500 });
+  const erroEntregadores = tabelaAusente(resEntregadores.error) ? null : resEntregadores.error;
+  const erroEntregas = tabelaAusente(resEntregas.error) ? null : resEntregas.error;
+
+  if (erro || erroEntregadores || erroEntregas) {
+    return NextResponse.json(
+      { ok: false, error: erro?.message || erroEntregadores?.message || erroEntregas?.message },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({
@@ -51,6 +68,8 @@ export async function GET(request: NextRequest) {
       promocoes: resProm.data || [],
       propagandas: resPropagandas.data || [],
       horario: resHorario.data || null,
+      entregadores: resEntregadores.data || [],
+      entregas: resEntregas.data || [],
     },
   });
 }

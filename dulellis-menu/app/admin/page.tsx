@@ -10,7 +10,7 @@ import { supabase } from '@/lib/supabase';
 import {
   Package, Users, PlusCircle, Minus, Plus,
   Trash2, Pencil, Loader2, Camera, Image as ImageIcon,
-  Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map as MapIcon, RotateCcw, ChevronDown, ChevronUp, BadgePercent, Megaphone, Clock3
+  Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map as MapIcon, RotateCcw, ChevronDown, ChevronUp, BadgePercent, Megaphone, Clock3, Bike, BellRing
 } from 'lucide-react';
 
 const QZ_TRAY_SCRIPT_URL = 'https://unpkg.com/qz-tray@2.2.4/qz-tray.js';
@@ -67,7 +67,7 @@ const STATUS_PEDIDO_FLUXO: Record<string, { label: string; proximo: string } | n
   saiu_entrega: null,
 };
 
-const ADMIN_TABS = ['painel', 'estoque', 'promocoes', 'propagandas', 'horario', 'clientes', 'taxas', 'vendas', 'relatorios'] as const;
+const ADMIN_TABS = ['painel', 'estoque', 'promocoes', 'propagandas', 'horario', 'clientes', 'taxas', 'entregadores', 'vendas', 'relatorios'] as const;
 type AdminTab = (typeof ADMIN_TABS)[number];
 
 function normalizarAdminTab(valor: string | null): AdminTab {
@@ -84,6 +84,8 @@ function AdminPageContent() {
   const [taxas, setTaxas] = useState<any[]>([]); 
   const [promocoes, setPromocoes] = useState<any[]>([]);
   const [propagandas, setPropagandas] = useState<any[]>([]);
+  const [entregadores, setEntregadores] = useState<any[]>([]);
+  const [entregas, setEntregas] = useState<any[]>([]);
   const [horarioFuncionamento, setHorarioFuncionamento] = useState({
     id: null as number | null,
     hora_abertura: '08:00',
@@ -103,6 +105,9 @@ function AdminPageContent() {
   const [editandoPromocaoId, setEditandoPromocaoId] = useState<number | null>(null);
   const [mostrarModalPropaganda, setMostrarModalPropaganda] = useState(false);
   const [editandoPropagandaId, setEditandoPropagandaId] = useState<number | null>(null);
+  const [mostrarModalEntregador, setMostrarModalEntregador] = useState(false);
+  const [editandoEntregadorId, setEditandoEntregadorId] = useState<number | null>(null);
+  const [alertaEntregaAceita, setAlertaEntregaAceita] = useState('');
   
   // Agora o padrão começa em 2km
   const [novaTaxa, setNovaTaxa] = useState({ bairro: 'Até 2km', taxa: 0 });
@@ -140,6 +145,15 @@ function AdminPageContent() {
     data_inicio: '',
     data_fim: '',
     ativa: true,
+  });
+  const [novoEntregador, setNovoEntregador] = useState({
+    nome: '',
+    whatsapp: '',
+    modelo_moto: '',
+    placa_moto: '',
+    cor_moto: '',
+    observacao: '',
+    ativo: true,
   });
   const hojeRef = new Date();
   const [mesRelatorio, setMesRelatorio] = useState(hojeRef.getMonth());
@@ -230,6 +244,8 @@ function AdminPageContent() {
         taxas?: any[];
         promocoes?: any[];
         propagandas?: any[];
+        entregadores?: any[];
+        entregas?: any[];
         horario?: {
           id?: number;
           hora_abertura?: string;
@@ -249,6 +265,8 @@ function AdminPageContent() {
     setTaxas(json.data?.taxas || []);
     setPromocoes(json.data?.promocoes || []);
     setPropagandas(json.data?.propagandas || []);
+    setEntregadores(json.data?.entregadores || []);
+    setEntregas(json.data?.entregas || []);
     if (json.data?.horario) {
       setHorarioFuncionamento({
         id: Number(json.data.horario.id),
@@ -301,10 +319,27 @@ function AdminPageContent() {
       agendarRecarga();
     };
 
+    const lidarMudancaEntrega = (payload: any) => {
+      const entregaAtualizada = payload?.new;
+      const status = String(entregaAtualizada?.status || '').trim().toLowerCase();
+      const entregadorId = Number(entregaAtualizada?.entregador_id || 0);
+      const pedidoId = Number(entregaAtualizada?.pedido_id || 0);
+      const nomeEntregador =
+        entregadores.find((item) => Number(item.id) === entregadorId)?.nome || 'Entregador';
+
+      if (status === 'aceita' && pedidoId > 0) {
+        setAlertaEntregaAceita(`${nomeEntregador} aceitou a entrega do pedido #${pedidoId}.`);
+      }
+
+      agendarRecarga();
+    };
+
     const channel = supabase
       .channel('admin-realtime-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, lidarMudancaPedido)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'entregas' }, lidarMudancaEntrega)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'estoque' }, agendarRecarga)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'entregadores' }, agendarRecarga)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'taxas_entrega' }, agendarRecarga)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'promocoes' }, agendarRecarga)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'propagandas' }, agendarRecarga)
@@ -322,7 +357,7 @@ function AdminPageContent() {
       }
       void supabase.removeChannel(channel);
     };
-  }, [carregarDados]);
+  }, [carregarDados, entregadores]);
 
   useEffect(() => {
     if (!QZ_PRINTER_NAME) return;
@@ -335,6 +370,12 @@ function AdminPageContent() {
     const timer = window.setInterval(aquecer, 15000);
     return () => window.clearInterval(timer);
   }, [garantirQzPronto]);
+
+  useEffect(() => {
+    if (!alertaEntregaAceita) return;
+    const timer = window.setTimeout(() => setAlertaEntregaAceita(''), 8000);
+    return () => window.clearTimeout(timer);
+  }, [alertaEntregaAceita]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
@@ -718,6 +759,96 @@ function AdminPageContent() {
     carregarDados();
   };
 
+  const fecharModalEntregador = () => {
+    setMostrarModalEntregador(false);
+    setEditandoEntregadorId(null);
+    setNovoEntregador({
+      nome: '',
+      whatsapp: '',
+      modelo_moto: '',
+      placa_moto: '',
+      cor_moto: '',
+      observacao: '',
+      ativo: true,
+    });
+  };
+
+  const abrirEdicaoEntregador = (entregador: any) => {
+    setEditandoEntregadorId(Number(entregador.id || 0));
+    setNovoEntregador({
+      nome: String(entregador.nome || ''),
+      whatsapp: String(entregador.whatsapp || ''),
+      modelo_moto: String(entregador.modelo_moto || ''),
+      placa_moto: String(entregador.placa_moto || ''),
+      cor_moto: String(entregador.cor_moto || ''),
+      observacao: String(entregador.observacao || ''),
+      ativo: entregador.ativo !== false,
+    });
+    setMostrarModalEntregador(true);
+  };
+
+  const salvarEntregador = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const payload = {
+      nome: String(novoEntregador.nome || '').trim(),
+      whatsapp: normalizarNumero(String(novoEntregador.whatsapp || '')),
+      modelo_moto: String(novoEntregador.modelo_moto || '').trim(),
+      placa_moto: String(novoEntregador.placa_moto || '').trim().toUpperCase(),
+      cor_moto: String(novoEntregador.cor_moto || '').trim(),
+      observacao: String(novoEntregador.observacao || '').trim(),
+      ativo: novoEntregador.ativo,
+    };
+
+    if (!payload.nome) {
+      alert('Informe o nome do entregador.');
+      return;
+    }
+
+    try {
+      if (editandoEntregadorId) {
+        await adminDb({
+          action: 'update_eq',
+          table: 'entregadores',
+          payload,
+          eq: { column: 'id', value: editandoEntregadorId },
+        });
+      } else {
+        await adminDb({ action: 'insert', table: 'entregadores', values: [payload] });
+      }
+      fecharModalEntregador();
+      await carregarDados();
+    } catch (error: any) {
+      alert(
+        String(error?.message || '').toLowerCase().includes('does not exist')
+          ? 'Rode o SQL create_entregadores_entregas.sql no Supabase antes de cadastrar entregadores.'
+          : `Erro ao salvar entregador: ${error.message}`,
+      );
+    }
+  };
+
+  const alternarAcertoEntrega = async (entrega: any) => {
+    const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
+    try {
+      await adminDb({
+        action: 'update_eq',
+        table: 'entregas',
+        payload: {
+          acerto_status: acertado ? 'pendente' : 'acertado',
+          acerto_em: acertado ? null : new Date().toISOString(),
+        },
+        eq: { column: 'id', value: Number(entrega?.id || 0) },
+      });
+      await carregarDados();
+    } catch (error: any) {
+      alert(
+        String(error?.message || '').toLowerCase().includes('does not exist')
+          ? 'Rode o SQL create_entregadores_entregas.sql no Supabase antes de usar os acertos de entrega.'
+          : `Erro ao atualizar acerto: ${error.message}`,
+      );
+    }
+  };
+
   const salvarHorarioFuncionamento = async (e: React.FormEvent) => {
     e.preventDefault();
     const abertura = normalizarHorarioInput(horarioFuncionamento.hora_abertura);
@@ -878,12 +1009,13 @@ function AdminPageContent() {
       cep,
     };
   }, []);
-  const montarLinkMapsPedido = useCallback((registro: any) => {
-    const { enderecoCompleto, bairro, cidade, cep } = montarEnderecoEntrega(registro);
-    const partesBusca = [enderecoCompleto, bairro, cidade, cep].filter(Boolean);
-    if (!partesBusca.length) return '';
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(partesBusca.join(', '))}`;
-  }, [montarEnderecoEntrega]);
+  const montarLinkAceiteEntrega = useCallback((registro: any) => {
+    const pedidoId = Number(registro?.id || 0);
+    if (!pedidoId) return '';
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    if (!origin) return '';
+    return `${origin}/entrega?pedido=${pedidoId}`;
+  }, []);
   const gerarQrCodeEscPos = useCallback((conteudo: string) => {
     const texto = String(conteudo || '').trim();
     if (!texto) return '';
@@ -989,7 +1121,7 @@ function AdminPageContent() {
     const descontoAplicado = Math.max(0, subtotal + taxaEntrega - valorTotal);
     const pontoReferencia = extrairPontoReferencia(pedidoCompleto);
     const { enderecoCompleto, bairro, cidade, cep } = montarEnderecoEntrega(pedidoCompleto);
-    const linkMaps = montarLinkMapsPedido(pedidoCompleto);
+    const linkAceiteEntrega = montarLinkAceiteEntrega(pedidoCompleto);
     const observacao = String(pedidoCompleto?.observacao || '').trim();
     const larguraLinha = 22;
 
@@ -1047,13 +1179,13 @@ function AdminPageContent() {
     const fonteNormal = '\x1d\x21\x00';
     const fonteDobro = '\x1d\x21\x11';
     const divisor = '----------------------\n';
-    const blocoQrMaps = linkMaps
+    const blocoQrMaps = linkAceiteEntrega
       ? alinharCentro +
         negritoOn +
         fonteNormal +
         'QR ENTREGA\n' +
         negritoOff +
-        gerarQrCodeEscPos(linkMaps) +
+        gerarQrCodeEscPos(linkAceiteEntrega) +
         '\n' +
         alinharEsquerda
       : '';
@@ -1082,7 +1214,7 @@ function AdminPageContent() {
       negritoOff +
       fonteNormal +
       '\x1d\x56\x41\x03';
-  }, [completarPedidoComCliente, gerarQrCodeEscPos, montarEnderecoEntrega, montarLinkMapsPedido]);
+  }, [completarPedidoComCliente, gerarQrCodeEscPos, montarEnderecoEntrega, montarLinkAceiteEntrega]);
   const prepararPopupImpressao = (popup: Window | null | undefined, pedidoId?: number) => {
     if (!popup || popup.closed) return;
     popup.document.open();
@@ -1122,14 +1254,14 @@ function AdminPageContent() {
     const descontoAplicado = Math.max(0, subtotal + taxaEntrega - Number(pedidoCompleto?.total || 0));
     const pontoReferencia = extrairPontoReferencia(pedidoCompleto);
     const { enderecoCompleto, bairro, cidade, cep } = montarEnderecoEntrega(pedidoCompleto);
-    const linkMaps = montarLinkMapsPedido(pedidoCompleto);
+    const linkAceiteEntrega = montarLinkAceiteEntrega(pedidoCompleto);
     const observacao = String(pedidoCompleto?.observacao || '').trim();
     const itens = parseItensPedido(pedidoCompleto);
     const itensHtml = itens.length
       ? itens.map((item: any) => `<tr><td>${Number(item.qtd || 1)}x ${String(item.nome || 'Item')}</td><td style="text-align:right">R$ ${(Number(item.preco || 0) * Number(item.qtd || 0)).toFixed(2)}</td></tr>`).join('')
       : '<tr><td>Itens nao informados</td><td></td></tr>';
-    const qrCodeImageUrl = linkMaps
-      ? `https://quickchart.io/qr?size=160&margin=1&text=${encodeURIComponent(linkMaps)}`
+    const qrCodeImageUrl = linkAceiteEntrega
+      ? `https://quickchart.io/qr?size=160&margin=1&text=${encodeURIComponent(linkAceiteEntrega)}`
       : '';
     const qrCodeImageUrlSerializado = JSON.stringify(qrCodeImageUrl);
 
@@ -1202,11 +1334,11 @@ function AdminPageContent() {
             <div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Entrega:</strong> R$ ${taxaEntrega.toFixed(2)}</div>
             <div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Desconto:</strong> R$ ${descontoAplicado.toFixed(2)}</div>
             <div style="font-weight:700;font-size:15px;margin-top:2.2mm;line-height:1.12;">Total: R$ ${Number(pedidoCompleto?.total || 0).toFixed(2)}</div>
-            ${linkMaps ? `
+            ${linkAceiteEntrega ? `
               <div style="margin-top:3.2mm;padding-top:2.4mm;border-top:1px dashed #cbd5e1;text-align:center;">
                 <div style="font-size:11px;font-weight:700;letter-spacing:.08em;">QR ENTREGA</div>
                 <img id="maps-qrcode" alt="QR de entrega" style="display:block;width:35mm;height:35mm;object-fit:contain;margin:2mm auto 1mm;" />
-                <div style="font-size:10px;line-height:1.25;font-weight:600;">Aponte a camera para abrir no Maps</div>
+                <div style="font-size:10px;line-height:1.25;font-weight:600;">Escaneie para aceitar e abrir no Maps</div>
               </div>
             ` : ''}
           </div>
@@ -1231,7 +1363,7 @@ function AdminPageContent() {
       </html>
     `);
     popup.document.close();
-  }, [completarPedidoComCliente, garantirQzPronto, montarCupomPedido, montarEnderecoEntrega, montarLinkMapsPedido]);
+  }, [completarPedidoComCliente, garantirQzPronto, montarCupomPedido, montarEnderecoEntrega, montarLinkAceiteEntrega]);
 
   useEffect(() => {
     imprimirPedidoAceitoRef.current = imprimirPedidoAceito;
@@ -1367,10 +1499,13 @@ function AdminPageContent() {
   });
 
   const faturamentoTotal = pedidosDoMesRelatorio.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
-  const inicioDia = new Date();
-  inicioDia.setHours(0, 0, 0, 0);
-  const fimDia = new Date(inicioDia);
-  fimDia.setDate(fimDia.getDate() + 1);
+  const { inicioDia, fimDia } = React.useMemo(() => {
+    const inicio = new Date();
+    inicio.setHours(0, 0, 0, 0);
+    const fim = new Date(inicio);
+    fim.setDate(fim.getDate() + 1);
+    return { inicioDia: inicio, fimDia: fim };
+  }, []);
   const pedidosDoDia = pedidos.filter((p) => {
     if (!p.created_at) return false;
     const dataPedido = new Date(p.created_at);
@@ -1431,6 +1566,48 @@ function AdminPageContent() {
     );
     return mapa;
   }, [pedidos]);
+
+  const entregasDetalhadas = React.useMemo(() => {
+    return entregas
+      .map((entrega) => {
+        const pedido = pedidos.find((item) => Number(item.id) === Number(entrega?.pedido_id || 0)) || null;
+        const entregador = entregadores.find((item) => Number(item.id) === Number(entrega?.entregador_id || 0)) || null;
+        return {
+          ...entrega,
+          pedido,
+          entregador,
+        };
+      })
+      .sort(
+        (a, b) =>
+          new Date(String(b.aceito_em || b.created_at || 0)).getTime() -
+          new Date(String(a.aceito_em || a.created_at || 0)).getTime(),
+      );
+  }, [entregadores, entregas, pedidos]);
+
+  const entregasDoDia = React.useMemo(() => {
+    return entregasDetalhadas.filter((entrega) => {
+      const base = String(entrega?.aceito_em || entrega?.created_at || '');
+      if (!base) return false;
+      const data = new Date(base);
+      return data >= inicioDia && data < fimDia;
+    });
+  }, [entregasDetalhadas, fimDia, inicioDia]);
+
+  const resumoEntregadoresHoje = React.useMemo(() => {
+    return entregadores.map((entregador) => {
+      const lista = entregasDoDia.filter((item) => Number(item?.entregador_id || 0) === Number(entregador.id || 0));
+      const pendentes = lista.filter((item) => String(item?.acerto_status || '').trim().toLowerCase() !== 'acertado');
+      const valorTaxas = lista.reduce((acc, item) => acc + Math.max(0, Number(item?.pedido?.taxa_entrega || 0)), 0);
+      return {
+        ...entregador,
+        entregasHoje: lista,
+        totalEntregasHoje: lista.length,
+        pendenciasAcerto: pendentes.length,
+        valorTaxasHoje: valorTaxas,
+      };
+    });
+  }, [entregadores, entregasDoDia]);
 
   const limparHistoricoCliente = async (cliente: any) => {
     const zap = normalizarNumero(String(cliente.whatsapp || ''));
@@ -1756,6 +1933,7 @@ function AdminPageContent() {
           <button onClick={() => setActiveTab('horario')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'horario' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Clock3 size={20}/> Horario </button>
           <button onClick={() => setActiveTab('clientes')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'clientes' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Users size={20}/> Lista de Clientes </button>
           <button onClick={() => setActiveTab('taxas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'taxas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <MapIcon size={20}/> Taxas de Entrega </button>
+          <button onClick={() => setActiveTab('entregadores')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'entregadores' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <Bike size={20}/> Entregadores </button>
           <button onClick={() => setActiveTab('vendas')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'vendas' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <ShoppingBag size={20}/> Vendas </button>
         </nav>
       </aside>
@@ -1770,6 +1948,7 @@ function AdminPageContent() {
             {activeTab === 'horario' && 'Horario de Funcionamento'}
             {activeTab === 'clientes' && 'Clientes'}
             {activeTab === 'taxas' && 'Raio de Entrega (km)'}
+            {activeTab === 'entregadores' && 'Entregadores'}
             {activeTab === 'vendas' && 'Vendas'}
             {activeTab === 'relatorios' && 'Relatorios'}
           </h1>
@@ -1817,6 +1996,11 @@ function AdminPageContent() {
               <PlusCircle size={20} /> Nova Propaganda
               </button>
             )}
+            {activeTab === 'entregadores' && (
+              <button onClick={() => { fecharModalEntregador(); setMostrarModalEntregador(true); }} className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all">
+                <PlusCircle size={20} /> Novo Entregador
+              </button>
+            )}
 
             <button
               type="button"
@@ -1828,6 +2012,15 @@ function AdminPageContent() {
             </button>
           </div>
         </header>
+
+        {alertaEntregaAceita ? (
+          <div className="mb-6 rounded-[1.75rem] border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-black text-amber-700 shadow-sm">
+            <div className="flex items-center gap-3">
+              <BellRing size={18} className="shrink-0" />
+              <span>{alertaEntregaAceita}</span>
+            </div>
+          </div>
+        ) : null}
 
         {activeTab === 'painel' && (
           <div className="space-y-8">
@@ -2078,6 +2271,160 @@ function AdminPageContent() {
                 Nenhum raio de entrega cadastrado ainda.
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'entregadores' && (
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Entregadores ativos</p>
+                <p className="mt-2 text-3xl font-black text-slate-800">
+                  {entregadores.filter((item) => item.ativo !== false).length}
+                </p>
+                <p className="text-sm font-bold text-slate-500">cadastros disponiveis</p>
+              </div>
+              <div className="rounded-[2rem] border border-orange-200 bg-orange-50 p-5 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-orange-600">Entregas do dia</p>
+                <p className="mt-2 text-3xl font-black text-orange-700">{entregasDoDia.length}</p>
+                <p className="text-sm font-bold text-orange-700/80">aceites registrados pelo QR</p>
+              </div>
+              <div className="rounded-[2rem] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Acertos pendentes</p>
+                <p className="mt-2 text-3xl font-black text-emerald-700">
+                  {entregasDoDia.filter((item) => String(item?.acerto_status || '').trim().toLowerCase() !== 'acertado').length}
+                </p>
+                <p className="text-sm font-bold text-emerald-700/80">entregas para fechamento</p>
+              </div>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-[1.1fr_1.4fr]">
+              <div className="space-y-4">
+                {resumoEntregadoresHoje.length > 0 ? resumoEntregadoresHoje.map((entregador) => (
+                  <div key={entregador.id} className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-lg font-black text-slate-800">{entregador.nome || 'Entregador'}</p>
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                          {entregador.whatsapp || 'WhatsApp nao informado'}
+                        </p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${entregador.ativo !== false ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {entregador.ativo !== false ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Moto</p>
+                        <p className="mt-1 text-sm font-black text-slate-700">
+                          {[entregador.modelo_moto, entregador.cor_moto].filter(Boolean).join(' - ') || 'Nao informada'}
+                        </p>
+                        <p className="text-xs font-bold text-slate-500">{entregador.placa_moto || 'Sem placa'}</p>
+                      </div>
+                      <div className="rounded-2xl bg-orange-50 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-orange-500">Hoje</p>
+                        <p className="mt-1 text-2xl font-black text-orange-700">{entregador.totalEntregasHoje}</p>
+                        <p className="text-xs font-bold text-orange-700/80">{entregador.pendenciasAcerto} pendente(s)</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-xs font-bold text-slate-600">
+                      Taxas do dia: <span className="text-slate-900">R$ {Number(entregador.valorTaxasHoje || 0).toFixed(2)}</span>
+                    </div>
+
+                    {entregador.observacao ? (
+                      <p className="mt-3 text-xs font-medium italic text-slate-500">{entregador.observacao}</p>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button onClick={() => abrirEdicaoEntregador(entregador)} className="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-xs font-black uppercase">
+                        Editar
+                      </button>
+                      <button onClick={() => excluir('entregadores', entregador.id)} className="px-3 py-2 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-colors text-xs font-black uppercase">
+                        Apagar
+                      </button>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-medium italic text-slate-400">
+                    Nenhum entregador cadastrado ainda.
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fechamento</p>
+                    <h3 className="text-lg font-black text-slate-800">Entregas registradas</h3>
+                  </div>
+                  <p className="text-sm font-bold text-slate-500">Use o QR do cupom para o entregador aceitar.</p>
+                </div>
+
+                <div className="mt-4 space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                  {entregasDetalhadas.length > 0 ? entregasDetalhadas.map((entrega) => {
+                    const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
+                    return (
+                      <div key={entrega.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-black text-slate-800">
+                              Pedido #{Number(entrega?.pedido_id || 0)}
+                              {entrega?.pedido?.cliente_nome ? ` • ${String(entrega.pedido.cliente_nome)}` : ''}
+                            </p>
+                            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                              {entrega?.entregador?.nome || 'Entregador nao encontrado'}
+                            </p>
+                          </div>
+                          <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${acertado ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                            {acertado ? 'Acertado' : 'Pendente'}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 gap-2 text-sm font-medium text-slate-600 sm:grid-cols-2">
+                          <p><strong className="text-slate-800">Aceite:</strong> {entrega?.aceito_em ? new Date(entrega.aceito_em).toLocaleString('pt-BR') : 'Nao informado'}</p>
+                          <p><strong className="text-slate-800">Taxa:</strong> R$ {Math.max(0, Number(entrega?.pedido?.taxa_entrega || 0)).toFixed(2)}</p>
+                          <p><strong className="text-slate-800">Total pedido:</strong> R$ {Number(entrega?.pedido?.total || 0).toFixed(2)}</p>
+                          <p><strong className="text-slate-800">Status:</strong> {String(entrega?.pedido?.status_pedido || entrega?.status || 'aceita')}</p>
+                        </div>
+
+                        {entrega?.pedido ? (
+                          <p className="mt-3 text-xs font-medium text-slate-500">
+                            {[String(entrega.pedido.endereco || '').trim(), String(entrega.pedido.numero || '').trim(), String(entrega.pedido.bairro || '').trim(), String(entrega.pedido.cidade || '').trim()]
+                              .filter(Boolean)
+                              .join(' - ')}
+                          </p>
+                        ) : null}
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void alternarAcertoEntrega(entrega)}
+                            className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-colors ${acertado ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+                          >
+                            {acertado ? 'Reabrir acerto' : 'Marcar acerto'}
+                          </button>
+                          {entrega?.pedido ? (
+                            <button
+                              type="button"
+                              onClick={() => void imprimirPedidoAceito(entrega.pedido)}
+                              className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors text-xs font-black uppercase"
+                            >
+                              Reimprimir cupom
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-medium italic text-slate-400">
+                      Nenhuma entrega aceita ainda.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2745,6 +3092,70 @@ function AdminPageContent() {
               <button type="submit" disabled={uploadingPropaganda} className="w-full bg-pink-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg shadow-pink-100 mt-4 transition-transform active:scale-95 disabled:opacity-50">{editandoPropagandaId ? 'Salvar Alteracoes' : 'Cadastrar Propaganda'}</button>
               <button type="button" onClick={limparFormularioPropaganda} className="w-full bg-slate-100 text-slate-600 p-4 rounded-[1.5rem] font-bold uppercase text-xs flex items-center justify-center gap-2"><RotateCcw size={16}/> Limpar</button>
               <button type="button" onClick={fecharModalPropaganda} className="w-full text-slate-400 font-bold text-[10px] uppercase p-2">Cancelar</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {mostrarModalEntregador && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
+          <div className="bg-white p-5 sm:p-8 rounded-[2rem] sm:rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 className="text-2xl font-black mb-6 italic text-slate-800">
+              {editandoEntregadorId ? 'Editar Entregador' : 'Novo Entregador'}
+            </h2>
+            <form onSubmit={salvarEntregador} className="space-y-4">
+              <input
+                placeholder="Nome do entregador"
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                required
+                value={novoEntregador.nome}
+                onChange={e => setNovoEntregador({ ...novoEntregador, nome: e.target.value })}
+              />
+              <input
+                placeholder="WhatsApp"
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                value={novoEntregador.whatsapp}
+                onChange={e => setNovoEntregador({ ...novoEntregador, whatsapp: e.target.value })}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input
+                  placeholder="Modelo da moto"
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                  value={novoEntregador.modelo_moto}
+                  onChange={e => setNovoEntregador({ ...novoEntregador, modelo_moto: e.target.value })}
+                />
+                <input
+                  placeholder="Cor da moto"
+                  className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                  value={novoEntregador.cor_moto}
+                  onChange={e => setNovoEntregador({ ...novoEntregador, cor_moto: e.target.value })}
+                />
+              </div>
+              <input
+                placeholder="Placa da moto"
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700 uppercase"
+                value={novoEntregador.placa_moto}
+                onChange={e => setNovoEntregador({ ...novoEntregador, placa_moto: e.target.value.toUpperCase() })}
+              />
+              <textarea
+                placeholder="Observacao"
+                rows={3}
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                value={novoEntregador.observacao}
+                onChange={e => setNovoEntregador({ ...novoEntregador, observacao: e.target.value })}
+              />
+              <label className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <input
+                  type="checkbox"
+                  checked={novoEntregador.ativo}
+                  onChange={e => setNovoEntregador({ ...novoEntregador, ativo: e.target.checked })}
+                />
+                <span className="text-xs font-bold uppercase text-slate-600 tracking-wide">Entregador Ativo</span>
+              </label>
+              <button type="submit" className="w-full bg-pink-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg shadow-pink-100 mt-4 transition-transform active:scale-95">
+                {editandoEntregadorId ? 'Salvar Alteracoes' : 'Cadastrar Entregador'}
+              </button>
+              <button type="button" onClick={fecharModalEntregador} className="w-full text-slate-400 font-bold text-[10px] uppercase p-2">Cancelar</button>
             </form>
           </div>
         </div>
