@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 const QZ_TRAY_SCRIPT_URL = 'https://unpkg.com/qz-tray@2.2.4/qz-tray.js';
+const QRCODE_SCRIPT_URL = 'https://unpkg.com/qrcode@1.5.4/build/qrcode.min.js';
 const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
 
 type QzGlobal = {
@@ -862,6 +863,47 @@ function AdminPageContent() {
     if (idx < 0) return endereco;
     return endereco.slice(0, idx).replace(/\-\s*$/g, '').trim();
   };
+  const montarEnderecoEntrega = useCallback((registro: any) => {
+    const enderecoSemPonto = extrairEnderecoSemPonto(registro);
+    const numero = String(registro?.numero || '').trim();
+    const bairro = String(registro?.bairro || '').trim();
+    const cidade = String(registro?.cidade || '').trim() || 'Navegantes';
+    const cep = String(registro?.cep || '').trim();
+    const enderecoCompleto = [enderecoSemPonto, numero].filter(Boolean).join(', ');
+
+    return {
+      enderecoSemPonto,
+      enderecoCompleto,
+      bairro,
+      cidade,
+      cep,
+    };
+  }, []);
+  const montarLinkMapsPedido = useCallback((registro: any) => {
+    const { enderecoCompleto, bairro, cidade, cep } = montarEnderecoEntrega(registro);
+    const partesBusca = [enderecoCompleto, bairro, cidade, cep].filter(Boolean);
+    if (!partesBusca.length) return '';
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(partesBusca.join(', '))}`;
+  }, [montarEnderecoEntrega]);
+  const gerarQrCodeEscPos = useCallback((conteudo: string) => {
+    const texto = String(conteudo || '').trim();
+    if (!texto) return '';
+
+    const dados = Array.from(new TextEncoder().encode(texto));
+    const bytesParaTexto = (bytes: number[]) => String.fromCharCode(...bytes);
+    const tamanhoArmazenamento = dados.length + 3;
+    const pL = tamanhoArmazenamento % 256;
+    const pH = Math.floor(tamanhoArmazenamento / 256);
+
+    return (
+      bytesParaTexto([0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]) +
+      bytesParaTexto([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x08]) +
+      bytesParaTexto([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31]) +
+      bytesParaTexto([0x1d, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30]) +
+      bytesParaTexto(dados) +
+      bytesParaTexto([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30])
+    );
+  }, []);
   const parseItensPedido = (pedido: any) => {
     let itensArray = pedido?.itens;
     if (typeof itensArray === 'string') {
@@ -947,12 +989,9 @@ function AdminPageContent() {
     const subtotal = itens.reduce((acc: number, item: any) => acc + (Number(item.preco || 0) * Number(item.qtd || 0)), 0);
     const descontoAplicado = Math.max(0, subtotal + taxaEntrega - valorTotal);
     const pontoReferencia = extrairPontoReferencia(pedidoCompleto);
-    const enderecoSemPonto = extrairEnderecoSemPonto(pedidoCompleto);
-    const enderecoCompleto = [enderecoSemPonto, String(pedidoCompleto?.numero || '').trim()].filter(Boolean).join(', ');
+    const { enderecoCompleto, bairro, cidade, cep } = montarEnderecoEntrega(pedidoCompleto);
+    const linkMaps = montarLinkMapsPedido(pedidoCompleto);
     const observacao = String(pedidoCompleto?.observacao || '').trim();
-    const bairro = String(pedidoCompleto?.bairro || '').trim();
-    const cidade = String(pedidoCompleto?.cidade || '').trim();
-    const cep = String(pedidoCompleto?.cep || '').trim();
     const larguraLinha = 22;
 
     const quebrarLinha = (texto: string, largura = larguraLinha) => {
@@ -1009,6 +1048,16 @@ function AdminPageContent() {
     const fonteNormal = '\x1d\x21\x00';
     const fonteDobro = '\x1d\x21\x11';
     const divisor = '----------------------\n';
+    const blocoQrMaps = linkMaps
+      ? alinharCentro +
+        negritoOn +
+        fonteNormal +
+        'QR ENTREGA\n' +
+        negritoOff +
+        gerarQrCodeEscPos(linkMaps) +
+        '\n' +
+        alinharEsquerda
+      : '';
 
     return iniciar +
       alinharCentro +
@@ -1030,10 +1079,11 @@ function AdminPageContent() {
       fonteDobro +
       `TOTAL: ${formatarValor(valorTotal)}\n` +
       '\n\n' +
+      blocoQrMaps +
       negritoOff +
       fonteNormal +
       '\x1d\x56\x41\x03';
-  }, [completarPedidoComCliente]);
+  }, [completarPedidoComCliente, gerarQrCodeEscPos, montarEnderecoEntrega, montarLinkMapsPedido]);
   const prepararPopupImpressao = (popup: Window | null | undefined, pedidoId?: number) => {
     if (!popup || popup.closed) return;
     popup.document.open();
@@ -1072,16 +1122,14 @@ function AdminPageContent() {
     );
     const descontoAplicado = Math.max(0, subtotal + taxaEntrega - Number(pedidoCompleto?.total || 0));
     const pontoReferencia = extrairPontoReferencia(pedidoCompleto);
-    const enderecoSemPonto = extrairEnderecoSemPonto(pedidoCompleto);
-    const enderecoCompleto = [enderecoSemPonto, String(pedidoCompleto?.numero || '').trim()].filter(Boolean).join(', ');
+    const { enderecoCompleto, bairro, cidade, cep } = montarEnderecoEntrega(pedidoCompleto);
+    const linkMaps = montarLinkMapsPedido(pedidoCompleto);
     const observacao = String(pedidoCompleto?.observacao || '').trim();
-    const bairro = String(pedidoCompleto?.bairro || '').trim();
-    const cidade = String(pedidoCompleto?.cidade || '').trim();
-    const cep = String(pedidoCompleto?.cep || '').trim();
     const itens = parseItensPedido(pedidoCompleto);
     const itensHtml = itens.length
       ? itens.map((item: any) => `<tr><td>${Number(item.qtd || 1)}x ${String(item.nome || 'Item')}</td><td style="text-align:right">R$ ${(Number(item.preco || 0) * Number(item.qtd || 0)).toFixed(2)}</td></tr>`).join('')
       : '<tr><td>Itens nao informados</td><td></td></tr>';
+    const linkMapsSerializado = JSON.stringify(linkMaps);
 
     try {
       const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
@@ -1152,9 +1200,31 @@ function AdminPageContent() {
             <div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Entrega:</strong> R$ ${taxaEntrega.toFixed(2)}</div>
             <div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Desconto:</strong> R$ ${descontoAplicado.toFixed(2)}</div>
             <div style="font-weight:700;font-size:15px;margin-top:2.2mm;line-height:1.12;">Total: R$ ${Number(pedidoCompleto?.total || 0).toFixed(2)}</div>
+            ${linkMaps ? `
+              <div style="margin-top:3.2mm;padding-top:2.4mm;border-top:1px dashed #cbd5e1;text-align:center;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.08em;">QR ENTREGA</div>
+                <canvas id="maps-qrcode" style="display:block;margin:2mm auto 1mm;"></canvas>
+                <div style="font-size:10px;line-height:1.25;font-weight:600;">Aponte a camera para abrir no Maps</div>
+              </div>
+            ` : ''}
           </div>
+          ${linkMaps ? `<script src="${QRCODE_SCRIPT_URL}"></script>` : ''}
           <script>
             window.onload = () => {
+              const mapsUrl = ${linkMapsSerializado};
+              const imprimir = () => {
+                window.onafterprint = () => window.close();
+                window.print();
+              };
+              if (mapsUrl && window.QRCode && document.getElementById('maps-qrcode')) {
+                window.QRCode.toCanvas(
+                  document.getElementById('maps-qrcode'),
+                  mapsUrl,
+                  { width: 140, margin: 1 },
+                  imprimir,
+                );
+                return;
+              }
               window.print();
               window.onafterprint = () => window.close();
             };
@@ -1163,7 +1233,7 @@ function AdminPageContent() {
       </html>
     `);
     popup.document.close();
-  }, [completarPedidoComCliente, garantirQzPronto, montarCupomPedido]);
+  }, [completarPedidoComCliente, garantirQzPronto, montarCupomPedido, montarEnderecoEntrega, montarLinkMapsPedido]);
 
   useEffect(() => {
     imprimirPedidoAceitoRef.current = imprimirPedidoAceito;
