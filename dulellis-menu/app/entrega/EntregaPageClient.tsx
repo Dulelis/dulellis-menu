@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bike, Loader2, MapPin, Navigation, PackageCheck } from "lucide-react";
+import { Bike, Loader2, MapPin, Navigation, PackageCheck, Radar } from "lucide-react";
 
 type Entregador = {
   id: number;
@@ -55,12 +55,16 @@ type ApiResponse = {
   };
 };
 
+type TrackingStatus = "idle" | "starting" | "live";
+
 type Props = {
   pedidoId: number;
 };
 
 const TRACKING_MIN_INTERVAL_MS = 12000;
 const TRACKING_MIN_DISTANCE_METERS = 25;
+const GEOLOCATION_PERMISSION_KEY = "delivery-site-geolocation-permission";
+const GEOLOCATION_PROMPTED_KEY = "delivery-site-geolocation-prompted";
 const GEOLOCATION_OPTIONS = {
   enableHighAccuracy: true,
   timeout: 15000,
@@ -105,12 +109,14 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const [entregadorId, setEntregadorId] = useState<number>(0);
   const [codigoTelefone, setCodigoTelefone] = useState("");
   const [trackingToken, setTrackingToken] = useState("");
+  const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
   const [trackingEnabled, setTrackingEnabled] = useState(false);
 
   const trackingWatchIdRef = useRef<number | null>(null);
   const trackingRequestRef = useRef(false);
   const ultimaCoordenadaRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const ultimoEnvioRef = useRef(0);
+  const ultimaPosicaoCapturadaRef = useRef<GeolocationCoordinates | null>(null);
 
   const salvarTrackingToken = useCallback(
     (token: string) => {
@@ -147,6 +153,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     }
     setTrackingToken("");
     setTrackingEnabled(false);
+    setTrackingStatus("idle");
     trackingRequestRef.current = false;
     ultimaCoordenadaRef.current = null;
     ultimoEnvioRef.current = 0;
@@ -160,9 +167,36 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       setTrackingToken(tokenSalvo);
       if (rastreamentoSalvo) {
         setTrackingEnabled(true);
+        setTrackingStatus("starting");
       }
     }
   }, [pedidoId]);
+
+  const solicitarPermissaoGeolocalizacao = useCallback(async () => {
+    if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.geolocation) {
+      return false;
+    }
+
+    window.localStorage.setItem(GEOLOCATION_PROMPTED_KEY, "1");
+
+    return await new Promise<boolean>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          ultimaPosicaoCapturadaRef.current = position.coords;
+          window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "granted");
+          resolve(true);
+        },
+        (error) => {
+          console.error("Falha ao solicitar permissao de localizacao.", error);
+          if (error.code === 1) {
+            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "denied");
+          }
+          resolve(false);
+        },
+        GEOLOCATION_OPTIONS,
+      );
+    });
+  }, []);
 
   useEffect(() => {
     let ativo = true;
@@ -208,6 +242,48 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const enderecoCompleto = [pedido?.endereco, pedido?.numero].filter(Boolean).join(", ");
   const localCompleto = [pedido?.bairro, pedido?.cidade].filter(Boolean).join(" - ");
 
+  useEffect(() => {
+    let ativo = true;
+
+    async function prepararPermissaoInicial() {
+      if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.geolocation) return;
+      if (pedidoId <= 0 || entregaFinalizada) return;
+
+      const jaSolicitado = window.localStorage.getItem(GEOLOCATION_PROMPTED_KEY) === "1";
+      const permissaoSalva = window.localStorage.getItem(GEOLOCATION_PERMISSION_KEY) || "";
+
+      if ("permissions" in navigator && navigator.permissions?.query) {
+        try {
+          const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+          if (!ativo) return;
+
+          if (status.state === "granted") {
+            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "granted");
+            void solicitarPermissaoGeolocalizacao();
+            return;
+          }
+
+          if (status.state === "denied") {
+            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "denied");
+            return;
+          }
+        } catch (error) {
+          console.error("Falha ao consultar permissao de geolocalizacao.", error);
+        }
+      }
+
+      if (!jaSolicitado && permissaoSalva !== "denied") {
+        await solicitarPermissaoGeolocalizacao();
+      }
+    }
+
+    void prepararPermissaoInicial();
+
+    return () => {
+      ativo = false;
+    };
+  }, [entregaFinalizada, pedidoId, solicitarPermissaoGeolocalizacao]);
+
   const sincronizarLocalizacao = useCallback(
     async (coords: GeolocationCoordinates, tokenSobrescrito?: string) => {
       const tokenAtual = String(tokenSobrescrito || trackingToken || "").trim();
@@ -215,6 +291,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
 
       const latitude = Number(coords.latitude);
       const longitude = Number(coords.longitude);
+      ultimaPosicaoCapturadaRef.current = coords;
       const ultima = ultimaCoordenadaRef.current;
       const agora = Date.now();
       const distancia = ultima
@@ -257,6 +334,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         }
 
         setEntrega(json.data.entrega);
+        setTrackingStatus("live");
         ultimaCoordenadaRef.current = { latitude, longitude };
         ultimoEnvioRef.current = agora;
       } catch (error) {
@@ -279,11 +357,13 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     const tokenAtual = String(tokenSobrescrito || trackingToken || "").trim();
     if (typeof navigator === "undefined" || !navigator.geolocation || !tokenAtual || pedidoId <= 0) {
       persistirTrackingAtivo(false);
+      setTrackingStatus("idle");
       return false;
     }
 
     pararRastreamento();
     persistirTrackingAtivo(true);
+    setTrackingStatus("starting");
 
     const iniciarWatch = () => {
       trackingWatchIdRef.current = navigator.geolocation.watchPosition(
@@ -294,6 +374,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
           console.error("Falha no watch do rastreamento.", error);
           if (error.code === 1) {
             persistirTrackingAtivo(false);
+            setTrackingStatus("idle");
             pararRastreamento();
           }
         },
@@ -302,6 +383,10 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     };
 
     iniciarWatch();
+
+    if (ultimaPosicaoCapturadaRef.current) {
+      void sincronizarLocalizacao(ultimaPosicaoCapturadaRef.current, tokenAtual);
+    }
 
     return await new Promise<boolean>((resolve) => {
       navigator.geolocation.getCurrentPosition(
@@ -313,6 +398,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
           console.error("Falha ao ativar o rastreamento.", error);
           if (error.code === 1) {
             persistirTrackingAtivo(false);
+            setTrackingStatus("idle");
             pararRastreamento();
             resolve(false);
             return;
@@ -326,6 +412,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
 
   useEffect(() => {
     if (!trackingEnabled || !trackingToken || !entregaAceita || entregaFinalizada) return;
+    if (trackingWatchIdRef.current !== null) return;
     void iniciarRastreamento();
 
     return () => {
@@ -422,6 +509,10 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     } finally {
       setSalvando(false);
     }
+  }
+
+  function ativarRastreamento() {
+    void iniciarRastreamento();
   }
 
   return (
@@ -538,6 +629,18 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-600">
                     <strong className="text-slate-900">Ponto final:</strong> {entrega.observacao}
                   </div>
+                ) : null}
+
+                {entregaAceita && !entregaFinalizada ? (
+                  <button
+                    type="button"
+                    onClick={ativarRastreamento}
+                    disabled={salvando || trackingStatus === "starting"}
+                    className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors ${trackingStatus === "live" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"} disabled:cursor-not-allowed disabled:opacity-70`}
+                  >
+                    {trackingStatus === "starting" ? <Loader2 className="animate-spin" size={16} /> : <Radar size={16} />}
+                    {trackingStatus === "live" ? "Rastreamento ativo" : "Ativar rastreamento"}
+                  </button>
                 ) : null}
 
                 {!entregaAceita ? (
