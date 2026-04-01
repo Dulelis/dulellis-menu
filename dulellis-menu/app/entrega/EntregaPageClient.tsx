@@ -63,6 +63,11 @@ type Props = {
 
 const TRACKING_MIN_INTERVAL_MS = 12000;
 const TRACKING_MIN_DISTANCE_METERS = 25;
+const GEOLOCATION_OPTIONS = {
+  enableHighAccuracy: true,
+  timeout: 15000,
+  maximumAge: 5000,
+};
 
 function tokenStorageKey(pedidoId: number) {
   return `delivery-tracking-token:${pedidoId}`;
@@ -91,19 +96,6 @@ function calcularDistanciaMetros(
   return raioTerra * c;
 }
 
-function mensagemErroGeolocalizacao(error: GeolocationPositionError) {
-  if (error.code === error.PERMISSION_DENIED) {
-    return "Permita o acesso a localizacao para o admin acompanhar a entrega em tempo real.";
-  }
-  if (error.code === error.POSITION_UNAVAILABLE) {
-    return "Nao foi possivel obter sua localizacao agora. Tente novamente em instantes.";
-  }
-  if (error.code === error.TIMEOUT) {
-    return "O GPS demorou para responder. Tente novamente em um local aberto.";
-  }
-  return "Falha ao compartilhar a localizacao desta entrega.";
-}
-
 export default function EntregaPageClient({ pedidoId }: Props) {
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
@@ -116,7 +108,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const [codigoTelefone, setCodigoTelefone] = useState("");
   const [trackingToken, setTrackingToken] = useState("");
   const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
-  const [trackingErro, setTrackingErro] = useState("");
   const [trackingEnabled, setTrackingEnabled] = useState(false);
 
   const trackingWatchIdRef = useRef<number | null>(null);
@@ -160,7 +151,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     setTrackingToken("");
     setTrackingEnabled(false);
     setTrackingStatus("idle");
-    setTrackingErro("");
     trackingRequestRef.current = false;
     ultimaCoordenadaRef.current = null;
     ultimoEnvioRef.current = 0;
@@ -273,12 +263,11 @@ export default function EntregaPageClient({ pedidoId }: Props) {
 
         setEntrega(json.data.entrega);
         setTrackingStatus("live");
-        setTrackingErro("");
         ultimaCoordenadaRef.current = { latitude, longitude };
         ultimoEnvioRef.current = agora;
       } catch (error) {
-        setTrackingStatus("error");
-        setTrackingErro(error instanceof Error ? error.message : "Falha ao compartilhar a localizacao.");
+        console.error("Falha ao compartilhar a localizacao da entrega.", error);
+        setTrackingStatus("idle");
         persistirTrackingAtivo(false);
       } finally {
         trackingRequestRef.current = false;
@@ -287,45 +276,74 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     [pedidoId, persistirTrackingAtivo, trackingToken],
   );
 
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
-    if (!trackingEnabled || !trackingToken || !entregaAceita || entregaFinalizada) return;
+  const pararRastreamento = useCallback(() => {
+    if (trackingWatchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.clearWatch(trackingWatchIdRef.current);
+      trackingWatchIdRef.current = null;
+    }
+  }, []);
 
+  const iniciarRastreamento = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation || !trackingToken || pedidoId <= 0) {
+      setTrackingStatus("idle");
+      persistirTrackingAtivo(false);
+      return false;
+    }
+
+    pararRastreamento();
     setTrackingStatus("starting");
-    setTrackingErro("");
+    persistirTrackingAtivo(true);
 
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        void sincronizarLocalizacao(position.coords);
-      },
-      (error) => {
-        setTrackingStatus("error");
-        setTrackingErro(mensagemErroGeolocalizacao(error));
-        persistirTrackingAtivo(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 5000,
-      },
-    );
+    const iniciarWatch = () => {
+      trackingWatchIdRef.current = navigator.geolocation.watchPosition(
+        (position) => {
+          void sincronizarLocalizacao(position.coords);
+        },
+        (error) => {
+          console.error("Falha no watch do rastreamento.", error);
+          setTrackingStatus("idle");
+          persistirTrackingAtivo(false);
+          pararRastreamento();
+        },
+        GEOLOCATION_OPTIONS,
+      );
+    };
 
-    trackingWatchIdRef.current = watchId;
+    return await new Promise<boolean>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          void sincronizarLocalizacao(position.coords);
+          iniciarWatch();
+          resolve(true);
+        },
+        (error) => {
+          console.error("Falha ao ativar o rastreamento.", error);
+          setTrackingStatus("idle");
+          persistirTrackingAtivo(false);
+          pararRastreamento();
+          resolve(false);
+        },
+        GEOLOCATION_OPTIONS,
+      );
+    });
+  }, [pararRastreamento, pedidoId, persistirTrackingAtivo, sincronizarLocalizacao, trackingToken]);
+
+  useEffect(() => {
+    if (!trackingEnabled || !trackingToken || !entregaAceita || entregaFinalizada) return;
+    void iniciarRastreamento();
 
     return () => {
-      if (trackingWatchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
-        navigator.geolocation.clearWatch(trackingWatchIdRef.current);
-        trackingWatchIdRef.current = null;
-      }
+      pararRastreamento();
     };
-  }, [entregaAceita, entregaFinalizada, persistirTrackingAtivo, sincronizarLocalizacao, trackingEnabled, trackingToken]);
+  }, [entregaAceita, entregaFinalizada, iniciarRastreamento, pararRastreamento, trackingEnabled, trackingToken]);
 
   useEffect(() => {
     if (carregando) return;
     if (!entregaAceita || entregaFinalizada) {
+      pararRastreamento();
       limparTrackingLocal();
     }
-  }, [carregando, entregaAceita, entregaFinalizada, limparTrackingLocal]);
+  }, [carregando, entregaAceita, entregaFinalizada, limparTrackingLocal, pararRastreamento]);
 
   async function aceitarEntrega() {
     if (codigoTelefone.replace(/\D/g, "").length !== 4) {
@@ -362,8 +380,8 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       setEntregadorId(Number(json.data.entrega.entregador_id || 0));
       if (json.data.tracking_token) {
         salvarTrackingToken(json.data.tracking_token);
-        persistirTrackingAtivo(true);
-        setTrackingStatus("starting");
+        persistirTrackingAtivo(false);
+        setTrackingStatus("idle");
       }
       setSucesso(
         json.data.entregador?.nome
@@ -400,6 +418,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       if (!res.ok || json.ok === false || !json.data?.entrega) {
         throw new Error(json.error || "Nao foi possivel finalizar a entrega.");
       }
+      pararRastreamento();
       setEntrega(json.data.entrega);
       limparTrackingLocal();
       setSucesso("Entrega finalizada com sucesso.");
@@ -411,19 +430,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   }
 
   function ativarRastreamento() {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setTrackingStatus("error");
-      setTrackingErro("Este aparelho nao suporta geolocalizacao em tempo real.");
-      return;
-    }
-    if (!trackingToken) {
-      setTrackingStatus("error");
-      setTrackingErro("Aceite a entrega neste aparelho para liberar o rastreamento em tempo real.");
-      return;
-    }
-    setTrackingErro("");
-    setTrackingStatus("starting");
-    persistirTrackingAtivo(true);
+    void iniciarRastreamento();
   }
 
   return (
@@ -524,54 +531,19 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                 ) : null}
 
                 {entregaAceita ? (
-                  <div className="mt-4 rounded-2xl border border-blue-200 bg-white px-4 py-4">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-1 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-100 text-blue-600">
-                        {trackingStatus === "starting" ? <Loader2 className="animate-spin" size={18} /> : <Radar size={18} />}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-[11px] font-black uppercase tracking-[0.25em] text-blue-500">Rastreamento</p>
-                        <p className="mt-1 text-sm font-bold text-slate-700">
-                          {trackingStatus === "live"
-                            ? "Sua localizacao esta sendo enviada para o admin acompanhar no mapa."
-                            : "Ative a localizacao deste aparelho para liberar o acompanhamento em tempo real."}
-                        </p>
-                        {entrega?.localizacao_atualizada_em ? (
-                          <p className="mt-2 text-xs font-bold text-slate-500">
-                            Ultimo envio em{" "}
-                            {new Date(String(entrega.localizacao_atualizada_em)).toLocaleString("pt-BR")}
-                          </p>
-                        ) : (
-                          <p className="mt-2 text-xs font-bold text-slate-500">
-                            O mapa do admin aparece assim que o primeiro GPS for enviado.
-                          </p>
-                        )}
-                        {trackingErro ? (
-                          <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
-                            {trackingErro}
-                          </div>
-                        ) : null}
-                        {trackingStatus !== "live" ? (
-                          <button
-                            type="button"
-                            onClick={ativarRastreamento}
-                            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-blue-700"
-                          >
-                            {trackingStatus === "starting" ? (
-                              <Loader2 className="animate-spin" size={16} />
-                            ) : (
-                              <Radar size={16} />
-                            )}
-                            Ativar rastreamento
-                          </button>
-                        ) : (
-                          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">
-                            Rastreamento ativo neste aparelho.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={ativarRastreamento}
+                    disabled={trackingStatus === "starting" || trackingStatus === "live" || !trackingToken}
+                    className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors disabled:cursor-not-allowed disabled:opacity-80 ${trackingStatus === "live" ? "bg-emerald-600" : "bg-blue-600 hover:bg-blue-700"}`}
+                  >
+                    {trackingStatus === "starting" ? <Loader2 className="animate-spin" size={16} /> : <Radar size={16} />}
+                    {trackingStatus === "starting"
+                      ? "Ativando rastreamento"
+                      : trackingStatus === "live"
+                        ? "Rastreamento ativo"
+                        : "Ativar rastreamento"}
+                  </button>
                 ) : null}
 
                 {sucesso ? (
