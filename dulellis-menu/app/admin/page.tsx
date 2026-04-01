@@ -75,8 +75,12 @@ function normalizarAdminTab(valor: string | null): AdminTab {
 }
 
 function extrairCoordenadasValidas(registro: any) {
-  const latitude = Number(registro?.latitude);
-  const longitude = Number(registro?.longitude);
+  const latitudeBruta = registro?.latitude;
+  const longitudeBruta = registro?.longitude;
+  if (latitudeBruta === null || latitudeBruta === undefined || latitudeBruta === '') return null;
+  if (longitudeBruta === null || longitudeBruta === undefined || longitudeBruta === '') return null;
+  const latitude = Number(latitudeBruta);
+  const longitude = Number(longitudeBruta);
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
   if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
   return { latitude, longitude };
