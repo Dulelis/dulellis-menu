@@ -1259,11 +1259,21 @@ function ClientePageContent() {
     }
   }, []);
 
-  const voltarParaInicioVitrine = useCallback(() => {
+  const abrirModalPedidoFinalizado = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const elementoAtivo = document.activeElement;
+      if (elementoAtivo instanceof HTMLElement) {
+        elementoAtivo.blur();
+      }
+    }
+
+    setModalPedidoFinalizadoAberto(true);
+
     if (typeof window === "undefined") return;
 
     window.requestAnimationFrame(() => {
-      topoVitrineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.scrollTo({ top: 0, behavior: "auto" });
+      topoVitrineRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
     });
   }, []);
 
@@ -1749,9 +1759,8 @@ function ClientePageContent() {
       setFormaPagamento("");
       setReferenciaPagamento("");
 
-      await carregarDadosIniciais();
-      setModalPedidoFinalizadoAberto(true);
-      voltarParaInicioVitrine();
+      abrirModalPedidoFinalizado();
+      void carregarDadosIniciais(false);
     } catch (error) {
       if (janelaPagamento && !janelaPagamento.closed) {
         janelaPagamento.close();
@@ -1762,7 +1771,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, voltarParaInicioVitrine]);
+  }, [abrirModalPedidoFinalizado, aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -3233,10 +3242,15 @@ function ClientePageContent() {
                 <button
                   type="button"
                   onClick={finalizarPedido}
-                  disabled={!formaPagamento || interacoesBloqueadas}
-                  className={`w-full p-7 rounded-[2.5rem] font-black uppercase shadow-xl tracking-widest text-xl flex items-center justify-center gap-3 ${formaPagamento && !interacoesBloqueadas ? "bg-green-500 text-white" : "bg-slate-100 text-slate-300 shadow-none"}`}
+                  disabled={!formaPagamento || interacoesBloqueadas || loading}
+                  className={`w-full rounded-[2.5rem] p-7 font-black uppercase tracking-widest text-xl flex items-center justify-center gap-3 transition-all duration-150 ${formaPagamento && !interacoesBloqueadas && !loading ? "bg-green-500 text-white shadow-xl shadow-green-200/70 active:scale-[0.985] active:translate-y-1 active:shadow-md" : "bg-slate-100 text-slate-300 shadow-none"}`}
                 >
-                  {interacoesBloqueadas ? "Loja Fechada" : "Finalizar Pedido"}
+                  {loading ? (
+                    <>
+                      <Loader2 size={22} className="animate-spin" />
+                      Finalizando...
+                    </>
+                  ) : interacoesBloqueadas ? "Loja Fechada" : "Finalizar Pedido"}
                 </button>
                 <button
                   type="button"
