@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
@@ -30,6 +31,58 @@ function montarLinkMaps(pedido: Record<string, unknown>) {
   const partes = [[endereco, numero].filter(Boolean).join(", "), bairro, cidade, cep].filter(Boolean);
   if (!partes.length) return "";
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(partes.join(", "))}`;
+}
+
+function normalizarLatitude(value: unknown) {
+  const numero = Number(value);
+  if (!Number.isFinite(numero) || numero < -90 || numero > 90) return null;
+  return Number(numero.toFixed(7));
+}
+
+function normalizarLongitude(value: unknown) {
+  const numero = Number(value);
+  if (!Number.isFinite(numero) || numero < -180 || numero > 180) return null;
+  return Number(numero.toFixed(7));
+}
+
+function normalizarDecimalOpcional(value: unknown, precision = 2) {
+  if (value === null || value === undefined || value === "") return null;
+  const numero = Number(value);
+  if (!Number.isFinite(numero)) return null;
+  return Number(numero.toFixed(precision));
+}
+
+function serializarEntregaPublica(entrega: Record<string, unknown> | null) {
+  if (!entrega) return null;
+  return {
+    id: entrega.id ?? null,
+    pedido_id: entrega.pedido_id ?? null,
+    entregador_id: entrega.entregador_id ?? null,
+    status: entrega.status ?? null,
+    aceito_em: entrega.aceito_em ?? null,
+    concluido_em: entrega.concluido_em ?? null,
+    acerto_status: entrega.acerto_status ?? null,
+    acerto_em: entrega.acerto_em ?? null,
+    observacao: entrega.observacao ?? null,
+    rastreamento_ativo: entrega.rastreamento_ativo ?? false,
+    latitude: entrega.latitude ?? null,
+    longitude: entrega.longitude ?? null,
+    precisao_metros: entrega.precisao_metros ?? null,
+    velocidade_m_s: entrega.velocidade_m_s ?? null,
+    direcao_graus: entrega.direcao_graus ?? null,
+    localizacao_atualizada_em: entrega.localizacao_atualizada_em ?? null,
+    created_at: entrega.created_at ?? null,
+  };
+}
+
+function mensagemTabelaTracking(error: { message?: string } | null, fallback: string) {
+  return tabelaAusente(error)
+    ? "Cadastre as tabelas de entregadores no banco antes de usar o QR de entrega."
+    : String(error?.message || fallback).toLowerCase().includes("rastreamento")
+      || String(error?.message || fallback).toLowerCase().includes("latitude")
+      || String(error?.message || fallback).toLowerCase().includes("longitude")
+      ? "Rode o SQL upgrade_entregas_tracking.sql no Supabase para habilitar o rastreamento em tempo real."
+      : String(error?.message || fallback);
 }
 
 function whatsappEquivalente(a: string, b: string) {
@@ -218,7 +271,7 @@ export async function GET(request: NextRequest) {
 
   const { data: entrega, error: erroEntrega } = await supabase
     .from("entregas")
-    .select("id,pedido_id,entregador_id,status,aceito_em,concluido_em,acerto_status,acerto_em,observacao,created_at")
+    .select("*")
     .eq("pedido_id", pedidoId)
     .maybeSingle();
 
@@ -234,7 +287,7 @@ export async function GET(request: NextRequest) {
         maps_url: montarLinkMaps((pedido || {}) as Record<string, unknown>),
       },
       entregadores: entregadores || [],
-      entrega: entrega || null,
+      entrega: serializarEntregaPublica((entrega || null) as Record<string, unknown> | null),
     },
   });
 }
@@ -258,21 +311,36 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as {
-    action?: "accept" | "finish";
+    action?: "accept" | "finish" | "location";
     pedido_id?: number;
     entregador_id?: number;
     phone_suffix?: string;
+    tracking_token?: string;
+    latitude?: number;
+    longitude?: number;
+    accuracy?: number | null;
+    speed?: number | null;
+    heading?: number | null;
   };
 
   const action = String(body.action || "accept").trim().toLowerCase();
   const pedidoId = Number(body.pedido_id || 0);
   const entregadorId = Number(body.entregador_id || 0);
   const phoneSuffix = normalizarNumero(String(body.phone_suffix || "")).slice(-4);
+  const trackingToken = String(body.tracking_token || "").trim();
+  const latitude = normalizarLatitude(body.latitude);
+  const longitude = normalizarLongitude(body.longitude);
+  const accuracy = normalizarDecimalOpcional(body.accuracy);
+  const speed = normalizarDecimalOpcional(body.speed);
+  const heading = normalizarDecimalOpcional(body.heading);
   if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
     return NextResponse.json({ ok: false, error: "Dados da entrega invalidos." }, { status: 400 });
   }
   if (action === "accept" && phoneSuffix.length !== 4) {
     return NextResponse.json({ ok: false, error: "Informe os 4 digitos finais do telefone do entregador." }, { status: 400 });
+  }
+  if (action === "location" && (!trackingToken || latitude === null || longitude === null)) {
+    return NextResponse.json({ ok: false, error: "Envie token de rastreamento e coordenadas validas." }, { status: 400 });
   }
 
   const supabase = getServiceSupabase();
@@ -288,7 +356,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle(),
     supabase
       .from("entregas")
-      .select("id,pedido_id,entregador_id,status,aceito_em,concluido_em,acerto_status,acerto_em,observacao")
+      .select("*")
       .eq("pedido_id", pedidoId)
       .maybeSingle(),
   ]);
@@ -302,6 +370,50 @@ export async function POST(request: NextRequest) {
 
   const pedido = await completarEnderecoPedido(supabase, (pedidoBase || {}) as Record<string, unknown>);
   const pontoFinalEntrega = montarPontoFinalEntrega(pedido);
+
+  if (action === "location") {
+    if (!entregaAtual) {
+      return NextResponse.json({ ok: false, error: "A entrega ainda nao foi aceita." }, { status: 400 });
+    }
+
+    if (String(entregaAtual.status || "").trim().toLowerCase() === "finalizada") {
+      return NextResponse.json({ ok: false, error: "Esta entrega ja foi finalizada." }, { status: 400 });
+    }
+
+    if (String(entregaAtual.rastreamento_token || "").trim() !== trackingToken) {
+      return NextResponse.json({ ok: false, error: "Token de rastreamento invalido para esta entrega." }, { status: 403 });
+    }
+
+    const now = new Date().toISOString();
+    const { data: entregaAtualizada, error: erroTracking } = await supabase
+      .from("entregas")
+      .update({
+        rastreamento_ativo: true,
+        latitude,
+        longitude,
+        precisao_metros: accuracy,
+        velocidade_m_s: speed,
+        direcao_graus: heading,
+        localizacao_atualizada_em: now,
+      })
+      .eq("id", Number(entregaAtual.id || 0))
+      .select("*")
+      .maybeSingle();
+
+    if (erroTracking) {
+      return NextResponse.json(
+        { ok: false, error: mensagemTabelaTracking(erroTracking, "Nao foi possivel atualizar a localizacao.") },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      data: {
+        entrega: serializarEntregaPublica((entregaAtualizada || null) as Record<string, unknown> | null),
+      },
+    });
+  }
 
   if (action === "finish") {
     if (!entregaAtual) {
@@ -319,16 +431,24 @@ export async function POST(request: NextRequest) {
         status: "finalizada",
         concluido_em: now,
         observacao: pontoFinalEntrega,
+        rastreamento_ativo: false,
+        rastreamento_token: null,
       })
       .eq("id", Number(entregaAtual.id || 0))
       .select("*")
       .maybeSingle();
 
     if (erroFinalizacao) {
-      return NextResponse.json({ ok: false, error: erroFinalizacao.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: mensagemTabelaTracking(erroFinalizacao, "Nao foi possivel finalizar a entrega.") },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ ok: true, data: { entrega: entregaFinalizada } });
+    return NextResponse.json({
+      ok: true,
+      data: { entrega: serializarEntregaPublica((entregaFinalizada || null) as Record<string, unknown> | null) },
+    });
   }
 
   if (entregaAtual) {
@@ -395,6 +515,7 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date().toISOString();
+  const novoTrackingToken = randomUUID();
   const payload = {
     pedido_id: pedidoId,
     entregador_id: Number(entregador.id || 0),
@@ -403,6 +524,8 @@ export async function POST(request: NextRequest) {
     acerto_status: "pendente",
     acerto_em: null,
     observacao: pontoFinalEntrega,
+    rastreamento_token: novoTrackingToken,
+    rastreamento_ativo: false,
   };
 
   const { data: entrega, error: erroEntrega } = await supabase
@@ -415,9 +538,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: tabelaAusente(erroEntrega)
-          ? "Cadastre as tabelas de entregadores no banco antes de usar o QR de entrega."
-          : erroEntrega.message,
+        error: mensagemTabelaTracking(erroEntrega, "Nao foi possivel aceitar a entrega."),
       },
       { status: 500 },
     );
@@ -431,7 +552,8 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     data: {
-      entrega,
+      entrega: serializarEntregaPublica((entrega || null) as Record<string, unknown> | null),
+      tracking_token: novoTrackingToken,
       entregador: {
         id: Number(entregador.id || 0),
         nome: String(entregador.nome || "").trim(),

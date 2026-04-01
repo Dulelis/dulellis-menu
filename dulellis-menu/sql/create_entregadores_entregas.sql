@@ -23,11 +23,29 @@ create table if not exists public.entregas (
   acerto_status text not null default 'pendente',
   acerto_em timestamptz,
   observacao text,
+  rastreamento_token text,
+  rastreamento_ativo boolean not null default false,
+  latitude numeric(10,7),
+  longitude numeric(10,7),
+  precisao_metros numeric(10,2),
+  velocidade_m_s numeric(10,2),
+  direcao_graus numeric(10,2),
+  localizacao_atualizada_em timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint entregas_pedido_unique unique (pedido_id),
   constraint entregas_entregador_fk foreign key (entregador_id) references public.entregadores(id) on delete set null
 );
+
+alter table if exists public.entregas
+  add column if not exists rastreamento_token text,
+  add column if not exists rastreamento_ativo boolean not null default false,
+  add column if not exists latitude numeric(10,7),
+  add column if not exists longitude numeric(10,7),
+  add column if not exists precisao_metros numeric(10,2),
+  add column if not exists velocidade_m_s numeric(10,2),
+  add column if not exists direcao_graus numeric(10,2),
+  add column if not exists localizacao_atualizada_em timestamptz;
 
 create index if not exists idx_entregadores_ativo on public.entregadores(ativo);
 create index if not exists idx_entregadores_nome on public.entregadores(nome);
@@ -35,6 +53,8 @@ create index if not exists idx_entregas_entregador_id on public.entregas(entrega
 create index if not exists idx_entregas_status on public.entregas(status);
 create index if not exists idx_entregas_acerto_status on public.entregas(acerto_status);
 create index if not exists idx_entregas_aceito_em on public.entregas(aceito_em desc);
+create index if not exists idx_entregas_rastreamento_ativo on public.entregas(rastreamento_ativo);
+create index if not exists idx_entregas_localizacao_atualizada_em on public.entregas(localizacao_atualizada_em desc);
 
 create or replace function public.touch_updated_at_entregadores()
 returns trigger

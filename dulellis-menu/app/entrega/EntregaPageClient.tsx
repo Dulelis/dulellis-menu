@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Bike, Loader2, MapPin, Navigation, PackageCheck } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Bike, Loader2, MapPin, Navigation, PackageCheck, Radar } from "lucide-react";
 
 type Entregador = {
   id: number;
@@ -14,12 +14,20 @@ type Entregador = {
 
 type Entrega = {
   id?: number;
+  pedido_id?: number | null;
   entregador_id?: number | null;
   status?: string | null;
   aceito_em?: string | null;
   concluido_em?: string | null;
   acerto_status?: string | null;
   observacao?: string | null;
+  rastreamento_ativo?: boolean | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  precisao_metros?: number | null;
+  velocidade_m_s?: number | null;
+  direcao_graus?: number | null;
+  localizacao_atualizada_em?: string | null;
 };
 
 type PedidoEntrega = {
@@ -43,12 +51,58 @@ type ApiResponse = {
     pedido?: PedidoEntrega | null;
     entregadores?: Entregador[];
     entrega?: Entrega | null;
+    tracking_token?: string;
   };
 };
+
+type TrackingStatus = "idle" | "starting" | "live" | "error";
 
 type Props = {
   pedidoId: number;
 };
+
+const TRACKING_MIN_INTERVAL_MS = 12000;
+const TRACKING_MIN_DISTANCE_METERS = 25;
+
+function tokenStorageKey(pedidoId: number) {
+  return `delivery-tracking-token:${pedidoId}`;
+}
+
+function trackingEnabledStorageKey(pedidoId: number) {
+  return `delivery-tracking-enabled:${pedidoId}`;
+}
+
+function calcularDistanciaMetros(
+  latitudeOrigem: number,
+  longitudeOrigem: number,
+  latitudeDestino: number,
+  longitudeDestino: number,
+) {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const raioTerra = 6371000;
+  const deltaLatitude = toRad(latitudeDestino - latitudeOrigem);
+  const deltaLongitude = toRad(longitudeDestino - longitudeOrigem);
+  const a =
+    Math.sin(deltaLatitude / 2) ** 2 +
+    Math.cos(toRad(latitudeOrigem)) *
+      Math.cos(toRad(latitudeDestino)) *
+      Math.sin(deltaLongitude / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return raioTerra * c;
+}
+
+function mensagemErroGeolocalizacao(error: GeolocationPositionError) {
+  if (error.code === error.PERMISSION_DENIED) {
+    return "Permita o acesso a localizacao para o admin acompanhar a entrega em tempo real.";
+  }
+  if (error.code === error.POSITION_UNAVAILABLE) {
+    return "Nao foi possivel obter sua localizacao agora. Tente novamente em instantes.";
+  }
+  if (error.code === error.TIMEOUT) {
+    return "O GPS demorou para responder. Tente novamente em um local aberto.";
+  }
+  return "Falha ao compartilhar a localizacao desta entrega.";
+}
 
 export default function EntregaPageClient({ pedidoId }: Props) {
   const [carregando, setCarregando] = useState(true);
@@ -60,6 +114,70 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const [entregadores, setEntregadores] = useState<Entregador[]>([]);
   const [entregadorId, setEntregadorId] = useState<number>(0);
   const [codigoTelefone, setCodigoTelefone] = useState("");
+  const [trackingToken, setTrackingToken] = useState("");
+  const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
+  const [trackingErro, setTrackingErro] = useState("");
+  const [trackingEnabled, setTrackingEnabled] = useState(false);
+
+  const trackingWatchIdRef = useRef<number | null>(null);
+  const trackingRequestRef = useRef(false);
+  const ultimaCoordenadaRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const ultimoEnvioRef = useRef(0);
+
+  const salvarTrackingToken = useCallback(
+    (token: string) => {
+      setTrackingToken(token);
+      if (typeof window !== "undefined") {
+        if (token) {
+          window.localStorage.setItem(tokenStorageKey(pedidoId), token);
+        } else {
+          window.localStorage.removeItem(tokenStorageKey(pedidoId));
+        }
+      }
+    },
+    [pedidoId],
+  );
+
+  const persistirTrackingAtivo = useCallback(
+    (ativo: boolean) => {
+      setTrackingEnabled(ativo);
+      if (typeof window !== "undefined") {
+        if (ativo) {
+          window.localStorage.setItem(trackingEnabledStorageKey(pedidoId), "1");
+        } else {
+          window.localStorage.removeItem(trackingEnabledStorageKey(pedidoId));
+        }
+      }
+    },
+    [pedidoId],
+  );
+
+  const limparTrackingLocal = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(tokenStorageKey(pedidoId));
+      window.localStorage.removeItem(trackingEnabledStorageKey(pedidoId));
+    }
+    setTrackingToken("");
+    setTrackingEnabled(false);
+    setTrackingStatus("idle");
+    setTrackingErro("");
+    trackingRequestRef.current = false;
+    ultimaCoordenadaRef.current = null;
+    ultimoEnvioRef.current = 0;
+  }, [pedidoId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || pedidoId <= 0) return;
+    const tokenSalvo = window.localStorage.getItem(tokenStorageKey(pedidoId)) || "";
+    const rastreamentoSalvo = window.localStorage.getItem(trackingEnabledStorageKey(pedidoId)) === "1";
+    if (tokenSalvo) {
+      setTrackingToken(tokenSalvo);
+      if (rastreamentoSalvo) {
+        setTrackingEnabled(true);
+        setTrackingStatus("starting");
+      }
+    }
+  }, [pedidoId]);
 
   useEffect(() => {
     let ativo = true;
@@ -105,6 +223,110 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const enderecoCompleto = [pedido?.endereco, pedido?.numero].filter(Boolean).join(", ");
   const localCompleto = [pedido?.bairro, pedido?.cidade].filter(Boolean).join(" - ");
 
+  const sincronizarLocalizacao = useCallback(
+    async (coords: GeolocationCoordinates) => {
+      if (!trackingToken || pedidoId <= 0) return;
+
+      const latitude = Number(coords.latitude);
+      const longitude = Number(coords.longitude);
+      const ultima = ultimaCoordenadaRef.current;
+      const agora = Date.now();
+      const distancia = ultima
+        ? calcularDistanciaMetros(ultima.latitude, ultima.longitude, latitude, longitude)
+        : Number.POSITIVE_INFINITY;
+
+      if (
+        ultima &&
+        agora - ultimoEnvioRef.current < TRACKING_MIN_INTERVAL_MS &&
+        distancia < TRACKING_MIN_DISTANCE_METERS
+      ) {
+        setTrackingStatus("live");
+        return;
+      }
+
+      if (trackingRequestRef.current) return;
+      trackingRequestRef.current = true;
+
+      try {
+        const res = await fetch("/api/public/delivery", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "location",
+            pedido_id: pedidoId,
+            tracking_token: trackingToken,
+            latitude,
+            longitude,
+            accuracy: coords.accuracy,
+            speed: coords.speed,
+            heading: coords.heading,
+          }),
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          data?: { entrega?: Entrega | null };
+        };
+        if (!res.ok || json.ok === false || !json.data?.entrega) {
+          throw new Error(json.error || "Nao foi possivel enviar sua localizacao.");
+        }
+
+        setEntrega(json.data.entrega);
+        setTrackingStatus("live");
+        setTrackingErro("");
+        ultimaCoordenadaRef.current = { latitude, longitude };
+        ultimoEnvioRef.current = agora;
+      } catch (error) {
+        setTrackingStatus("error");
+        setTrackingErro(error instanceof Error ? error.message : "Falha ao compartilhar a localizacao.");
+        persistirTrackingAtivo(false);
+      } finally {
+        trackingRequestRef.current = false;
+      }
+    },
+    [pedidoId, persistirTrackingAtivo, trackingToken],
+  );
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    if (!trackingEnabled || !trackingToken || !entregaAceita || entregaFinalizada) return;
+
+    setTrackingStatus("starting");
+    setTrackingErro("");
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        void sincronizarLocalizacao(position.coords);
+      },
+      (error) => {
+        setTrackingStatus("error");
+        setTrackingErro(mensagemErroGeolocalizacao(error));
+        persistirTrackingAtivo(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 5000,
+      },
+    );
+
+    trackingWatchIdRef.current = watchId;
+
+    return () => {
+      if (trackingWatchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.clearWatch(trackingWatchIdRef.current);
+        trackingWatchIdRef.current = null;
+      }
+    };
+  }, [entregaAceita, entregaFinalizada, persistirTrackingAtivo, sincronizarLocalizacao, trackingEnabled, trackingToken]);
+
+  useEffect(() => {
+    if (carregando) return;
+    if (!entregaAceita || entregaFinalizada) {
+      limparTrackingLocal();
+    }
+  }, [carregando, entregaAceita, entregaFinalizada, limparTrackingLocal]);
+
   async function aceitarEntrega() {
     if (codigoTelefone.replace(/\D/g, "").length !== 4) {
       setErro("Digite os 4 ultimos numeros do telefone do entregador.");
@@ -127,12 +349,22 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
-        data?: { entrega?: Entrega | null; entregador?: { nome?: string | null } | null };
+        data?: {
+          entrega?: Entrega | null;
+          entregador?: { nome?: string | null } | null;
+          tracking_token?: string;
+        };
       };
       if (!res.ok || json.ok === false || !json.data?.entrega) {
         throw new Error(json.error || "Nao foi possivel aceitar a entrega.");
       }
       setEntrega(json.data.entrega);
+      setEntregadorId(Number(json.data.entrega.entregador_id || 0));
+      if (json.data.tracking_token) {
+        salvarTrackingToken(json.data.tracking_token);
+        persistirTrackingAtivo(true);
+        setTrackingStatus("starting");
+      }
       setSucesso(
         json.data.entregador?.nome
           ? `Entrega aceita por ${json.data.entregador.nome}.`
@@ -154,7 +386,11 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       const res = await fetch("/api/public/delivery", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "finish", pedido_id: pedidoId }),
+        body: JSON.stringify({
+          action: "finish",
+          pedido_id: pedidoId,
+          tracking_token: trackingToken || undefined,
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -165,12 +401,29 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         throw new Error(json.error || "Nao foi possivel finalizar a entrega.");
       }
       setEntrega(json.data.entrega);
+      limparTrackingLocal();
       setSucesso("Entrega finalizada com sucesso.");
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Falha ao finalizar entrega.");
     } finally {
       setSalvando(false);
     }
+  }
+
+  function ativarRastreamento() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setTrackingStatus("error");
+      setTrackingErro("Este aparelho nao suporta geolocalizacao em tempo real.");
+      return;
+    }
+    if (!trackingToken) {
+      setTrackingStatus("error");
+      setTrackingErro("Aceite a entrega neste aparelho para liberar o rastreamento em tempo real.");
+      return;
+    }
+    setTrackingErro("");
+    setTrackingStatus("starting");
+    persistirTrackingAtivo(true);
   }
 
   return (
@@ -203,52 +456,51 @@ export default function EntregaPageClient({ pedidoId }: Props) {
             ) : null}
 
             {!entregaFinalizada ? (
-            <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Pedido</p>
-                  <p className="mt-1 text-2xl font-black text-slate-900">#{pedido.id}</p>
+              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Pedido</p>
+                    <p className="mt-1 text-2xl font-black text-slate-900">#{pedido.id}</p>
+                  </div>
+                  <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-right">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Total</p>
+                    <p className="text-lg font-black text-emerald-700">R$ {Number(pedido.total || 0).toFixed(2)}</p>
+                  </div>
                 </div>
-                <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-right">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Total</p>
-                  <p className="text-lg font-black text-emerald-700">R$ {Number(pedido.total || 0).toFixed(2)}</p>
+                <p className="mt-4 text-sm font-black text-slate-800">{pedido.cliente_nome || "Cliente"}</p>
+                <div className="mt-3 flex items-start gap-2 text-sm font-medium text-slate-700">
+                  <MapPin size={16} className="mt-0.5 shrink-0 text-orange-500" />
+                  <div>
+                    <p>{enderecoCompleto || "Endereco nao informado"}</p>
+                    <p>{localCompleto || "Local nao informado"}</p>
+                    <p>CEP: {pedido.cep || "Nao informado"}</p>
+                    <p>Ponto: {pedido.ponto_referencia || "Nao informado"}</p>
+                  </div>
                 </div>
+                {pedido.maps_url ? (
+                  <a
+                    href={pedido.maps_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
+                  >
+                    <Navigation size={16} />
+                    Abrir no Maps
+                  </a>
+                ) : null}
               </div>
-              <p className="mt-4 text-sm font-black text-slate-800">{pedido.cliente_nome || "Cliente"}</p>
-              <div className="mt-3 flex items-start gap-2 text-sm font-medium text-slate-700">
-                <MapPin size={16} className="mt-0.5 shrink-0 text-orange-500" />
-                <div>
-                  <p>{enderecoCompleto || "Endereco nao informado"}</p>
-                  <p>{localCompleto || "Local nao informado"}</p>
-                  <p>CEP: {pedido.cep || "Nao informado"}</p>
-                  <p>Ponto: {pedido.ponto_referencia || "Nao informado"}</p>
-                </div>
-              </div>
-              {pedido.maps_url ? (
-                <a
-                  href={pedido.maps_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
-                >
-                  <Navigation size={16} />
-                  Abrir no Maps
-                </a>
-              ) : null}
-            </div>
             ) : null}
 
             {!entregaFinalizada ? (
-            <div className="rounded-[1.75rem] border border-orange-200 bg-orange-50 p-5">
-              <p className="text-[11px] font-black uppercase tracking-[0.25em] text-orange-600">Entregador</p>
-              <p className="mt-1 text-sm font-bold text-slate-600">
-                {entregaAceita
-                  ? "Entrega ja assumida. Finalize quando concluir."
-                  : "Informe o codigo de 4 digitos do telefone do motoboy para assumir a entrega."}
-              </p>
+              <div className="rounded-[1.75rem] border border-orange-200 bg-orange-50 p-5">
+                <p className="text-[11px] font-black uppercase tracking-[0.25em] text-orange-600">Entregador</p>
+                <p className="mt-1 text-sm font-bold text-slate-600">
+                  {entregaAceita
+                    ? "Entrega ja assumida. Finalize quando concluir."
+                    : "Informe o codigo de 4 digitos do telefone do motoboy para assumir a entrega."}
+                </p>
 
-              {!entregaAceita ? (
-                <>
+                {!entregaAceita ? (
                   <input
                     inputMode="numeric"
                     maxLength={4}
@@ -257,70 +509,120 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                     value={codigoTelefone}
                     onChange={(event) => setCodigoTelefone(event.target.value.replace(/\D/g, "").slice(0, 4))}
                   />
-                </>
-              ) : null}
+                ) : null}
 
-              {entregadorAtual ? (
-                <div className="mt-4 rounded-2xl border border-white/70 bg-white/90 p-4 text-sm font-medium text-slate-700">
-                  <p className="font-black text-slate-900">{entregadorAtual.nome || "Entregador"}</p>
-                  <p>{entregadorAtual.whatsapp || "WhatsApp nao informado"}</p>
-                  <p>
-                    {[entregadorAtual.modelo_moto, entregadorAtual.cor_moto, entregadorAtual.placa_moto]
-                      .filter(Boolean)
-                      .join(" • ") || "Moto nao informada"}
+                {entregadorAtual ? (
+                  <div className="mt-4 rounded-2xl border border-white/70 bg-white/90 p-4 text-sm font-medium text-slate-700">
+                    <p className="font-black text-slate-900">{entregadorAtual.nome || "Entregador"}</p>
+                    <p>{entregadorAtual.whatsapp || "WhatsApp nao informado"}</p>
+                    <p>
+                      {[entregadorAtual.modelo_moto, entregadorAtual.cor_moto, entregadorAtual.placa_moto]
+                        .filter(Boolean)
+                        .join(" - ") || "Moto nao informada"}
+                    </p>
+                  </div>
+                ) : null}
+
+                {entregaAceita ? (
+                  <div className="mt-4 rounded-2xl border border-blue-200 bg-white px-4 py-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-100 text-blue-600">
+                        {trackingStatus === "starting" ? <Loader2 className="animate-spin" size={18} /> : <Radar size={18} />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[11px] font-black uppercase tracking-[0.25em] text-blue-500">Rastreamento</p>
+                        <p className="mt-1 text-sm font-bold text-slate-700">
+                          {trackingStatus === "live"
+                            ? "Sua localizacao esta sendo enviada para o admin acompanhar no mapa."
+                            : "Ative a localizacao deste aparelho para liberar o acompanhamento em tempo real."}
+                        </p>
+                        {entrega?.localizacao_atualizada_em ? (
+                          <p className="mt-2 text-xs font-bold text-slate-500">
+                            Ultimo envio em{" "}
+                            {new Date(String(entrega.localizacao_atualizada_em)).toLocaleString("pt-BR")}
+                          </p>
+                        ) : (
+                          <p className="mt-2 text-xs font-bold text-slate-500">
+                            O mapa do admin aparece assim que o primeiro GPS for enviado.
+                          </p>
+                        )}
+                        {trackingErro ? (
+                          <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+                            {trackingErro}
+                          </div>
+                        ) : null}
+                        {trackingStatus !== "live" ? (
+                          <button
+                            type="button"
+                            onClick={ativarRastreamento}
+                            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-blue-700"
+                          >
+                            {trackingStatus === "starting" ? (
+                              <Loader2 className="animate-spin" size={16} />
+                            ) : (
+                              <Radar size={16} />
+                            )}
+                            Ativar rastreamento
+                          </button>
+                        ) : (
+                          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">
+                            Rastreamento ativo neste aparelho.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {sucesso ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
+                    {sucesso}
+                  </div>
+                ) : null}
+
+                {entrega?.aceito_em ? (
+                  <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
+                    Entrega registrada em {new Date(String(entrega.aceito_em)).toLocaleString("pt-BR")}
+                    {entrega?.acerto_status === "acertado" ? " e ja consta como acertada." : "."}
+                  </div>
+                ) : null}
+
+                {entrega?.observacao ? (
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-600">
+                    <strong className="text-slate-900">Ponto final:</strong> {entrega.observacao}
+                  </div>
+                ) : null}
+
+                {!entregaAceita ? (
+                  <button
+                    type="button"
+                    onClick={() => void aceitarEntrega()}
+                    disabled={salvando || !entregadores.length}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {salvando ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />}
+                    Aceitar entrega
+                  </button>
+                ) : null}
+
+                {entregaAceita ? (
+                  <button
+                    type="button"
+                    onClick={() => void finalizarEntrega()}
+                    disabled={salvando}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {salvando ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />}
+                    Finalizar entrega
+                  </button>
+                ) : null}
+
+                {!entregadores.length ? (
+                  <p className="mt-4 text-sm font-bold text-rose-600">
+                    Nenhum entregador ativo cadastrado no admin.
                   </p>
-                </div>
-              ) : null}
-
-              {sucesso ? (
-                <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
-                  {sucesso}
-                </div>
-              ) : null}
-
-              {entrega?.aceito_em ? (
-                <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
-                  Entrega registrada em {new Date(String(entrega.aceito_em)).toLocaleString("pt-BR")}
-                  {entrega?.acerto_status === "acertado" ? " e ja consta como acertada." : "."}
-                </div>
-              ) : null}
-
-              {entrega?.observacao ? (
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-600">
-                  <strong className="text-slate-900">Ponto final:</strong> {entrega.observacao}
-                </div>
-              ) : null}
-
-              {!entregaAceita ? (
-                <button
-                  type="button"
-                  onClick={() => void aceitarEntrega()}
-                  disabled={salvando || !entregadores.length}
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {salvando ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />}
-                  Aceitar entrega
-                </button>
-              ) : null}
-
-              {entregaAceita ? (
-                <button
-                  type="button"
-                  onClick={() => void finalizarEntrega()}
-                  disabled={salvando}
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {salvando ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />}
-                  Finalizar entrega
-                </button>
-              ) : null}
-
-              {!entregadores.length ? (
-                <p className="mt-4 text-sm font-bold text-rose-600">
-                  Nenhum entregador ativo cadastrado no admin.
-                </p>
-              ) : null}
-            </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
         ) : null}

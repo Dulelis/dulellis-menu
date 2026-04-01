@@ -74,6 +74,14 @@ function normalizarAdminTab(valor: string | null): AdminTab {
   return ADMIN_TABS.includes(valor as AdminTab) ? (valor as AdminTab) : 'estoque';
 }
 
+function extrairCoordenadasValidas(registro: any) {
+  const latitude = Number(registro?.latitude);
+  const longitude = Number(registro?.longitude);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
+}
+
 function AdminPageContent() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<AdminTab>('estoque');
@@ -108,6 +116,7 @@ function AdminPageContent() {
   const [mostrarModalEntregador, setMostrarModalEntregador] = useState(false);
   const [editandoEntregadorId, setEditandoEntregadorId] = useState<number | null>(null);
   const [alertaEntregaAceita, setAlertaEntregaAceita] = useState('');
+  const [entregaMapaSelecionadaId, setEntregaMapaSelecionadaId] = useState<number | null>(null);
   
   // Agora o padrão começa em 2km
   const [novaTaxa, setNovaTaxa] = useState({ bairro: 'Até 2km', taxa: 0 });
@@ -166,6 +175,7 @@ function AdminPageContent() {
   const [pedidoAtualizandoId, setPedidoAtualizandoId] = useState<number | null>(null);
   const [resetandoVitrine, setResetandoVitrine] = useState(false);
   const recarregarRealtimeRef = useRef<number | null>(null);
+  const entregadoresRef = useRef<any[]>([]);
   const qzConectandoRef = useRef<Promise<void> | null>(null);
   const imprimirPedidoAceitoRef = useRef<(pedido: any, popupExistente?: Window | null) => Promise<void>>(async () => {});
   const assinaturasPedidosRef = useRef<Map<number, string>>(new Map());
@@ -287,6 +297,10 @@ function AdminPageContent() {
   }, [carregarDados]);
 
   useEffect(() => {
+    entregadoresRef.current = entregadores;
+  }, [entregadores]);
+
+  useEffect(() => {
     const agendarRecarga = () => {
       if (recarregarRealtimeRef.current) {
         window.clearTimeout(recarregarRealtimeRef.current);
@@ -325,7 +339,7 @@ function AdminPageContent() {
       const entregadorId = Number(entregaAtualizada?.entregador_id || 0);
       const pedidoId = Number(entregaAtualizada?.pedido_id || 0);
       const nomeEntregador =
-        entregadores.find((item) => Number(item.id) === entregadorId)?.nome || 'Entregador';
+        entregadoresRef.current.find((item) => Number(item.id) === entregadorId)?.nome || 'Entregador';
 
       if (status === 'aceita' && pedidoId > 0) {
         setAlertaEntregaAceita(`${nomeEntregador} aceitou a entrega do pedido #${pedidoId}.`);
@@ -357,7 +371,7 @@ function AdminPageContent() {
       }
       void supabase.removeChannel(channel);
     };
-  }, [carregarDados, entregadores]);
+  }, [carregarDados]);
 
   useEffect(() => {
     if (!QZ_PRINTER_NAME) return;
@@ -1013,6 +1027,101 @@ function AdminPageContent() {
       cep,
     };
   }, []);
+  const montarDestinoMapsEntrega = useCallback((entrega: any) => {
+    const pedidoBase = entrega?.pedido || entrega;
+    const { enderecoCompleto, bairro, cidade, cep } = montarEnderecoEntrega(pedidoBase);
+    return [enderecoCompleto, bairro, cidade, cep].filter(Boolean).join(', ');
+  }, [montarEnderecoEntrega]);
+  const montarLinkPosicaoAtualEntrega = useCallback((entrega: any) => {
+    const coordenadas = extrairCoordenadasValidas(entrega);
+    if (!coordenadas) return '';
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coordenadas.latitude},${coordenadas.longitude}`)}`;
+  }, []);
+  const montarLinkRotaEntrega = useCallback((entrega: any) => {
+    const coordenadas = extrairCoordenadasValidas(entrega);
+    const destino = montarDestinoMapsEntrega(entrega);
+    if (!coordenadas && !destino) return '';
+    if (!coordenadas) {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destino)}`;
+    }
+    if (!destino) {
+      return montarLinkPosicaoAtualEntrega(entrega);
+    }
+    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(`${coordenadas.latitude},${coordenadas.longitude}`)}&destination=${encodeURIComponent(destino)}&travelmode=driving`;
+  }, [montarDestinoMapsEntrega, montarLinkPosicaoAtualEntrega]);
+  const montarMapaEmbedEntrega = useCallback((entrega: any) => {
+    const coordenadas = extrairCoordenadasValidas(entrega);
+    const destino = montarDestinoMapsEntrega(entrega);
+    if (coordenadas) {
+      return `https://maps.google.com/maps?q=${encodeURIComponent(`${coordenadas.latitude},${coordenadas.longitude}`)}&z=15&output=embed`;
+    }
+    if (destino) {
+      return `https://maps.google.com/maps?q=${encodeURIComponent(destino)}&z=15&output=embed`;
+    }
+    return '';
+  }, [montarDestinoMapsEntrega]);
+  const formatarDataRastreamento = useCallback((valor?: string | null) => {
+    const texto = String(valor || '').trim();
+    if (!texto) return 'Nao informado';
+    const data = new Date(texto);
+    if (Number.isNaN(data.getTime())) return 'Nao informado';
+    return data.toLocaleString('pt-BR');
+  }, []);
+  const obterResumoRastreamentoEntrega = useCallback((entrega: any) => {
+    const coordenadas = extrairCoordenadasValidas(entrega);
+    const atualizacaoTexto = String(entrega?.localizacao_atualizada_em || '').trim();
+    const atualizacao = atualizacaoTexto ? new Date(atualizacaoTexto) : null;
+    const diffMs = atualizacao ? Date.now() - atualizacao.getTime() : Number.POSITIVE_INFINITY;
+    const finalizada = String(entrega?.status || '').trim().toLowerCase() === 'finalizada';
+
+    if (finalizada) {
+      return {
+        label: 'Finalizada',
+        badgeClass: 'bg-slate-100 text-slate-600',
+        detalhe: 'Entrega encerrada.',
+        aoVivo: false,
+        temCoordenadas: Boolean(coordenadas),
+      };
+    }
+
+    if (!coordenadas) {
+      return {
+        label: entrega?.rastreamento_ativo ? 'Aguardando GPS' : 'Sem rastreio',
+        badgeClass: 'bg-amber-50 text-amber-700',
+        detalhe: 'O motoboy ainda nao enviou a primeira localizacao.',
+        aoVivo: false,
+        temCoordenadas: false,
+      };
+    }
+
+    if (diffMs <= 90_000 && entrega?.rastreamento_ativo !== false) {
+      return {
+        label: 'Ao vivo',
+        badgeClass: 'bg-emerald-50 text-emerald-700',
+        detalhe: 'Localizacao atualizada em tempo real.',
+        aoVivo: true,
+        temCoordenadas: true,
+      };
+    }
+
+    if (diffMs <= 10 * 60_000) {
+      return {
+        label: 'Ultimo ping',
+        badgeClass: 'bg-sky-50 text-sky-700',
+        detalhe: 'Mostrando a ultima posicao enviada pelo entregador.',
+        aoVivo: false,
+        temCoordenadas: true,
+      };
+    }
+
+    return {
+      label: 'Sinal antigo',
+      badgeClass: 'bg-slate-100 text-slate-600',
+      detalhe: 'A localizacao esta desatualizada e pode nao refletir o trajeto atual.',
+      aoVivo: false,
+      temCoordenadas: true,
+    };
+  }, []);
   const montarLinkAceiteEntrega = useCallback((registro: any) => {
     const pedidoId = Number(registro?.id || 0);
     if (!pedidoId) return '';
@@ -1612,6 +1721,40 @@ function AdminPageContent() {
       };
     });
   }, [entregadores, entregasDoDia]);
+
+  const entregasEmAndamento = React.useMemo(() => {
+    return entregasDetalhadas.filter((entrega) => String(entrega?.status || '').trim().toLowerCase() !== 'finalizada');
+  }, [entregasDetalhadas]);
+
+  const entregasAoVivoAgora = React.useMemo(() => {
+    return entregasEmAndamento.filter((entrega) => obterResumoRastreamentoEntrega(entrega).aoVivo);
+  }, [entregasEmAndamento, obterResumoRastreamentoEntrega]);
+
+  useEffect(() => {
+    if (!entregasEmAndamento.length) {
+      setEntregaMapaSelecionadaId(null);
+      return;
+    }
+
+    setEntregaMapaSelecionadaId((atual) => {
+      if (atual && entregasEmAndamento.some((item) => Number(item.id || 0) === Number(atual))) {
+        return atual;
+      }
+      return Number(entregasEmAndamento[0].id || 0);
+    });
+  }, [entregasEmAndamento]);
+
+  const entregaMapaSelecionada = React.useMemo(() => {
+    if (!entregasEmAndamento.length) return null;
+    return (
+      entregasEmAndamento.find((item) => Number(item.id || 0) === Number(entregaMapaSelecionadaId || 0)) ||
+      entregasEmAndamento[0]
+    );
+  }, [entregaMapaSelecionadaId, entregasEmAndamento]);
+  const resumoMapaSelecionado = entregaMapaSelecionada ? obterResumoRastreamentoEntrega(entregaMapaSelecionada) : null;
+  const linkMapaAtualSelecionado = entregaMapaSelecionada ? montarLinkPosicaoAtualEntrega(entregaMapaSelecionada) : '';
+  const linkRotaSelecionada = entregaMapaSelecionada ? montarLinkRotaEntrega(entregaMapaSelecionada) : '';
+  const mapaEmbedSelecionado = entregaMapaSelecionada ? montarMapaEmbedEntrega(entregaMapaSelecionada) : '';
 
   const limparHistoricoCliente = async (cliente: any) => {
     const zap = normalizarNumero(String(cliente.whatsapp || ''));
@@ -2280,7 +2423,7 @@ function AdminPageContent() {
 
         {activeTab === 'entregadores' && (
           <div className="space-y-8">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Entregadores ativos</p>
                 <p className="mt-2 text-3xl font-black text-slate-800">
@@ -2299,6 +2442,161 @@ function AdminPageContent() {
                   {entregasDoDia.filter((item) => String(item?.acerto_status || '').trim().toLowerCase() !== 'acertado').length}
                 </p>
                 <p className="text-sm font-bold text-emerald-700/80">entregas para fechamento</p>
+              </div>
+              <div className="rounded-[2rem] border border-sky-200 bg-sky-50 p-5 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">Ao vivo agora</p>
+                <p className="mt-2 text-3xl font-black text-sky-700">{entregasAoVivoAgora.length}</p>
+                <p className="text-sm font-bold text-sky-700/80">motoboys com GPS recente</p>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Acompanhamento</p>
+                  <h3 className="text-lg font-black text-slate-800">Entregas em tempo real no mapa</h3>
+                </div>
+                <p className="text-sm font-bold text-slate-500">
+                  O painel atualiza automaticamente conforme o entregador envia o GPS.
+                </p>
+              </div>
+
+              <div className="mt-5 grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+                <div className="space-y-3">
+                  {entregasEmAndamento.length > 0 ? entregasEmAndamento.map((entrega) => {
+                    const rastreamento = obterResumoRastreamentoEntrega(entrega);
+                    const selecionada = Number(entrega.id || 0) === Number(entregaMapaSelecionada?.id || 0);
+                    return (
+                      <button
+                        key={entrega.id}
+                        type="button"
+                        onClick={() => setEntregaMapaSelecionadaId(Number(entrega.id || 0))}
+                        className={`w-full rounded-[1.6rem] border p-4 text-left transition-all ${selecionada ? 'border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-200' : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white'}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className={`text-sm font-black ${selecionada ? 'text-white' : 'text-slate-800'}`}>
+                              Pedido #{Number(entrega?.pedido_id || 0)}
+                            </p>
+                            <p className={`mt-1 text-xs font-bold uppercase tracking-widest ${selecionada ? 'text-white/70' : 'text-slate-400'}`}>
+                              {entrega?.entregador?.nome || 'Entregador nao encontrado'}
+                            </p>
+                          </div>
+                          <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${selecionada ? 'bg-white/15 text-white' : rastreamento.badgeClass}`}>
+                            {rastreamento.label}
+                          </span>
+                        </div>
+                        <p className={`mt-3 text-sm font-bold ${selecionada ? 'text-white/85' : 'text-slate-600'}`}>
+                          {entrega?.pedido?.cliente_nome || 'Cliente'}
+                        </p>
+                        <p className={`mt-2 text-xs font-medium ${selecionada ? 'text-white/70' : 'text-slate-500'}`}>
+                          {rastreamento.detalhe}
+                        </p>
+                        <p className={`mt-3 text-xs font-bold ${selecionada ? 'text-white/70' : 'text-slate-500'}`}>
+                          Ultimo ping: {formatarDataRastreamento(entrega?.localizacao_atualizada_em)}
+                        </p>
+                      </button>
+                    );
+                  }) : (
+                    <div className="rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm font-medium italic text-slate-400">
+                      Nenhuma entrega em andamento para rastrear agora.
+                    </div>
+                  )}
+                </div>
+
+                <div className="overflow-hidden rounded-[1.8rem] border border-slate-200 bg-slate-50">
+                  {entregaMapaSelecionada ? (
+                    <div className="grid h-full grid-rows-[minmax(340px,1fr)_auto]">
+                      <div className="relative min-h-[340px] bg-slate-100">
+                        {mapaEmbedSelecionado ? (
+                          <iframe
+                            title={`Mapa da entrega ${Number(entregaMapaSelecionada?.pedido_id || 0)}`}
+                            src={mapaEmbedSelecionado}
+                            className="h-full min-h-[340px] w-full border-0"
+                            loading="lazy"
+                            referrerPolicy="no-referrer-when-downgrade"
+                          />
+                        ) : (
+                          <div className="flex h-full min-h-[340px] items-center justify-center p-8 text-center text-sm font-medium text-slate-500">
+                            Aguardando endereco ou primeira coordenada para desenhar o mapa desta entrega.
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="border-t border-slate-200 bg-white p-5">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Entrega selecionada</p>
+                            <h4 className="mt-1 text-xl font-black text-slate-900">
+                              Pedido #{Number(entregaMapaSelecionada?.pedido_id || 0)}
+                              {entregaMapaSelecionada?.pedido?.cliente_nome ? ` - ${String(entregaMapaSelecionada.pedido.cliente_nome)}` : ''}
+                            </h4>
+                            <p className="mt-2 text-sm font-bold text-slate-600">
+                              {entregaMapaSelecionada?.entregador?.nome || 'Entregador nao encontrado'}
+                            </p>
+                          </div>
+                          {resumoMapaSelecionado ? (
+                            <span className={`w-max rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${resumoMapaSelecionado.badgeClass}`}>
+                              {resumoMapaSelecionado.label}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-1 gap-3 text-sm font-medium text-slate-600 sm:grid-cols-2">
+                          <p>
+                            <strong className="text-slate-800">Destino:</strong> {montarDestinoMapsEntrega(entregaMapaSelecionada) || 'Nao informado'}
+                          </p>
+                          <p>
+                            <strong className="text-slate-800">Ultimo ping:</strong> {formatarDataRastreamento(entregaMapaSelecionada?.localizacao_atualizada_em)}
+                          </p>
+                          <p>
+                            <strong className="text-slate-800">Precisao:</strong>{' '}
+                            {Number.isFinite(Number(entregaMapaSelecionada?.precisao_metros))
+                              ? `${Number(entregaMapaSelecionada?.precisao_metros || 0).toFixed(0)} m`
+                              : 'Nao informada'}
+                          </p>
+                          <p>
+                            <strong className="text-slate-800">Status entrega:</strong>{' '}
+                            {String(entregaMapaSelecionada?.status || 'aceita') || 'aceita'}
+                          </p>
+                        </div>
+
+                        {resumoMapaSelecionado?.temCoordenadas ? (
+                          <p className="mt-3 text-xs font-bold text-slate-500">
+                            Coordenadas: {Number(entregaMapaSelecionada?.latitude || 0).toFixed(6)}, {Number(entregaMapaSelecionada?.longitude || 0).toFixed(6)}
+                          </p>
+                        ) : null}
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {linkMapaAtualSelecionado ? (
+                            <a
+                              href={linkMapaAtualSelecionado}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-black uppercase text-white transition-colors hover:bg-slate-800"
+                            >
+                              Abrir posicao atual
+                            </a>
+                          ) : null}
+                          {linkRotaSelecionada ? (
+                            <a
+                              href={linkRotaSelecionada}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-xl bg-sky-600 px-3 py-2 text-xs font-black uppercase text-white transition-colors hover:bg-sky-700"
+                            >
+                              Abrir rota no Maps
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex min-h-[420px] items-center justify-center p-8 text-center text-sm font-medium italic text-slate-400">
+                      Nenhuma entrega em andamento foi selecionada para o mapa.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2374,6 +2672,9 @@ function AdminPageContent() {
                   {entregasDetalhadas.length > 0 ? entregasDetalhadas.map((entrega) => {
                     const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
                     const statusEntrega = String(entrega?.status || '').trim() || 'aceita';
+                    const rastreamento = obterResumoRastreamentoEntrega(entrega);
+                    const linkPosicaoAtual = montarLinkPosicaoAtualEntrega(entrega);
+                    const linkRota = montarLinkRotaEntrega(entrega);
                     return (
                       <div key={entrega.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                         <div className="flex items-start justify-between gap-3">
@@ -2407,6 +2708,19 @@ function AdminPageContent() {
                           </p>
                         ) : null}
 
+                        <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rastreamento</p>
+                            <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${rastreamento.badgeClass}`}>
+                              {rastreamento.label}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm font-bold text-slate-700">{rastreamento.detalhe}</p>
+                          <p className="mt-2 text-xs font-bold text-slate-500">
+                            Ultimo ping: {formatarDataRastreamento(entrega?.localizacao_atualizada_em)}
+                          </p>
+                        </div>
+
                         {entrega?.observacao ? (
                           <p className="mt-2 text-xs font-medium text-slate-500">
                             <strong className="text-slate-700">Ponto final:</strong> {String(entrega.observacao)}
@@ -2429,6 +2743,26 @@ function AdminPageContent() {
                             >
                               Reimprimir cupom
                             </button>
+                          ) : null}
+                          {linkPosicaoAtual ? (
+                            <a
+                              href={linkPosicaoAtual}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors text-xs font-black uppercase"
+                            >
+                              Posicao atual
+                            </a>
+                          ) : null}
+                          {linkRota ? (
+                            <a
+                              href={linkRota}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-3 py-2 rounded-xl bg-sky-600 text-white hover:bg-sky-700 transition-colors text-xs font-black uppercase"
+                            >
+                              Abrir rota
+                            </a>
                           ) : null}
                         </div>
                       </div>
