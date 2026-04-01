@@ -98,11 +98,25 @@ function calcularDistanciaMetros(
   return raioTerra * c;
 }
 
+function obterMensagemErroGeolocalizacao(error?: GeolocationPositionError | null, bloqueada = false) {
+  if (bloqueada || error?.code === 1) {
+    return "A localizacao deste site esta bloqueada no aparelho. Libere nas permissoes do navegador e toque em Ativar rastreamento novamente.";
+  }
+  if (error?.code === 2) {
+    return "Nao foi possivel localizar o aparelho agora. Tente novamente em um local com sinal melhor.";
+  }
+  if (error?.code === 3) {
+    return "O aparelho demorou para responder a localizacao. Tente novamente.";
+  }
+  return "Nao foi possivel acessar a localizacao deste aparelho.";
+}
+
 export default function EntregaPageClient({ pedidoId }: Props) {
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
+  const [avisoRastreamento, setAvisoRastreamento] = useState("");
   const [pedido, setPedido] = useState<PedidoEntrega | null>(null);
   const [entrega, setEntrega] = useState<Entrega | null>(null);
   const [entregadores, setEntregadores] = useState<Entregador[]>([]);
@@ -172,8 +186,18 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     }
   }, [pedidoId]);
 
-  const solicitarPermissaoGeolocalizacao = useCallback(async () => {
+  const solicitarPermissaoGeolocalizacao = useCallback(async (options?: { silencioso?: boolean }) => {
     if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.geolocation) {
+      if (!options?.silencioso) {
+        setAvisoRastreamento("Este aparelho nao disponibiliza localizacao para o site.");
+      }
+      return false;
+    }
+
+    if (!window.isSecureContext) {
+      if (!options?.silencioso) {
+        setAvisoRastreamento("Abra este link em um site seguro com HTTPS para liberar a localizacao.");
+      }
       return false;
     }
 
@@ -184,6 +208,9 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         (position) => {
           ultimaPosicaoCapturadaRef.current = position.coords;
           window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "granted");
+          if (!options?.silencioso) {
+            setAvisoRastreamento("");
+          }
           resolve(true);
         },
         (error) => {
@@ -191,12 +218,62 @@ export default function EntregaPageClient({ pedidoId }: Props) {
           if (error.code === 1) {
             window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "denied");
           }
+          if (!options?.silencioso) {
+            setAvisoRastreamento(obterMensagemErroGeolocalizacao(error));
+          }
           resolve(false);
         },
         GEOLOCATION_OPTIONS,
       );
     });
   }, []);
+
+  const garantirPermissaoGeolocalizacao = useCallback(
+    async (options?: { silencioso?: boolean }) => {
+      if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.geolocation) {
+        if (!options?.silencioso) {
+          setAvisoRastreamento("Este aparelho nao disponibiliza localizacao para o site.");
+        }
+        return false;
+      }
+
+      if (!window.isSecureContext) {
+        if (!options?.silencioso) {
+          setAvisoRastreamento("Abra este link em um site seguro com HTTPS para liberar a localizacao.");
+        }
+        return false;
+      }
+
+      if ("permissions" in navigator && navigator.permissions?.query) {
+        try {
+          const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+          if (status.state === "granted") {
+            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "granted");
+            if (ultimaPosicaoCapturadaRef.current) {
+              if (!options?.silencioso) {
+                setAvisoRastreamento("");
+              }
+              return true;
+            }
+            return await solicitarPermissaoGeolocalizacao(options);
+          }
+
+          if (status.state === "denied") {
+            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "denied");
+            if (!options?.silencioso) {
+              setAvisoRastreamento(obterMensagemErroGeolocalizacao(null, true));
+            }
+            return false;
+          }
+        } catch (error) {
+          console.error("Falha ao consultar permissao de geolocalizacao.", error);
+        }
+      }
+
+      return await solicitarPermissaoGeolocalizacao(options);
+    },
+    [solicitarPermissaoGeolocalizacao],
+  );
 
   useEffect(() => {
     let ativo = true;
@@ -259,7 +336,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
 
           if (status.state === "granted") {
             window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "granted");
-            void solicitarPermissaoGeolocalizacao();
+            void solicitarPermissaoGeolocalizacao({ silencioso: true });
             return;
           }
 
@@ -273,7 +350,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       }
 
       if (!jaSolicitado && permissaoSalva !== "denied") {
-        await solicitarPermissaoGeolocalizacao();
+        await solicitarPermissaoGeolocalizacao({ silencioso: true });
       }
     }
 
@@ -353,17 +430,41 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     }
   }, []);
 
-  const iniciarRastreamento = useCallback(async (tokenSobrescrito?: string) => {
-    const tokenAtual = String(tokenSobrescrito || trackingToken || "").trim();
-    if (typeof navigator === "undefined" || !navigator.geolocation || !tokenAtual || pedidoId <= 0) {
+  const iniciarRastreamento = useCallback(async (tokenSobrescrito?: string, options?: { solicitarPermissao?: boolean; silencioso?: boolean }) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation || pedidoId <= 0) {
       persistirTrackingAtivo(false);
       setTrackingStatus("idle");
+      if (!options?.silencioso) {
+        setAvisoRastreamento("Este aparelho nao disponibiliza localizacao para o site.");
+      }
+      return false;
+    }
+
+    if (options?.solicitarPermissao !== false) {
+      const permissaoConcedida = await garantirPermissaoGeolocalizacao({ silencioso: options?.silencioso });
+      if (!permissaoConcedida) {
+        persistirTrackingAtivo(false);
+        setTrackingStatus("idle");
+        return false;
+      }
+    }
+
+    const tokenAtual = String(tokenSobrescrito || trackingToken || "").trim();
+    if (!tokenAtual) {
+      persistirTrackingAtivo(false);
+      setTrackingStatus("idle");
+      if (!options?.silencioso) {
+        setAvisoRastreamento("Nao foi possivel preparar o rastreamento desta entrega. Recarregue o link e tente novamente.");
+      }
       return false;
     }
 
     pararRastreamento();
     persistirTrackingAtivo(true);
     setTrackingStatus("starting");
+    if (!options?.silencioso) {
+      setAvisoRastreamento("");
+    }
 
     const iniciarWatch = () => {
       trackingWatchIdRef.current = navigator.geolocation.watchPosition(
@@ -376,6 +477,9 @@ export default function EntregaPageClient({ pedidoId }: Props) {
             persistirTrackingAtivo(false);
             setTrackingStatus("idle");
             pararRastreamento();
+            if (!options?.silencioso) {
+              setAvisoRastreamento(obterMensagemErroGeolocalizacao(error));
+            }
           }
         },
         GEOLOCATION_OPTIONS,
@@ -400,6 +504,9 @@ export default function EntregaPageClient({ pedidoId }: Props) {
             persistirTrackingAtivo(false);
             setTrackingStatus("idle");
             pararRastreamento();
+            if (!options?.silencioso) {
+              setAvisoRastreamento(obterMensagemErroGeolocalizacao(error));
+            }
             resolve(false);
             return;
           }
@@ -408,12 +515,12 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         GEOLOCATION_OPTIONS,
       );
     });
-  }, [pararRastreamento, pedidoId, persistirTrackingAtivo, sincronizarLocalizacao, trackingToken]);
+  }, [garantirPermissaoGeolocalizacao, pararRastreamento, pedidoId, persistirTrackingAtivo, sincronizarLocalizacao, trackingToken]);
 
   useEffect(() => {
     if (!trackingEnabled || !trackingToken || !entregaAceita || entregaFinalizada) return;
     if (trackingWatchIdRef.current !== null) return;
-    void iniciarRastreamento();
+    void iniciarRastreamento(undefined, { solicitarPermissao: false, silencioso: true });
 
     return () => {
       pararRastreamento();
@@ -425,6 +532,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     if (!entregaAceita || entregaFinalizada) {
       pararRastreamento();
       limparTrackingLocal();
+      setAvisoRastreamento("");
     }
   }, [carregando, entregaAceita, entregaFinalizada, limparTrackingLocal, pararRastreamento]);
 
@@ -437,6 +545,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     setSalvando(true);
     setErro("");
     setSucesso("");
+    setAvisoRastreamento("");
     try {
       const res = await fetch("/api/public/delivery", {
         method: "POST",
@@ -482,6 +591,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     setSalvando(true);
     setErro("");
     setSucesso("");
+    setAvisoRastreamento("");
     try {
       const res = await fetch("/api/public/delivery", {
         method: "POST",
@@ -512,7 +622,8 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   }
 
   function ativarRastreamento() {
-    void iniciarRastreamento();
+    setAvisoRastreamento("");
+    void iniciarRastreamento(undefined, { solicitarPermissao: true });
   }
 
   return (
@@ -641,6 +752,12 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                     {trackingStatus === "starting" ? <Loader2 className="animate-spin" size={16} /> : <Radar size={16} />}
                     {trackingStatus === "live" ? "Rastreamento ativo" : "Ativar rastreamento"}
                   </button>
+                ) : null}
+
+                {avisoRastreamento ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
+                    {avisoRastreamento}
+                  </div>
                 ) : null}
 
                 {!entregaAceita ? (
