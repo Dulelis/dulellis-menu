@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bike, Loader2, MapPin, Navigation, PackageCheck, Radar } from "lucide-react";
+import { Bike, Loader2, MapPin, Navigation, PackageCheck } from "lucide-react";
 
 type Entregador = {
   id: number;
@@ -55,8 +55,6 @@ type ApiResponse = {
   };
 };
 
-type TrackingStatus = "idle" | "starting" | "live" | "error";
-
 type Props = {
   pedidoId: number;
 };
@@ -107,7 +105,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const [entregadorId, setEntregadorId] = useState<number>(0);
   const [codigoTelefone, setCodigoTelefone] = useState("");
   const [trackingToken, setTrackingToken] = useState("");
-  const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
   const [trackingEnabled, setTrackingEnabled] = useState(false);
 
   const trackingWatchIdRef = useRef<number | null>(null);
@@ -150,7 +147,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     }
     setTrackingToken("");
     setTrackingEnabled(false);
-    setTrackingStatus("idle");
     trackingRequestRef.current = false;
     ultimaCoordenadaRef.current = null;
     ultimoEnvioRef.current = 0;
@@ -164,7 +160,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       setTrackingToken(tokenSalvo);
       if (rastreamentoSalvo) {
         setTrackingEnabled(true);
-        setTrackingStatus("starting");
       }
     }
   }, [pedidoId]);
@@ -214,8 +209,9 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const localCompleto = [pedido?.bairro, pedido?.cidade].filter(Boolean).join(" - ");
 
   const sincronizarLocalizacao = useCallback(
-    async (coords: GeolocationCoordinates) => {
-      if (!trackingToken || pedidoId <= 0) return;
+    async (coords: GeolocationCoordinates, tokenSobrescrito?: string) => {
+      const tokenAtual = String(tokenSobrescrito || trackingToken || "").trim();
+      if (!tokenAtual || pedidoId <= 0) return;
 
       const latitude = Number(coords.latitude);
       const longitude = Number(coords.longitude);
@@ -230,7 +226,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         agora - ultimoEnvioRef.current < TRACKING_MIN_INTERVAL_MS &&
         distancia < TRACKING_MIN_DISTANCE_METERS
       ) {
-        setTrackingStatus("live");
         return;
       }
 
@@ -244,7 +239,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
           body: JSON.stringify({
             action: "location",
             pedido_id: pedidoId,
-            tracking_token: trackingToken,
+            tracking_token: tokenAtual,
             latitude,
             longitude,
             accuracy: coords.accuracy,
@@ -262,18 +257,15 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         }
 
         setEntrega(json.data.entrega);
-        setTrackingStatus("live");
         ultimaCoordenadaRef.current = { latitude, longitude };
         ultimoEnvioRef.current = agora;
       } catch (error) {
         console.error("Falha ao compartilhar a localizacao da entrega.", error);
-        setTrackingStatus("idle");
-        persistirTrackingAtivo(false);
       } finally {
         trackingRequestRef.current = false;
       }
     },
-    [pedidoId, persistirTrackingAtivo, trackingToken],
+    [pedidoId, trackingToken],
   );
 
   const pararRastreamento = useCallback(() => {
@@ -283,45 +275,49 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     }
   }, []);
 
-  const iniciarRastreamento = useCallback(async () => {
-    if (typeof navigator === "undefined" || !navigator.geolocation || !trackingToken || pedidoId <= 0) {
-      setTrackingStatus("idle");
+  const iniciarRastreamento = useCallback(async (tokenSobrescrito?: string) => {
+    const tokenAtual = String(tokenSobrescrito || trackingToken || "").trim();
+    if (typeof navigator === "undefined" || !navigator.geolocation || !tokenAtual || pedidoId <= 0) {
       persistirTrackingAtivo(false);
       return false;
     }
 
     pararRastreamento();
-    setTrackingStatus("starting");
     persistirTrackingAtivo(true);
 
     const iniciarWatch = () => {
       trackingWatchIdRef.current = navigator.geolocation.watchPosition(
         (position) => {
-          void sincronizarLocalizacao(position.coords);
+          void sincronizarLocalizacao(position.coords, tokenAtual);
         },
         (error) => {
           console.error("Falha no watch do rastreamento.", error);
-          setTrackingStatus("idle");
-          persistirTrackingAtivo(false);
-          pararRastreamento();
+          if (error.code === 1) {
+            persistirTrackingAtivo(false);
+            pararRastreamento();
+          }
         },
         GEOLOCATION_OPTIONS,
       );
     };
 
+    iniciarWatch();
+
     return await new Promise<boolean>((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          void sincronizarLocalizacao(position.coords);
-          iniciarWatch();
+          void sincronizarLocalizacao(position.coords, tokenAtual);
           resolve(true);
         },
         (error) => {
           console.error("Falha ao ativar o rastreamento.", error);
-          setTrackingStatus("idle");
-          persistirTrackingAtivo(false);
-          pararRastreamento();
-          resolve(false);
+          if (error.code === 1) {
+            persistirTrackingAtivo(false);
+            pararRastreamento();
+            resolve(false);
+            return;
+          }
+          resolve(true);
         },
         GEOLOCATION_OPTIONS,
       );
@@ -380,8 +376,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       setEntregadorId(Number(json.data.entrega.entregador_id || 0));
       if (json.data.tracking_token) {
         salvarTrackingToken(json.data.tracking_token);
-        persistirTrackingAtivo(false);
-        setTrackingStatus("idle");
+        await iniciarRastreamento(json.data.tracking_token);
       }
       setSucesso(
         json.data.entregador?.nome
@@ -427,10 +422,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     } finally {
       setSalvando(false);
     }
-  }
-
-  function ativarRastreamento() {
-    void iniciarRastreamento();
   }
 
   return (
@@ -528,22 +519,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                         .join(" - ") || "Moto nao informada"}
                     </p>
                   </div>
-                ) : null}
-
-                {entregaAceita ? (
-                  <button
-                    type="button"
-                    onClick={ativarRastreamento}
-                    disabled={trackingStatus === "starting" || trackingStatus === "live" || !trackingToken}
-                    className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors disabled:cursor-not-allowed disabled:opacity-80 ${trackingStatus === "live" ? "bg-emerald-600" : "bg-blue-600 hover:bg-blue-700"}`}
-                  >
-                    {trackingStatus === "starting" ? <Loader2 className="animate-spin" size={16} /> : <Radar size={16} />}
-                    {trackingStatus === "starting"
-                      ? "Ativando rastreamento"
-                      : trackingStatus === "live"
-                        ? "Rastreamento ativo"
-                        : "Ativar rastreamento"}
-                  </button>
                 ) : null}
 
                 {sucesso ? (

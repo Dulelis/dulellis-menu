@@ -1039,11 +1039,10 @@ function AdminPageContent() {
     const coordenadas = extrairCoordenadasValidas(entrega);
     const destino = montarDestinoMapsEntrega(entrega);
     if (!coordenadas && !destino) return '';
-    if (!coordenadas) {
-      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destino)}`;
+    if (coordenadas) {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coordenadas.latitude},${coordenadas.longitude}`)}`;
     }
-    if (!destino) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coordenadas.latitude},${coordenadas.longitude}`)}`;
-    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(`${coordenadas.latitude},${coordenadas.longitude}`)}&destination=${encodeURIComponent(destino)}&travelmode=driving`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destino)}`;
   }, [montarDestinoMapsEntrega]);
   const formatarDataRastreamento = useCallback((valor?: string | null) => {
     const texto = String(valor || '').trim();
