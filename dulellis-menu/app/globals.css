@@ -67,6 +67,10 @@ body {
   animation: pwaSplashGlow 2s ease-in-out infinite;
 }
 
+.app-bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 @media (display-mode: standalone) {
   body {
     overscroll-behavior-y: none;
@@ -81,7 +85,7 @@ body {
   }
 
   .app-bottom-nav {
-    bottom: calc(env(safe-area-inset-bottom) + 0.9rem);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .app-floating-cta {
