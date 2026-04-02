@@ -4,6 +4,9 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { AppBottomNav } from "@/components/AppBottomNav";
+import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
+import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
 import { validateCustomerFullName } from "@/lib/customer-name-policy";
 import { CUSTOMER_PASSWORD_RULES_TEXT, validateCustomerPassword } from "@/lib/customer-password-policy";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
@@ -57,6 +60,7 @@ const FORMA_PIX_CARTAO = "Pix";
 const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_CARTAO_ENTREGA, FORMA_PIX_CARTAO];
 const VITRINE_MODAL_SLIDE_MS = 6000;
 const AUTH_DRAFT_STORAGE_KEY = "dulellis.auth.draft";
+const VITRINE_CACHE_STORAGE_KEY = "dulellis.vitrine.cache.v1";
 
 type Cliente = {
   nome: string;
@@ -185,6 +189,18 @@ type AuthDraft = {
   aceitou_politica_privacidade: boolean;
 };
 
+type VitrineCache = {
+  version: 1;
+  savedAt: string;
+  produtos: Produto[];
+  taxas: TaxaEntregaRow[];
+  promocoes: Promocao[];
+  propagandas: Propaganda[];
+  horarioFuncionamento: HorarioFuncionamentoRow;
+};
+
+type MobileAppTab = "home" | "highlights" | "menu" | "order";
+
 const CLIENTE_INICIAL: Cliente = {
   nome: "",
   whatsapp: "",
@@ -197,6 +213,52 @@ const CLIENTE_INICIAL: Cliente = {
   observacao: "",
   data_aniversario: "",
 };
+
+function salvarVitrineCache(cache: VitrineCache) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(VITRINE_CACHE_STORAGE_KEY, JSON.stringify(cache));
+  } catch (error) {
+    console.warn("Nao foi possivel salvar o cache local da vitrine.", error);
+  }
+}
+
+function lerVitrineCache(): VitrineCache | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(VITRINE_CACHE_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<VitrineCache>;
+    if (!Array.isArray(parsed.produtos)) return null;
+
+    return {
+      version: 1,
+      savedAt: String(parsed.savedAt || ""),
+      produtos: parsed.produtos as Produto[],
+      taxas: Array.isArray(parsed.taxas) ? (parsed.taxas as TaxaEntregaRow[]) : [],
+      promocoes: Array.isArray(parsed.promocoes) ? (parsed.promocoes as Promocao[]) : [],
+      propagandas: Array.isArray(parsed.propagandas) ? (parsed.propagandas as Propaganda[]) : [],
+      horarioFuncionamento:
+        parsed.horarioFuncionamento && typeof parsed.horarioFuncionamento === "object"
+          ? (parsed.horarioFuncionamento as HorarioFuncionamentoRow)
+          : {
+              hora_abertura: "08:00",
+              hora_fechamento: "18:00",
+              ativo: false,
+              dias_semana: [...DIAS_SEMANA_CHAVES],
+            },
+    };
+  } catch (error) {
+    console.warn("O cache local da vitrine ficou invalido e sera ignorado.", error);
+    try {
+      window.localStorage.removeItem(VITRINE_CACHE_STORAGE_KEY);
+    } catch {}
+    return null;
+  }
+}
 
 function clienteTemEnderecoSalvo(cliente: Partial<Cliente> | null | undefined) {
   if (!cliente) return false;
@@ -480,11 +542,30 @@ function ClientePageContent() {
   const [resetToken, setResetToken] = useState("");
   const [resetNovaSenha, setResetNovaSenha] = useState("");
   const [resetCodigoEnviado, setResetCodigoEnviado] = useState(false);
+  const [mobileAppTab, setMobileAppTab] = useState<MobileAppTab>("home");
   const authDraftRestauradoRef = useRef(false);
   const recarregarVitrineRef = useRef<number | null>(null);
   const recarregarAcompanhamentoRef = useRef<number | null>(null);
   const topoVitrineRef = useRef<HTMLElement | null>(null);
+  const destaquesVitrineRef = useRef<HTMLDivElement | null>(null);
+  const cardapioRef = useRef<HTMLElement | null>(null);
   const modalCarrinhoRef = useRef<HTMLDivElement | null>(null);
+
+  const aplicarVitrineCache = useCallback((cache: VitrineCache) => {
+    setProdutos(cache.produtos);
+    setTaxas(cache.taxas);
+    setPromocoes(cache.promocoes);
+    setPropagandas(cache.propagandas);
+
+    const horario = cache.horarioFuncionamento || {};
+    setHorarioFuncionamento({
+      id: horario.id,
+      hora_abertura: normalizarHoraHHMM(horario.hora_abertura) || "08:00",
+      hora_fechamento: normalizarHoraHHMM(horario.hora_fechamento) || "18:00",
+      ativo: horario.ativo !== false,
+      dias_semana: normalizarDiasSemana(horario.dias_semana),
+    });
+  }, []);
 
   const aplicarTaxaUltimoPedido = useCallback((valor: number | string | null | undefined) => {
     const taxa = Number(valor);
@@ -617,47 +698,76 @@ function ClientePageContent() {
         throw new Error(`Erro ao carregar produtos${detalhes ? `: ${detalhes}` : ""}`);
       }
 
-      setProdutos((resProdutos ?? []) as Produto[]);
+      const produtosCarregados = (resProdutos ?? []) as Produto[];
+      const taxasCarregadas = errTax ? [] : ((resTaxas ?? []) as TaxaEntregaRow[]);
+      const promocoesCarregadas = errProm ? [] : ((resPromocoes ?? []) as Promocao[]);
+      const propagandasCarregadas = errProp ? [] : ((resPropagandas ?? []) as Propaganda[]);
+      let horarioNormalizado: HorarioFuncionamentoRow;
+
+      setProdutos(produtosCarregados);
       if (errTax) {
         console.warn("Falha ao carregar taxas de entrega. Seguindo com lista vazia.", errTax.message);
-        setTaxas([]);
+        setTaxas(taxasCarregadas);
       } else {
-        setTaxas((resTaxas ?? []) as TaxaEntregaRow[]);
+        setTaxas(taxasCarregadas);
       }
       if (errProm) {
         console.warn("Falha ao carregar promocoes. Seguindo sem promocoes.", errProm.message);
-        setPromocoes([]);
+        setPromocoes(promocoesCarregadas);
       } else {
-        setPromocoes((resPromocoes ?? []) as Promocao[]);
+        setPromocoes(promocoesCarregadas);
       }
       if (errProp) {
         console.warn("Falha ao carregar propagandas. Seguindo sem banners.", errProp.message);
-        setPropagandas([]);
+        setPropagandas(propagandasCarregadas);
       } else {
-        setPropagandas((resPropagandas ?? []) as Propaganda[]);
+        setPropagandas(propagandasCarregadas);
       }
       if (errHorario) {
         console.warn("Falha ao carregar horario de funcionamento. Seguindo com padrao.", errHorario.message);
-        setHorarioFuncionamento({ hora_abertura: "08:00", hora_fechamento: "18:00", ativo: false });
+        horarioNormalizado = {
+          hora_abertura: "08:00",
+          hora_fechamento: "18:00",
+          ativo: false,
+          dias_semana: [...DIAS_SEMANA_CHAVES],
+        };
+        setHorarioFuncionamento(horarioNormalizado);
       } else {
         const horario = (resHorario ?? {}) as HorarioFuncionamentoRow;
-        setHorarioFuncionamento({
+        horarioNormalizado = {
           id: horario.id,
           hora_abertura: normalizarHoraHHMM(horario.hora_abertura) || "08:00",
           hora_fechamento: normalizarHoraHHMM(horario.hora_fechamento) || "18:00",
           ativo: horario.ativo !== false,
           dias_semana: normalizarDiasSemana(horario.dias_semana),
-        });
+        };
+        setHorarioFuncionamento(horarioNormalizado);
       }
+
+      salvarVitrineCache({
+        version: 1,
+        savedAt: new Date().toISOString(),
+        produtos: produtosCarregados,
+        taxas: taxasCarregadas,
+        promocoes: promocoesCarregadas,
+        propagandas: propagandasCarregadas,
+        horarioFuncionamento: horarioNormalizado,
+      });
     } catch (e) {
       console.error("Erro Supabase:", e);
-      alert(obterMensagemErro(e) || "Erro ao carregar cardápio. Verifique sua conexão.");
+      const cacheLocal = mostrarLoading ? lerVitrineCache() : null;
+      if (cacheLocal) {
+        aplicarVitrineCache(cacheLocal);
+        alert("Sem conexao. Exibindo a ultima vitrine salva no aparelho.");
+      } else if (mostrarLoading) {
+        alert(obterMensagemErro(e) || "Erro ao carregar cardapio. Verifique sua conexao.");
+      }
     } finally {
       if (mostrarLoading) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [aplicarVitrineCache]);
 
   const executarBuscaCep = useCallback(
     async (valor: string, options?: { forcarPreenchimento?: boolean }) => {
@@ -934,6 +1044,39 @@ function ClientePageContent() {
 
     modal.scrollTo({ top: 0, behavior: "smooth" });
   }, [abaCarrinho, passo]);
+
+  useEffect(() => {
+    if (abaCarrinho || modalAuthAberto || modalAcompanhamentoAberto) return;
+    if (typeof window === "undefined") return;
+
+    const atualizarAbaAtiva = () => {
+      const scrollAtual = window.scrollY;
+      const topoDestaques = Math.max(0, (destaquesVitrineRef.current?.offsetTop ?? 0) - 180);
+      const topoCardapio = Math.max(0, (cardapioRef.current?.offsetTop ?? 0) - 180);
+
+      if (scrollAtual >= topoCardapio) {
+        setMobileAppTab("menu");
+        return;
+      }
+
+      if (scrollAtual >= topoDestaques) {
+        setMobileAppTab("highlights");
+        return;
+      }
+
+      setMobileAppTab("home");
+    };
+
+    const frame = window.requestAnimationFrame(atualizarAbaAtiva);
+    window.addEventListener("scroll", atualizarAbaAtiva, { passive: true });
+    window.addEventListener("resize", atualizarAbaAtiva);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", atualizarAbaAtiva);
+      window.removeEventListener("resize", atualizarAbaAtiva);
+    };
+  }, [abaCarrinho, modalAcompanhamentoAberto, modalAuthAberto]);
 
   const carregarSessaoCliente = useCallback(async (options?: { forcarAplicacao?: boolean }) => {
     try {
@@ -2017,10 +2160,47 @@ function ClientePageContent() {
     return diasSelecionados.map((dia) => DIAS_SEMANA_LABELS[dia]).join(", ");
   }, [horarioFuncionamento.dias_semana]);
   const interacoesBloqueadas = pedidosEncerradosHoje;
+  const abaAppAtiva = abaCarrinho || modalAuthAberto || modalAcompanhamentoAberto ? "order" : mobileAppTab;
+
+  const rolarParaSecao = useCallback((ref: React.RefObject<HTMLElement | HTMLDivElement | null>, aba: MobileAppTab) => {
+    setMobileAppTab(aba);
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const abrirAtalhoPedido = useCallback(() => {
+    setMobileAppTab("order");
+
+    if (sessaoCliente && carrinho.length > 0) {
+      setAbaCarrinho(true);
+      return;
+    }
+
+    if (sessaoCliente && podeAcompanharPedido) {
+      setModalAcompanhamentoAberto(true);
+      setPedidoAcompanhamento(null);
+      setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
+      return;
+    }
+
+    if (!sessaoCliente) {
+      setModalAuthAberto(true);
+      return;
+    }
+
+    topoVitrineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [carrinho.length, cliente.whatsapp, podeAcompanharPedido, sessaoCliente]);
 
   return (
-    <div className="min-h-screen bg-[#FDFCFD] pb-24 font-sans text-slate-900">
-      <header ref={topoVitrineRef} className="p-8 text-center bg-white border-b border-pink-50 relative overflow-hidden">
+    <div
+      className={`app-page min-h-[100dvh] bg-[#FDFCFD] font-sans text-slate-900 ${
+        sessaoCliente && carrinho.length > 0 ? "pb-64" : "pb-40"
+      }`}
+    >
+      <PwaLaunchSplash loading={loading} />
+      <header
+        ref={topoVitrineRef}
+        className="app-topbar relative overflow-hidden border-b border-pink-50 bg-white p-8 text-center"
+      >
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-200 via-pink-500 to-pink-200"></div>
         <div className="absolute top-4 right-4 z-10 flex gap-2">
           {!sessaoCliente ? (
@@ -2083,6 +2263,7 @@ function ClientePageContent() {
             Acompanhar meu pedido
           </button>
         </div>
+        <PwaInstallPrompt />
       </header>
 
       <div className="relative z-40 bg-white/90 backdrop-blur-xl border-b border-pink-50/50">
@@ -2120,7 +2301,10 @@ function ClientePageContent() {
               )}
             </div>
           </div>
-          <div className="max-w-xl mx-auto rounded-2xl bg-gradient-to-r from-pink-600 via-pink-500 to-fuchsia-500 text-white px-4 py-3 shadow-lg h-[336px] flex flex-col">
+          <div
+            ref={destaquesVitrineRef}
+            className="max-w-xl mx-auto rounded-2xl bg-gradient-to-r from-pink-600 via-pink-500 to-fuchsia-500 text-white px-4 py-3 shadow-lg h-[336px] flex flex-col"
+          >
             <div className="h-3 mb-2">
               {mensagensVitrine.length > 1 && (
                 <div className="flex items-center gap-1.5">
@@ -2217,7 +2401,7 @@ function ClientePageContent() {
         }
       `}</style>
 
-      <main className="max-w-xl mx-auto px-4 py-5 sm:px-6 sm:py-6 grid gap-5">
+      <main ref={cardapioRef} className="max-w-xl mx-auto px-4 py-5 sm:px-6 sm:py-6 grid gap-5">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Image src="/logo.png" alt="Carregando" width={60} height={60} className="object-contain animate-pulse" />
@@ -2353,8 +2537,19 @@ function ClientePageContent() {
         </div>
       </footer>
 
+      <AppBottomNav
+        activeTab={abaAppAtiva}
+        cartCount={carrinho.reduce((total, item) => total + item.qtd, 0)}
+        isLoggedIn={Boolean(sessaoCliente)}
+        canTrackOrder={podeAcompanharPedido}
+        onHome={() => rolarParaSecao(topoVitrineRef, "home")}
+        onHighlights={() => rolarParaSecao(destaquesVitrineRef, "highlights")}
+        onMenu={() => rolarParaSecao(cardapioRef, "menu")}
+        onOrder={abrirAtalhoPedido}
+      />
+
       {sessaoCliente && carrinho.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[94%] max-w-md bg-slate-900 text-white p-5 rounded-[3rem] shadow-2xl flex justify-between items-center z-50">
+        <div className="app-floating-cta fixed bottom-24 left-1/2 -translate-x-1/2 w-[94%] max-w-md bg-slate-900 text-white p-5 rounded-[3rem] shadow-2xl flex justify-between items-center z-50">
           <div className="flex items-center gap-4 ml-2">
             <div className="bg-pink-600 p-3 rounded-2xl relative">
               <ShoppingBag size={20} />
@@ -2378,7 +2573,7 @@ function ClientePageContent() {
 
       {modalAuthAberto && (
         <div className="fixed inset-0 overflow-y-auto bg-slate-950/80 p-0 backdrop-blur-md z-[70] flex items-end sm:items-center sm:justify-center sm:p-4">
-          <div className="bg-white w-full max-w-md max-h-[92vh] overflow-y-auto rounded-t-[3.2rem] sm:rounded-[3.2rem] p-7 shadow-2xl">
+          <div className="app-sheet bg-white w-full max-w-md max-h-[92vh] overflow-y-auto rounded-t-[3.2rem] sm:rounded-[3.2rem] p-7 shadow-2xl">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-2xl font-black italic text-slate-800">
                 {authEsqueciSenha ? "Recuperar senha" : authModoCadastro ? "Criar conta" : "Entrar"}
@@ -2641,7 +2836,7 @@ function ClientePageContent() {
 
       {modalAcompanhamentoAberto && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[65] flex items-end sm:items-center sm:justify-center">
-          <div className="bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-7 max-h-[92vh] overflow-y-auto shadow-2xl">
+          <div className="app-sheet bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-7 max-h-[92vh] overflow-y-auto shadow-2xl">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-2xl font-black italic text-slate-800">Acompanhar Pedido</h3>
               <button
@@ -2761,7 +2956,7 @@ function ClientePageContent() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] flex items-end sm:items-center sm:justify-center">
           <div
             ref={modalCarrinhoRef}
-            className="bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-8 max-h-[95vh] overflow-y-auto shadow-2xl"
+            className="app-sheet bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-8 max-h-[95vh] overflow-y-auto shadow-2xl"
           >
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-3xl font-black italic text-slate-800">

@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: light;
+}
+
+html {
+  background:
+    radial-gradient(circle at top, rgba(251, 207, 232, 0.45), transparent 34%),
+    linear-gradient(180deg, #fff7fa 0%, #ffffff 38%, #fffafc 100%);
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: transparent;
+}
+
 @keyframes gentleBlink {
   0%,
   100% {
@@ -14,4 +30,65 @@
 
 .gentle-blink {
   animation: gentleBlink 2.8s ease-in-out infinite;
+}
+
+@keyframes pwaSplashFloat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-6px) scale(1.02);
+  }
+}
+
+@keyframes pwaSplashGlow {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+.pwa-splash-shell {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pwa-splash-logo {
+  animation: pwaSplashFloat 2.2s ease-in-out infinite;
+}
+
+.pwa-splash-glow {
+  animation: pwaSplashGlow 2s ease-in-out infinite;
+}
+
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  .app-page {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .app-topbar {
+    padding-top: calc(2rem + env(safe-area-inset-top));
+  }
+
+  .app-bottom-nav {
+    bottom: calc(env(safe-area-inset-bottom) + 0.9rem);
+  }
+
+  .app-floating-cta {
+    bottom: calc(env(safe-area-inset-bottom) + 6rem);
+  }
+
+  .app-sheet {
+    padding-bottom: calc(1.75rem + env(safe-area-inset-bottom));
+  }
 }
