@@ -209,6 +209,7 @@ function AdminPageContent() {
   const [clienteHistoricoAbertoId, setClienteHistoricoAbertoId] = useState<number | null>(null);
   const [pedidosSelecionadosPorCliente, setPedidosSelecionadosPorCliente] = useState<Record<number, number[]>>({});
   const [pedidosSelecionadosVendas, setPedidosSelecionadosVendas] = useState<number[]>([]);
+  const [entregasSelecionadas, setEntregasSelecionadas] = useState<number[]>([]);
   const [pedidoAtualizandoId, setPedidoAtualizandoId] = useState<number | null>(null);
   const [resetandoVitrine, setResetandoVitrine] = useState(false);
   const recarregarRealtimeRef = useRef<number | null>(null);
@@ -1938,6 +1939,305 @@ function AdminPageContent() {
     popup.document.close();
   };
 
+  useEffect(() => {
+    const idsDisponiveis = new Set(
+      entregas
+        .map((entrega) => Number(entrega?.id || 0))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    );
+    setEntregasSelecionadas((prev) => prev.filter((id) => idsDisponiveis.has(id)));
+  }, [entregas]);
+
+  const entregasMarcadasDetalhadas = React.useMemo(() => {
+    const idsSelecionados = new Set(entregasSelecionadas);
+    return entregasDetalhadas.filter((entrega) => idsSelecionados.has(Number(entrega?.id || 0)));
+  }, [entregasDetalhadas, entregasSelecionadas]);
+
+  const alternarSelecaoEntrega = (entregaId: number) => {
+    if (!Number.isFinite(entregaId) || entregaId <= 0) return;
+    setEntregasSelecionadas((prev) =>
+      prev.includes(entregaId) ? prev.filter((id) => id !== entregaId) : [...prev, entregaId],
+    );
+  };
+
+  const marcarListaEntregas = (lista: any[]) => {
+    const ids = lista
+      .map((entrega) => Number(entrega?.id || 0))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (!ids.length) return;
+    setEntregasSelecionadas((prev) => Array.from(new Set([...prev, ...ids])));
+  };
+
+  const marcarEntregasEmAndamento = () => {
+    marcarListaEntregas(entregasEmAndamento);
+  };
+
+  const marcarTodasEntregasRegistradas = () => {
+    marcarListaEntregas(entregasDetalhadas);
+  };
+
+  const desmarcarEntregasSelecionadas = () => {
+    setEntregasSelecionadas([]);
+  };
+
+  const imprimirRelatorioEntregasMarcadas = () => {
+    if (!entregasMarcadasDetalhadas.length) {
+      alert('Selecione ao menos uma entrega para gerar o relatorio.');
+      return;
+    }
+
+    const popup = window.open('', '_blank', 'width=1100,height=760');
+    if (!popup) {
+      alert('Nao foi possivel abrir a janela do relatorio.');
+      return;
+    }
+
+    const dataRelatorio = new Date().toLocaleDateString('pt-BR');
+    const grupos = new Map<string, any>();
+
+    entregasMarcadasDetalhadas.forEach((entrega) => {
+      const entregaId = Number(entrega?.id || 0);
+      const entregadorId = Number(entrega?.entregador_id || entrega?.entregador?.id || 0);
+      const entregador = entrega?.entregador || {};
+      const chave = entregadorId > 0 ? `entregador-${entregadorId}` : `sem-entregador-${entregaId}`;
+
+      if (!grupos.has(chave)) {
+        grupos.set(chave, {
+          id: entregadorId > 0 ? entregadorId : entregaId,
+          nome: String(entregador?.nome || 'Sem entregador vinculado'),
+          whatsapp: String(entregador?.whatsapp || ''),
+          pix: String(entregador?.pix || ''),
+          ativo: entregador?.ativo !== false,
+          entregasLista: [] as any[],
+          totalEntregas: 0,
+          totalAcerto: 0,
+          totalReceber: 0,
+          pendencias: 0,
+        });
+      }
+
+      const grupo = grupos.get(chave);
+      if (!grupo) return;
+
+      const valorAcerto = obterValorAcertoEntrega(entrega);
+      const valorReceber = obterValorReceberNaEntrega(entrega?.pedido);
+      const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
+
+      grupo.entregasLista.push(entrega);
+      grupo.totalEntregas += 1;
+      grupo.totalAcerto += valorAcerto;
+      grupo.totalReceber += valorReceber;
+      if (!acertado) grupo.pendencias += 1;
+    });
+
+    const entregadoresComMovimento = Array.from(grupos.values()).sort((a, b) =>
+      String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'),
+    );
+
+    const totalEntregas = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.totalEntregas || 0), 0);
+    const totalAcerto = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.totalAcerto || 0), 0);
+    const totalReceber = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.totalReceber || 0), 0);
+    const totalPendencias = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.pendencias || 0), 0);
+
+    const secoes = entregadoresComMovimento
+      .map((entregador) => {
+        const linhas = (entregador.entregasLista || [])
+          .map((entrega: any) => {
+            const pedido = entrega?.pedido || {};
+            const pagamento = obterResumoPagamento(pedido);
+            const valorAcerto = obterValorAcertoEntrega(entrega);
+            const valorReceber = obterValorReceberNaEntrega(pedido);
+            const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
+            return `
+              <tr>
+                <td>
+                  <strong>Entrega #${Number(entrega?.id || 0)}</strong><br />
+                  <span class="muted">Pedido #${Number(entrega?.pedido_id || pedido?.id || 0)}</span>
+                </td>
+                <td>
+                  <strong>${escaparHtml(String(pedido?.cliente_nome || 'Cliente'))}</strong><br />
+                  <span class="muted">${escaparHtml(entrega?.aceito_em ? new Date(entrega.aceito_em).toLocaleString('pt-BR') : 'Nao informado')}</span>
+                </td>
+                <td>
+                  <strong>${escaparHtml(pagamento.titulo)}</strong><br />
+                  <span class="muted">${escaparHtml(pagamento.situacao)}${pedido?.total ? ` - Total ${formatarMoedaAdmin(pedido.total)}` : ''}</span>
+                </td>
+                <td>${formatarMoedaAdmin(valorAcerto)}</td>
+                <td>${formatarMoedaAdmin(valorReceber)}</td>
+                <td>${acertado ? 'Acertado' : 'Pendente'}</td>
+              </tr>
+            `;
+          })
+          .join('');
+
+        return `
+          <section class="driver-card">
+            <div class="driver-header">
+              <div>
+                <div class="eyebrow">Entregador</div>
+                <h2>${escaparHtml(String(entregador.nome || 'Entregador'))}</h2>
+                <div class="driver-meta">
+                  WhatsApp: ${escaparHtml(String(entregador.whatsapp || 'Nao informado'))}
+                  ${entregador.pix ? ` - PIX: ${escaparHtml(String(entregador.pix))}` : ' - PIX: Nao informado'}
+                </div>
+              </div>
+              <div class="status-chip">${entregador.ativo !== false ? 'Ativo' : 'Inativo'}</div>
+            </div>
+            <div class="summary-grid">
+              <div class="summary-box">
+                <span class="summary-label">Entregas</span>
+                <strong>${Number(entregador.totalEntregas || 0)}</strong>
+              </div>
+              <div class="summary-box">
+                <span class="summary-label">Acerto</span>
+                <strong>${formatarMoedaAdmin(entregador.totalAcerto)}</strong>
+              </div>
+              <div class="summary-box">
+                <span class="summary-label">Receber</span>
+                <strong>${formatarMoedaAdmin(entregador.totalReceber)}</strong>
+              </div>
+              <div class="summary-box">
+                <span class="summary-label">Pendencias</span>
+                <strong>${Number(entregador.pendencias || 0)}</strong>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Entrega</th>
+                  <th>Cliente</th>
+                  <th>Pagamento</th>
+                  <th>Acerto</th>
+                  <th>Receber</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>${linhas}</tbody>
+            </table>
+          </section>
+        `;
+      })
+      .join('');
+
+    const html = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Relatorio das entregas marcadas</title>
+          <style>
+            @page { size: A4; margin: 14mm; }
+            * { box-sizing: border-box; }
+            body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: #f8fafc; }
+            .page { padding: 28px; }
+            .hero { background: linear-gradient(135deg, #111827 0%, #1e293b 100%); color: #fff; border-radius: 24px; padding: 24px; }
+            .hero h1 { margin: 0; font-size: 28px; }
+            .hero p { margin: 8px 0 0; color: #cbd5e1; font-weight: 700; }
+            .totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+            .total-card { background: #fff; color: #0f172a; border-radius: 18px; padding: 14px 16px; }
+            .total-card span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #64748b; font-weight: 700; }
+            .total-card strong { display: block; margin-top: 8px; font-size: 22px; }
+            .driver-card { margin-top: 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 22px; padding: 20px; page-break-inside: avoid; }
+            .driver-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+            .eyebrow { font-size: 10px; text-transform: uppercase; letter-spacing: .18em; color: #64748b; font-weight: 700; }
+            .driver-header h2 { margin: 8px 0 0; font-size: 21px; }
+            .driver-meta { margin-top: 6px; font-size: 12px; color: #475569; font-weight: 700; word-break: break-word; }
+            .status-chip { border-radius: 999px; padding: 8px 12px; background: #ecfeff; color: #0f766e; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; }
+            .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+            .summary-box { border-radius: 16px; background: #f8fafc; padding: 12px; }
+            .summary-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: #64748b; font-weight: 700; }
+            .summary-box strong { display: block; margin-top: 8px; font-size: 18px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+            th, td { border-bottom: 1px solid #e2e8f0; text-align: left; padding: 12px 10px; vertical-align: top; font-size: 12px; }
+            th { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #64748b; }
+            td strong { color: #0f172a; }
+            .muted { color: #64748b; font-size: 11px; font-weight: 700; }
+            @media print {
+              body { background: #fff; }
+              .page { padding: 0; }
+              .driver-card { box-shadow: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <section class="hero">
+              <h1>Relatorio das entregas marcadas</h1>
+              <p>Dulelis Confeitaria - ${dataRelatorio}</p>
+              <div class="totals">
+                <div class="total-card">
+                  <span>Entregas</span>
+                  <strong>${totalEntregas}</strong>
+                </div>
+                <div class="total-card">
+                  <span>Acerto</span>
+                  <strong>${formatarMoedaAdmin(totalAcerto)}</strong>
+                </div>
+                <div class="total-card">
+                  <span>Receber</span>
+                  <strong>${formatarMoedaAdmin(totalReceber)}</strong>
+                </div>
+                <div class="total-card">
+                  <span>Pendencias</span>
+                  <strong>${totalPendencias}</strong>
+                </div>
+              </div>
+            </section>
+            ${secoes}
+          </div>
+          <script>
+            window.onload = () => {
+              window.print();
+              window.onafterprint = () => window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+  };
+
+  const excluirEntrega = async (entrega: any) => {
+    const entregaId = Number(entrega?.id || 0);
+    if (!entregaId) return;
+
+    if (!confirm(`Deseja excluir a entrega #${entregaId}?`)) {
+      return;
+    }
+
+    await adminDb({
+      action: 'delete_eq',
+      table: 'entregas',
+      eq: { column: 'id', value: entregaId },
+    });
+    setEntregasSelecionadas((prev) => prev.filter((id) => id !== entregaId));
+    await carregarDados();
+  };
+
+  const excluirEntregasSelecionadas = async () => {
+    const idsSelecionados = entregasSelecionadas.filter((id) => Number.isFinite(id) && id > 0);
+    if (!idsSelecionados.length) {
+      alert('Selecione ao menos uma entrega para excluir.');
+      return;
+    }
+
+    if (!confirm(`Deseja excluir ${idsSelecionados.length} entrega(s) marcada(s)?`)) {
+      return;
+    }
+
+    await adminDb({
+      action: 'delete_in',
+      table: 'entregas',
+      in: { column: 'id', values: idsSelecionados },
+    });
+    setEntregasSelecionadas([]);
+    await carregarDados();
+    alert('Entregas marcadas excluidas.');
+  };
+
   const limparHistoricoCliente = async (cliente: any) => {
     const zap = normalizarNumero(String(cliente.whatsapp || ''));
     const historico = historicoPorWhatsapp[zap] || [];
@@ -2643,6 +2943,60 @@ function AdminPageContent() {
             </div>
 
             <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Marcacoes</p>
+                  <h3 className="text-lg font-black text-slate-800">Relacionar entregas para relatorio ou exclusao</h3>
+                  <p className="mt-1 text-sm font-bold text-slate-500">
+                    {entregasSelecionadas.length} entrega(s) marcada(s) para acao em lote.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={marcarEntregasEmAndamento}
+                    className="rounded-xl bg-cyan-50 px-4 py-3 text-xs font-black uppercase tracking-wide text-cyan-800 transition-colors hover:bg-cyan-100"
+                  >
+                    Marcar em andamento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={marcarTodasEntregasRegistradas}
+                    className="rounded-xl bg-slate-100 px-4 py-3 text-xs font-black uppercase tracking-wide text-slate-700 transition-colors hover:bg-slate-200"
+                  >
+                    Marcar todas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={desmarcarEntregasSelecionadas}
+                    disabled={!entregasSelecionadas.length}
+                    className="rounded-xl bg-white px-4 py-3 text-xs font-black uppercase tracking-wide text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Limpar marcacoes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={imprimirRelatorioEntregasMarcadas}
+                    disabled={!entregasSelecionadas.length}
+                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wide text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    <Printer size={14} />
+                    Relatorio das marcadas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void excluirEntregasSelecionadas()}
+                    disabled={!entregasSelecionadas.length}
+                    className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-xs font-black uppercase tracking-wide text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                  >
+                    <Trash2 size={14} />
+                    Excluir marcadas
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Acompanhamento</p>
@@ -2653,24 +3007,33 @@ function AdminPageContent() {
                 </p>
               </div>
 
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {entregasEmAndamento.length > 0 ? entregasEmAndamento.map((entrega) => {
                     const rastreamento = obterResumoRastreamentoEntrega(entrega);
                     const linkRastreamento = montarLinkRotaEntrega(entrega);
+                    const entregaId = Number(entrega?.id || 0);
+                    const selecionada = entregasSelecionadas.includes(entregaId);
                     return (
-                      <div key={entrega.id} className="rounded-[1.6rem] border border-slate-200 bg-slate-50 p-4">
+                      <div key={entrega.id} className={`rounded-[1.6rem] border p-4 ${selecionada ? 'border-cyan-300 bg-cyan-50/60' : 'border-slate-200 bg-slate-50'}`}>
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-black text-slate-800">
-                              Pedido #{Number(entrega?.pedido_id || 0)}
+                              Entrega #{entregaId || 0} - Pedido #{Number(entrega?.pedido_id || 0)}
                             </p>
                             <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
                               {entrega?.entregador?.nome || 'Entregador nao encontrado'}
                             </p>
                           </div>
-                          <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${rastreamento.badgeClass}`}>
-                            {rastreamento.label}
-                          </span>
+                          <div className="flex flex-col items-end gap-2">
+                            {selecionada ? (
+                              <span className="rounded-full bg-cyan-600 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
+                                Marcada
+                              </span>
+                            ) : null}
+                            <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${rastreamento.badgeClass}`}>
+                              {rastreamento.label}
+                            </span>
+                          </div>
                         </div>
                         <p className="mt-3 text-sm font-bold text-slate-600">
                           {entrega?.pedido?.cliente_nome || 'Cliente'}
@@ -2691,6 +3054,23 @@ function AdminPageContent() {
                             Rastrear entrega
                           </a>
                         ) : null}
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => alternarSelecaoEntrega(entregaId)}
+                            className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-colors ${selecionada ? 'bg-cyan-600 text-white hover:bg-cyan-700' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100'}`}
+                          >
+                            {selecionada ? 'Desmarcar entrega' : 'Marcar entrega'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void excluirEntrega(entrega)}
+                            className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-black uppercase text-red-700 transition-colors hover:bg-red-100"
+                          >
+                            <Trash2 size={14} />
+                            Excluir
+                          </button>
+                        </div>
                       </div>
                     );
                   }) : (
@@ -2703,6 +3083,13 @@ function AdminPageContent() {
 
             <div className="grid gap-6 xl:grid-cols-[1.1fr_1.4fr]">
               <div className="space-y-4">
+                <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cadastro</p>
+                  <h3 className="mt-1 text-lg font-black text-slate-800">Entregadores cadastrados</h3>
+                  <p className="mt-1 text-sm font-bold text-slate-500">
+                    Esta coluna fica dedicada ao cadastro dos entregadores.
+                  </p>
+                </div>
                 {resumoEntregadoresHoje.length > 0 ? resumoEntregadoresHoje.map((entregador) => (
                   <div key={entregador.id} className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
@@ -2775,33 +3162,42 @@ function AdminPageContent() {
               <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fechamento</p>
-                    <h3 className="text-lg font-black text-slate-800">Entregas registradas</h3>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Entregas</p>
+                    <h3 className="text-lg font-black text-slate-800">Entregas registradas e acertos</h3>
                   </div>
-                  <p className="text-sm font-bold text-slate-500">Use o QR do cupom para o entregador aceitar.</p>
+                  <p className="text-sm font-bold text-slate-500">Use as marcacoes para relacionar, excluir ou gerar relatorios.</p>
                 </div>
 
                 <div className="mt-4 space-y-3 max-h-[70vh] overflow-y-auto pr-1">
                   {entregasDetalhadas.length > 0 ? entregasDetalhadas.map((entrega) => {
+                    const entregaId = Number(entrega?.id || 0);
+                    const selecionada = entregasSelecionadas.includes(entregaId);
                     const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
                     const statusEntrega = String(entrega?.status || '').trim() || 'aceita';
                     const rastreamento = obterResumoRastreamentoEntrega(entrega);
                     const linkRastreamento = montarLinkRotaEntrega(entrega);
                     return (
-                      <div key={entrega.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                      <div key={entrega.id} className={`rounded-2xl border p-4 ${selecionada ? 'border-cyan-300 bg-cyan-50/60' : 'border-slate-100 bg-slate-50'}`}>
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-black text-slate-800">
-                              Pedido #{Number(entrega?.pedido_id || 0)}
-                              {entrega?.pedido?.cliente_nome ? ` • ${String(entrega.pedido.cliente_nome)}` : ''}
+                              Entrega #{entregaId} - Pedido #{Number(entrega?.pedido_id || 0)}
+                              {entrega?.pedido?.cliente_nome ? ` - ${String(entrega.pedido.cliente_nome)}` : ''}
                             </p>
                             <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
                               {entrega?.entregador?.nome || 'Entregador nao encontrado'}
                             </p>
                           </div>
-                          <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${acertado ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                            {acertado ? 'Acertado' : 'Pendente'}
-                          </span>
+                          <div className="flex flex-col items-end gap-2">
+                            {selecionada ? (
+                              <span className="rounded-full bg-cyan-600 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
+                                Marcada
+                              </span>
+                            ) : null}
+                            <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${acertado ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {acertado ? 'Acertado' : 'Pendente'}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="mt-3 grid grid-cols-1 gap-2 text-sm font-medium text-slate-600 sm:grid-cols-2">
@@ -2842,10 +3238,25 @@ function AdminPageContent() {
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button
                             type="button"
+                            onClick={() => alternarSelecaoEntrega(entregaId)}
+                            className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-colors ${selecionada ? 'bg-cyan-600 text-white hover:bg-cyan-700' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100'}`}
+                          >
+                            {selecionada ? 'Desmarcar entrega' : 'Marcar entrega'}
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => void alternarAcertoEntrega(entrega)}
                             className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-colors ${acertado ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
                           >
                             {acertado ? 'Reabrir acerto' : 'Marcar acerto'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void excluirEntrega(entrega)}
+                            className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-black uppercase text-red-700 transition-colors hover:bg-red-100"
+                          >
+                            <Trash2 size={14} />
+                            Excluir
                           </button>
                           {entrega?.pedido ? (
                             <button
