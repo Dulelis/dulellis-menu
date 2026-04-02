@@ -1,9 +1,11 @@
 const STATIC_CACHE = "dulellis-admin-static-v1";
 const RUNTIME_CACHE = "dulellis-admin-runtime-v1";
 const OFFLINE_URL = "/admin/offline";
+const ADMIN_START_URL = "/admin/login?next=/admin&source=pwa";
 const APP_SHELL = [
   "/admin/instalar",
   "/admin/login",
+  ADMIN_START_URL,
   OFFLINE_URL,
   "/admin/manifest.webmanifest",
   "/admin-icon-192.png",
@@ -73,6 +75,9 @@ async function handleNavigationRequest(request) {
 
     const cachedLogin = await caches.match("/admin/login");
     if (cachedLogin) return cachedLogin;
+
+    const cachedStartUrl = await caches.match(ADMIN_START_URL);
+    if (cachedStartUrl) return cachedStartUrl;
 
     return (await caches.match(OFFLINE_URL)) || Response.error();
   }

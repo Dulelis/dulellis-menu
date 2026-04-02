@@ -7,7 +7,7 @@ export function GET() {
       name: "Dulelis Admin",
       short_name: "Admin",
       description: "Painel administrativo da Dulelis Delivery para instalar no celular.",
-      start_url: "/admin",
+      start_url: "/admin/login?next=/admin&source=pwa",
       scope: "/admin/",
       display: "standalone",
       orientation: "portrait",
