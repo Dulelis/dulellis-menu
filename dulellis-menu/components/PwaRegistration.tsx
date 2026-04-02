@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 function podeRegistrarServiceWorker() {
@@ -14,7 +15,10 @@ function podeRegistrarServiceWorker() {
 }
 
 export function PwaRegistration() {
+  const pathname = usePathname();
+
   useEffect(() => {
+    if (pathname?.startsWith("/admin")) return;
     if (!podeRegistrarServiceWorker()) return;
 
     const registrar = async () => {
@@ -39,7 +43,7 @@ export function PwaRegistration() {
     return () => {
       window.removeEventListener("load", onLoad);
     };
-  }, []);
+  }, [pathname]);
 
   return null;
 }
