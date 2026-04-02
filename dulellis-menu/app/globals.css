@@ -78,6 +78,23 @@ body {
   min-height: 4.8rem;
 }
 
+.admin-app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: calc(1rem + constant(safe-area-inset-bottom));
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+.admin-app-sidebar {
+  padding-top: calc(1rem + constant(safe-area-inset-top));
+  padding-top: calc(1rem + env(safe-area-inset-top));
+}
+
+.admin-app-main {
+  padding-bottom: calc(1.5rem + constant(safe-area-inset-bottom));
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+}
+
 @media (display-mode: standalone) {
   body {
     overscroll-behavior-y: none;
@@ -103,5 +120,20 @@ body {
 
   .app-sheet {
     padding-bottom: calc(1.75rem + env(safe-area-inset-bottom));
+  }
+
+  .admin-app-shell {
+    padding-bottom: calc(1rem + constant(safe-area-inset-bottom));
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .admin-app-sidebar {
+    padding-top: calc(1rem + constant(safe-area-inset-top));
+    padding-top: calc(1rem + env(safe-area-inset-top));
+  }
+
+  .admin-app-main {
+    padding-bottom: calc(1.5rem + constant(safe-area-inset-bottom));
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
   }
 }

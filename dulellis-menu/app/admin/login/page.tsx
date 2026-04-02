@@ -1,7 +1,9 @@
 "use client";
 
 import { FormEvent, Suspense, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AdminInstallPrompt } from "@/components/AdminInstallPrompt";
 
 function AdminLoginForm() {
   const router = useRouter();
@@ -45,10 +47,11 @@ function AdminLoginForm() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
-      <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
-        <h1 className="text-xl font-black text-slate-900 mb-2">Login do Admin</h1>
-        <p className="text-sm text-slate-600 mb-6">Entre para acessar o painel administrativo.</p>
+    <main className="admin-app-shell flex min-h-[100dvh] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.12),transparent_30%),linear-gradient(180deg,#e2e8f0_0%,#f8fafc_42%,#ffffff_100%)] p-6">
+      <section className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-7 shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
+        <p className="mb-2 text-[10px] font-black uppercase tracking-[0.28em] text-cyan-600">Dulelis Admin</p>
+        <h1 className="mb-2 text-xl font-black text-slate-900">Login do Admin</h1>
+        <p className="mb-6 text-sm text-slate-600">Entre para acessar o painel administrativo.</p>
 
         {missingConfig ? (
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 mb-4">
@@ -87,6 +90,25 @@ function AdminLoginForm() {
             {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
+
+        <div className="mt-6 rounded-[1.6rem] border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
+            Instalar no celular
+          </p>
+          <p className="mt-2 text-sm font-bold leading-6 text-slate-600">
+            Use o link exclusivo do admin para instalar o painel como app separado da vitrine.
+          </p>
+          <Link
+            href="/admin/instalar"
+            className="mt-4 inline-flex rounded-full bg-cyan-500 px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-slate-950 shadow-lg shadow-cyan-500/20"
+          >
+            Abrir pagina de instalacao
+          </Link>
+        </div>
+
+        <div className="mt-4">
+          <AdminInstallPrompt />
+        </div>
       </section>
     </main>
   );
@@ -94,7 +116,7 @@ function AdminLoginForm() {
 
 export default function AdminLoginPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-slate-100" />}>
+    <Suspense fallback={<main className="admin-app-shell min-h-[100dvh] bg-slate-100" />}>
       <AdminLoginForm />
     </Suspense>
   );

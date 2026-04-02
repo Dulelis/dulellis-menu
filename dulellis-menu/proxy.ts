@@ -10,7 +10,14 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   if (!pathname.startsWith("/admin")) return NextResponse.next();
-  if (pathname === "/admin/login") return NextResponse.next();
+  if (
+    pathname === "/admin/login" ||
+    pathname === "/admin/instalar" ||
+    pathname === "/admin/offline" ||
+    pathname === "/admin/manifest.webmanifest"
+  ) {
+    return NextResponse.next();
+  }
 
   if (!getAdminAuthEnabled()) {
     const loginUrl = new URL("/admin/login", request.url);

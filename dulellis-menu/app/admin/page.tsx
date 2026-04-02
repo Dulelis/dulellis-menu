@@ -2026,9 +2026,9 @@ function AdminPageContent() {
   }, []);
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
+    <div className="admin-app-shell flex min-h-[100dvh] flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
       <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
-      <aside className="w-full bg-slate-900 text-white p-4 lg:w-64 lg:p-6 print:hidden">
+      <aside className="admin-app-sidebar w-full bg-slate-900 text-white p-4 lg:w-64 lg:p-6 print:hidden">
         <h2 className="text-xl font-black text-pink-500 italic mb-4 text-center tracking-tighter lg:text-2xl lg:mb-10">DULELIS</h2>
         <nav className="flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button onClick={() => setActiveTab('painel')} className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === 'painel' ? 'bg-pink-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}> <RotateCcw size={20}/> Painel Geral </button>
@@ -2043,7 +2043,7 @@ function AdminPageContent() {
         </nav>
       </aside>
 
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto h-auto lg:h-screen print:h-auto print:p-0 print:overflow-visible">
+      <main className="admin-app-main flex-1 overflow-y-auto h-auto p-4 sm:p-6 lg:h-screen lg:p-8 print:h-auto print:overflow-visible print:p-0">
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6 sm:mb-8 print:hidden">
           <h1 className="text-2xl sm:text-3xl font-black text-slate-800">
             {activeTab === 'painel' && 'Painel Geral'}
@@ -2059,6 +2059,12 @@ function AdminPageContent() {
           </h1>
 
           <div className="flex w-full flex-wrap items-center gap-2 sm:gap-3 md:w-auto">
+            <a
+              href="/admin/instalar"
+              className="w-full sm:w-auto rounded-2xl border border-cyan-200 bg-cyan-50 px-6 py-3 text-center text-xs font-black uppercase tracking-widest text-cyan-800 shadow-sm transition-all hover:bg-cyan-100"
+            >
+              Instalar app admin
+            </a>
             {activeTab === 'painel' && (
               <button
                 type="button"
