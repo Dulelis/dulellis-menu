@@ -46,7 +46,7 @@ export function AppBottomNav({
 
   return (
     <div className="app-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-pink-100/80 bg-white/95 shadow-[0_-16px_36px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-      <nav className="mx-auto flex w-full max-w-xl items-center gap-1 px-3 py-2 sm:px-4">
+      <nav className="app-bottom-nav-inner mx-auto flex w-full max-w-xl items-center gap-1 px-3 py-2 sm:px-4">
         {items.map((item) => {
           const Icon = item.icon;
           const active = item.id === activeTab;
