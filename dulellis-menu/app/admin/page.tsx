@@ -87,14 +87,6 @@ function extrairCoordenadasValidas(registro: any) {
   return { latitude, longitude };
 }
 
-function normalizarTextoComparacao(valor: unknown) {
-  return String(valor || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-}
-
 function formatarMoedaAdmin(valor: unknown) {
   return `R$ ${Number(valor || 0).toFixed(2)}`;
 }
@@ -104,11 +96,7 @@ function obterValorAcertoEntrega(entrega: any) {
 }
 
 function obterValorReceberNaEntrega(pedido: any) {
-  const forma = normalizarTextoComparacao(pedido?.forma_pagamento);
-  if (forma === 'dinheiro' || forma === 'cartao na entrega') {
-    return Math.max(0, Number(pedido?.total || 0));
-  }
-  return 0;
+  return Math.max(0, Number(pedido?.taxa_entrega || 0));
 }
 
 function escaparHtml(valor: unknown) {
