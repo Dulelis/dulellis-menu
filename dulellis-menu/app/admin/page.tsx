@@ -3430,11 +3430,15 @@ function AdminPageContent() {
                             </p>
                           </div>
                           <div className="flex flex-col items-end gap-2">
-                            {selecionada ? (
-                              <span className="rounded-full bg-cyan-600 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
-                                Marcada
-                              </span>
-                            ) : null}
+                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600 ring-1 ring-slate-200">
+                              <input
+                                type="checkbox"
+                                checked={selecionada}
+                                onChange={() => alternarSelecaoEntrega(entregaId)}
+                                className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                              />
+                              Marcar
+                            </label>
                             <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${rastreamento.badgeClass}`}>
                               {rastreamento.label}
                             </span>
@@ -3460,13 +3464,6 @@ function AdminPageContent() {
                           </a>
                         ) : null}
                         <div className="mt-4 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => alternarSelecaoEntrega(entregaId)}
-                            className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-colors ${selecionada ? 'bg-cyan-600 text-white hover:bg-cyan-700' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100'}`}
-                          >
-                            {selecionada ? 'Desmarcar entrega' : 'Marcar entrega'}
-                          </button>
                           <button
                             type="button"
                             onClick={() => void excluirEntrega(entrega)}
@@ -3594,11 +3591,15 @@ function AdminPageContent() {
                             </p>
                           </div>
                           <div className="flex flex-col items-end gap-2">
-                            {selecionada ? (
-                              <span className="rounded-full bg-cyan-600 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
-                                Marcada
-                              </span>
-                            ) : null}
+                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600 ring-1 ring-slate-200">
+                              <input
+                                type="checkbox"
+                                checked={selecionada}
+                                onChange={() => alternarSelecaoEntrega(entregaId)}
+                                className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                              />
+                              Marcar
+                            </label>
                             <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${acertado ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                               {acertado ? 'Acertado' : 'Pendente'}
                             </span>
@@ -3641,13 +3642,6 @@ function AdminPageContent() {
                         ) : null}
 
                         <div className="mt-4 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => alternarSelecaoEntrega(entregaId)}
-                            className={`px-3 py-2 rounded-xl text-xs font-black uppercase transition-colors ${selecionada ? 'bg-cyan-600 text-white hover:bg-cyan-700' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100'}`}
-                          >
-                            {selecionada ? 'Desmarcar entrega' : 'Marcar entrega'}
-                          </button>
                           <button
                             type="button"
                             onClick={() => void alternarAcertoEntrega(entrega)}
