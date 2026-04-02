@@ -7,6 +7,7 @@ import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react
 import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { openSpreadsheetReport } from '@/lib/admin-report-print';
 import {
   Package, Users, PlusCircle, Minus, Plus,
   Trash2, Pencil, Loader2, Camera, Image as ImageIcon,
@@ -256,6 +257,18 @@ function AdminPageContent() {
     }
     return json;
   }, []);
+
+  const abrirRelatorioPlanilha = useCallback(
+    (config: Parameters<typeof openSpreadsheetReport>[0], mensagemFalha = 'Nao foi possivel abrir a janela do relatorio.') => {
+      const abriu = openSpreadsheetReport(config);
+      if (!abriu) {
+        alert(mensagemFalha);
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
 
   const garantirQzPronto = useCallback(async () => {
     if (!QZ_PRINTER_NAME) return false;
@@ -1575,56 +1588,54 @@ function AdminPageContent() {
   }, [imprimirPedidoAceito, pedidos]);
 
   const imprimirCadastroCliente = (cliente: any) => {
-    const valor = (v: unknown) => String(v ?? '');
+    const valor = (v: unknown) => String(v ?? '').trim();
     const pontoReferencia = extrairPontoReferencia(cliente);
     const enderecoSemPonto = extrairEnderecoSemPonto(cliente);
-    const popup = window.open('', '_blank', 'width=900,height=700');
-    if (!popup) {
-      alert('Nao foi possivel abrir a janela de impressao.');
-      return;
-    }
+    const nomeCliente = valor(cliente.nome) || 'Cliente sem nome';
+    const whatsapp = valor(cliente.whatsapp) || 'Nao informado';
+    const endereco = [valor(enderecoSemPonto), valor(cliente.numero)].filter(Boolean).join(', ') || 'Nao informado';
+    const linhas = [
+      ['Nome', nomeCliente],
+      ['WhatsApp', whatsapp],
+      ['Endereco', endereco],
+      ['Ponto de referencia', valor(pontoReferencia) || 'Nao informado'],
+      ['Bairro', valor(cliente.bairro) || '-'],
+      ['Cidade', valor(cliente.cidade) || 'Navegantes'],
+      ['CEP', valor(cliente.cep) || 'Nao informado'],
+      [
+        'Nascimento',
+        cliente.data_aniversario
+          ? new Date(cliente.data_aniversario).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+          : 'Nao informado',
+      ],
+      ['Observacao', valor(cliente.observacao) || 'Sem observacoes'],
+    ];
 
-    const html = `
-      <!doctype html>
-      <html lang="pt-BR">
-        <head>
-          <meta charset="utf-8" />
-          <title>Cadastro do Cliente</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-            h1 { margin: 0 0 16px; font-size: 22px; }
-            .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
-            .row { margin-bottom: 10px; }
-            .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: .08em; }
-            .value { font-size: 15px; font-weight: 700; margin-top: 2px; }
-          </style>
-        </head>
-        <body>
-          <h1>Cadastro do Cliente</h1>
-          <div class="card">
-            <div class="row"><div class="label">Nome</div><div class="value">${valor(cliente.nome) || 'Cliente sem nome'}</div></div>
-            <div class="row"><div class="label">WhatsApp</div><div class="value">${valor(cliente.whatsapp) || 'Nao informado'}</div></div>
-            <div class="row"><div class="label">Endereco</div><div class="value">${valor(enderecoSemPonto)}, ${valor(cliente.numero)}</div></div>
-            <div class="row"><div class="label">Ponto de Referencia</div><div class="value">${valor(pontoReferencia) || 'Nao informado'}</div></div>
-            <div class="row"><div class="label">Bairro</div><div class="value">${valor(cliente.bairro) || '-'}</div></div>
-            <div class="row"><div class="label">Cidade</div><div class="value">${valor(cliente.cidade) || 'Navegantes'}</div></div>
-            <div class="row"><div class="label">CEP</div><div class="value">${valor(cliente.cep) || 'Nao informado'}</div></div>
-            <div class="row"><div class="label">Nascimento</div><div class="value">${cliente.data_aniversario ? new Date(cliente.data_aniversario).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Nao informado'}</div></div>
-            <div class="row"><div class="label">Observacao</div><div class="value">${valor(cliente.observacao) || 'Sem observacoes'}</div></div>
-          </div>
-          <script>
-            window.onload = () => {
-              window.print();
-              window.onafterprint = () => window.close();
-            };
-          </script>
-        </body>
-      </html>
-    `;
-
-    popup.document.open();
-    popup.document.write(html);
-    popup.document.close();
+    abrirRelatorioPlanilha(
+      {
+        title: 'Formulario de cadastro do cliente',
+        subtitle: `Cliente: ${nomeCliente}`,
+        documentTitle: 'Cadastro do Cliente',
+        orientation: 'portrait',
+        popupFeatures: 'width=900,height=700',
+        metrics: [
+          { label: 'Cliente', value: nomeCliente },
+          { label: 'WhatsApp', value: whatsapp },
+          { label: 'Cidade', value: valor(cliente.cidade) || 'Navegantes' },
+        ],
+        sections: [
+          {
+            title: 'Dados cadastrais',
+            columns: [
+              { label: 'Campo', width: '34%' },
+              { label: 'Informacao', width: '66%' },
+            ],
+            rows: linhas.map(([campo, informacao]) => [{ value: campo }, { value: informacao }]),
+          },
+        ],
+      },
+      'Nao foi possivel abrir a janela de impressao.',
+    );
   };
 
   // Lógica dos Relatórios
@@ -1757,6 +1768,7 @@ function AdminPageContent() {
   const entregasAoVivoAgora = React.useMemo(() => {
     return entregasEmAndamento.filter((entrega) => obterResumoRastreamentoEntrega(entrega).aoVivo);
   }, [entregasEmAndamento, obterResumoRastreamentoEntrega]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const imprimirRelatorioEntregadoresDia = () => {
     const entregadoresComMovimento = resumoEntregadoresHoje.filter((item) => item.totalEntregasHoje > 0);
     if (entregadoresComMovimento.length === 0) {
@@ -1980,6 +1992,7 @@ function AdminPageContent() {
     setEntregasSelecionadas([]);
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const imprimirRelatorioEntregasMarcadas = () => {
     if (!entregasMarcadasDetalhadas.length) {
       alert('Selecione ao menos uma entrega para gerar o relatorio.');
@@ -2366,6 +2379,7 @@ function AdminPageContent() {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const imprimirVendasSelecionadas = () => {
     const selecionados = pedidos
       .filter((p) => pedidosSelecionadosVendas.includes(p.id))
@@ -2425,6 +2439,7 @@ function AdminPageContent() {
     popup.document.close();
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const imprimirHistoricoCliente = (cliente: any, incluirCadastro: boolean) => {
     const zap = normalizarNumero(String(cliente.whatsapp || ''));
     const historico = historicoPorWhatsapp[zap] || [];
@@ -2513,6 +2528,396 @@ function AdminPageContent() {
     `);
     popup.document.close();
   };
+
+  const montarTextoPagamentoRelatorio = (pedido: any) => {
+    const pagamento = obterResumoPagamento(pedido);
+    const linhas = [pagamento.titulo, pagamento.situacao];
+    if (pedido?.total) {
+      linhas.push(`Total ${formatarMoedaAdmin(pedido.total)}`);
+    } else if (pagamento.detalhe) {
+      linhas.push(pagamento.detalhe);
+    }
+    return linhas.join('\n');
+  };
+
+  const imprimirRelatorioEntregadoresDiaPlanilha = () => {
+    const entregadoresComMovimento = resumoEntregadoresHoje.filter((item) => item.totalEntregasHoje > 0);
+    if (!entregadoresComMovimento.length) {
+      alert('Nao ha entregas do dia para gerar o relatorio.');
+      return;
+    }
+
+    const dataRelatorio = new Date().toLocaleDateString('pt-BR');
+    const totalEntregas = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.totalEntregasHoje || 0), 0);
+    const totalAcerto = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.valorTaxasHoje || 0), 0);
+    const totalReceber = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.valorReceberHoje || 0), 0);
+    const totalPendencias = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.pendenciasAcerto || 0), 0);
+
+    abrirRelatorioPlanilha({
+      title: 'Relatorio do dia por entregador',
+      subtitle: `Movimento consolidado em ${dataRelatorio}`,
+      documentTitle: `Relatorio de entregadores - ${dataRelatorio}`,
+      orientation: 'landscape',
+      popupFeatures: 'width=1200,height=760',
+      metrics: [
+        { label: 'Entregadores com movimento', value: String(entregadoresComMovimento.length) },
+        { label: 'Entregas', value: String(totalEntregas) },
+        { label: 'Acerto do dia', value: formatarMoedaAdmin(totalAcerto) },
+        { label: 'Receber na entrega', value: formatarMoedaAdmin(totalReceber) },
+        { label: 'Pendencias', value: String(totalPendencias) },
+      ],
+      sections: entregadoresComMovimento.map((entregador) => ({
+        title: String(entregador.nome || 'Entregador'),
+        subtitle: `WhatsApp: ${String(entregador.whatsapp || 'Nao informado')} | PIX: ${String(entregador.pix || 'Nao informado')} | Situacao: ${entregador.ativo !== false ? 'Ativo' : 'Inativo'}`,
+        metrics: [
+          { label: 'Entregas', value: String(Number(entregador.totalEntregasHoje || 0)) },
+          { label: 'Acerto', value: formatarMoedaAdmin(entregador.valorTaxasHoje) },
+          { label: 'Receber', value: formatarMoedaAdmin(entregador.valorReceberHoje) },
+          { label: 'Pendencias', value: String(Number(entregador.pendenciasAcerto || 0)) },
+        ],
+        columns: [
+          { label: 'Entrega', width: '14%' },
+          { label: 'Pedido', width: '12%' },
+          { label: 'Cliente', width: '20%' },
+          { label: 'Pagamento', width: '24%' },
+          { label: 'Acerto', width: '10%', align: 'right' },
+          { label: 'Receber', width: '10%', align: 'right' },
+          { label: 'Status', width: '10%', align: 'center' },
+        ],
+        rows: (entregador.entregasHoje || []).map((entrega: any) => {
+          const pedido = entrega?.pedido || {};
+          const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
+          return [
+            {
+              value: `#${Number(entrega?.id || 0)}\n${entrega?.aceito_em ? new Date(entrega.aceito_em).toLocaleString('pt-BR') : 'Aceite nao informado'}`,
+            },
+            {
+              value: `#${Number(entrega?.pedido_id || pedido?.id || 0)}\n${String(entrega?.status || 'Sem status')}`,
+            },
+            {
+              value: `${String(pedido?.cliente_nome || 'Cliente')}\n${String(pedido?.whatsapp || 'WhatsApp nao informado')}`,
+            },
+            {
+              value: montarTextoPagamentoRelatorio(pedido),
+            },
+            { value: formatarMoedaAdmin(obterValorAcertoEntrega(entrega)), align: 'right' },
+            { value: formatarMoedaAdmin(obterValorReceberNaEntrega(pedido)), align: 'right' },
+            { value: acertado ? 'Acertado' : 'Pendente', align: 'center' },
+          ];
+        }),
+        footer: `Chave PIX para acerto: ${String(entregador.pix || 'Nao informada')}`,
+      })),
+    });
+  };
+
+  const imprimirRelatorioEntregasMarcadasPlanilha = () => {
+    if (!entregasMarcadasDetalhadas.length) {
+      alert('Selecione ao menos uma entrega para gerar o relatorio.');
+      return;
+    }
+
+    const dataRelatorio = new Date().toLocaleDateString('pt-BR');
+    const grupos = new Map<string, any>();
+
+    entregasMarcadasDetalhadas.forEach((entrega) => {
+      const entregaId = Number(entrega?.id || 0);
+      const entregadorId = Number(entrega?.entregador_id || entrega?.entregador?.id || 0);
+      const entregador = entrega?.entregador || {};
+      const chave = entregadorId > 0 ? `entregador-${entregadorId}` : `sem-entregador-${entregaId}`;
+
+      if (!grupos.has(chave)) {
+        grupos.set(chave, {
+          id: entregadorId > 0 ? entregadorId : entregaId,
+          nome: String(entregador?.nome || 'Sem entregador vinculado'),
+          whatsapp: String(entregador?.whatsapp || ''),
+          pix: String(entregador?.pix || ''),
+          ativo: entregador?.ativo !== false,
+          entregasLista: [] as any[],
+          totalEntregas: 0,
+          totalAcerto: 0,
+          totalReceber: 0,
+          pendencias: 0,
+        });
+      }
+
+      const grupo = grupos.get(chave);
+      if (!grupo) return;
+
+      const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
+      grupo.entregasLista.push(entrega);
+      grupo.totalEntregas += 1;
+      grupo.totalAcerto += obterValorAcertoEntrega(entrega);
+      grupo.totalReceber += obterValorReceberNaEntrega(entrega?.pedido);
+      if (!acertado) grupo.pendencias += 1;
+    });
+
+    const entregadoresComMovimento = Array.from(grupos.values()).sort((a, b) =>
+      String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'),
+    );
+    const totalEntregas = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.totalEntregas || 0), 0);
+    const totalAcerto = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.totalAcerto || 0), 0);
+    const totalReceber = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.totalReceber || 0), 0);
+    const totalPendencias = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.pendencias || 0), 0);
+
+    abrirRelatorioPlanilha({
+      title: 'Relatorio das entregas marcadas',
+      subtitle: `Selecao consolidada em ${dataRelatorio}`,
+      documentTitle: `Relatorio das entregas marcadas - ${dataRelatorio}`,
+      orientation: 'landscape',
+      popupFeatures: 'width=1200,height=760',
+      metrics: [
+        { label: 'Grupos', value: String(entregadoresComMovimento.length) },
+        { label: 'Entregas', value: String(totalEntregas) },
+        { label: 'Acerto', value: formatarMoedaAdmin(totalAcerto) },
+        { label: 'Receber', value: formatarMoedaAdmin(totalReceber) },
+        { label: 'Pendencias', value: String(totalPendencias) },
+      ],
+      sections: entregadoresComMovimento.map((entregador) => ({
+        title: String(entregador.nome || 'Entregador'),
+        subtitle: `WhatsApp: ${String(entregador.whatsapp || 'Nao informado')} | PIX: ${String(entregador.pix || 'Nao informado')} | Situacao: ${entregador.ativo !== false ? 'Ativo' : 'Inativo'}`,
+        metrics: [
+          { label: 'Entregas', value: String(Number(entregador.totalEntregas || 0)) },
+          { label: 'Acerto', value: formatarMoedaAdmin(entregador.totalAcerto) },
+          { label: 'Receber', value: formatarMoedaAdmin(entregador.totalReceber) },
+          { label: 'Pendencias', value: String(Number(entregador.pendencias || 0)) },
+        ],
+        columns: [
+          { label: 'Entrega', width: '14%' },
+          { label: 'Pedido', width: '12%' },
+          { label: 'Cliente', width: '20%' },
+          { label: 'Pagamento', width: '24%' },
+          { label: 'Acerto', width: '10%', align: 'right' },
+          { label: 'Receber', width: '10%', align: 'right' },
+          { label: 'Status', width: '10%', align: 'center' },
+        ],
+        rows: (entregador.entregasLista || []).map((entrega: any) => {
+          const pedido = entrega?.pedido || {};
+          const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
+          return [
+            {
+              value: `#${Number(entrega?.id || 0)}\n${entrega?.aceito_em ? new Date(entrega.aceito_em).toLocaleString('pt-BR') : 'Aceite nao informado'}`,
+            },
+            {
+              value: `#${Number(entrega?.pedido_id || pedido?.id || 0)}\n${String(entrega?.status || 'Sem status')}`,
+            },
+            {
+              value: `${String(pedido?.cliente_nome || 'Cliente')}\n${String(pedido?.whatsapp || 'WhatsApp nao informado')}`,
+            },
+            {
+              value: montarTextoPagamentoRelatorio(pedido),
+            },
+            { value: formatarMoedaAdmin(obterValorAcertoEntrega(entrega)), align: 'right' },
+            { value: formatarMoedaAdmin(obterValorReceberNaEntrega(pedido)), align: 'right' },
+            { value: acertado ? 'Acertado' : 'Pendente', align: 'center' },
+          ];
+        }),
+        footer: `Relatorio formado pelas entregas marcadas manualmente no painel.`,
+      })),
+    });
+  };
+
+  const imprimirVendasSelecionadasPlanilha = () => {
+    const selecionados = pedidos
+      .filter((pedido) => pedidosSelecionadosVendas.includes(Number(pedido.id)))
+      .sort((a, b) => new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime());
+
+    if (!selecionados.length) {
+      alert('Selecione ao menos uma venda para imprimir.');
+      return;
+    }
+
+    const valorTotal = selecionados.reduce((acc, pedido) => acc + (Number(pedido.total) || 0), 0);
+
+    abrirRelatorioPlanilha(
+      {
+        title: 'Relatorio de vendas selecionadas',
+        subtitle: `Pedidos marcados para impressao: ${selecionados.length}`,
+        documentTitle: 'Vendas Selecionadas',
+        orientation: 'landscape',
+        popupFeatures: 'width=1100,height=760',
+        metrics: [
+          { label: 'Vendas selecionadas', value: String(selecionados.length) },
+          { label: 'Valor total', value: formatarMoedaAdmin(valorTotal) },
+        ],
+        sections: [
+          {
+            title: 'Lista de vendas',
+            columns: [
+              { label: 'Pedido', width: '12%' },
+              { label: 'Cliente', width: '20%' },
+              { label: 'WhatsApp', width: '16%' },
+              { label: 'Data', width: '18%' },
+              { label: 'Pagamento', width: '22%' },
+              { label: 'Total', width: '12%', align: 'right' },
+            ],
+            rows: selecionados.map((pedido) => [
+              { value: `#${Number(pedido.id || 0)}\n${String(pedido.status_pedido || 'Sem status')}` },
+              { value: String(pedido.cliente_nome || 'Cliente sem nome') },
+              { value: String(pedido.whatsapp || 'Nao informado') },
+              { value: pedido.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada' },
+              { value: montarTextoPagamentoRelatorio(pedido) },
+              { value: formatarMoedaAdmin(pedido.total), align: 'right' },
+            ]),
+          },
+        ],
+      },
+      'Nao foi possivel abrir a janela de impressao.',
+    );
+  };
+
+  const imprimirHistoricoClientePlanilha = (cliente: any, incluirCadastro: boolean) => {
+    const zap = normalizarNumero(String(cliente.whatsapp || ''));
+    const historico = historicoPorWhatsapp[zap] || [];
+    const idsSelecionados = pedidosSelecionadosPorCliente[cliente.id] || [];
+    const selecionados = historico.filter((pedido) => idsSelecionados.includes(pedido.id));
+    const pedidosParaImprimir = selecionados.length > 0 ? selecionados : historico.slice(0, 1);
+
+    if (!pedidosParaImprimir.length) {
+      alert('Nao ha pedidos para imprimir neste cliente.');
+      return;
+    }
+
+    const valor = (v: unknown) => String(v ?? '').trim();
+    const pontoReferencia = extrairPontoReferencia(cliente);
+    const enderecoSemPonto = extrairEnderecoSemPonto(cliente);
+    const nomeCliente = valor(cliente.nome) || 'Cliente sem nome';
+    const totalHistorico = pedidosParaImprimir.reduce((acc, pedido) => acc + (Number(pedido.total) || 0), 0);
+    const secoes: Parameters<typeof abrirRelatorioPlanilha>[0]['sections'] = [];
+
+    if (incluirCadastro) {
+      secoes.push({
+        title: 'Cadastro do cliente',
+        columns: [
+          { label: 'Campo', width: '32%' },
+          { label: 'Informacao', width: '68%' },
+        ],
+        rows: [
+          ['Nome', nomeCliente],
+          ['WhatsApp', valor(cliente.whatsapp) || 'Nao informado'],
+          ['Endereco', [valor(enderecoSemPonto), valor(cliente.numero)].filter(Boolean).join(', ') || 'Nao informado'],
+          ['Ponto de referencia', valor(pontoReferencia) || 'Nao informado'],
+          ['Bairro', valor(cliente.bairro) || '-'],
+          ['Cidade', valor(cliente.cidade) || 'Navegantes'],
+          ['CEP', valor(cliente.cep) || 'Nao informado'],
+          [
+            'Nascimento',
+            cliente.data_aniversario
+              ? new Date(cliente.data_aniversario).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+              : 'Nao informado',
+          ],
+          ['Observacao', valor(cliente.observacao) || 'Sem observacoes'],
+        ].map(([campo, informacao]) => [{ value: campo }, { value: informacao }]),
+      });
+    }
+
+    secoes.push({
+      title: 'Pedidos considerados no historico',
+      metrics: [
+        { label: 'Pedidos no relatorio', value: String(pedidosParaImprimir.length) },
+        { label: 'Valor total', value: formatarMoedaAdmin(totalHistorico) },
+      ],
+      columns: [
+        { label: 'Pedido', width: '12%' },
+        { label: 'Data', width: '17%' },
+        { label: 'Pagamento', width: '19%' },
+        { label: 'Itens', width: '40%' },
+        { label: 'Total', width: '12%', align: 'right' },
+      ],
+      rows: pedidosParaImprimir.map((pedido: any, index: number) => {
+        const itens = parseItensPedido(pedido);
+        const itensTexto = itens.length
+          ? itens
+              .map((item: any) => `${String(item.qtd || 1)}x ${String(item.nome || 'Item')} - ${formatarMoedaAdmin(item.preco || 0)}`)
+              .join('\n')
+          : 'Itens nao informados';
+        return [
+          {
+            value: `#${Number(pedido.id || 0)}\n${index === 0 && !selecionados.length ? 'Ultimo pedido' : String(pedido.status_pedido || 'Sem status')}`,
+          },
+          {
+            value: pedido.created_at ? new Date(pedido.created_at).toLocaleString('pt-BR') : 'Nao informada',
+          },
+          { value: montarTextoPagamentoRelatorio(pedido) },
+          { value: itensTexto },
+          { value: formatarMoedaAdmin(pedido.total), align: 'right' },
+        ];
+      }),
+    });
+
+    abrirRelatorioPlanilha(
+      {
+        title: incluirCadastro ? 'Historico de compras com cadastro' : 'Historico de compras',
+        subtitle: `Cliente: ${nomeCliente}`,
+        documentTitle: 'Historico de Compras',
+        orientation: 'landscape',
+        popupFeatures: 'width=1100,height=760',
+        metrics: [
+          { label: 'Cliente', value: nomeCliente },
+          { label: 'WhatsApp', value: valor(cliente.whatsapp) || 'Nao informado' },
+          { label: 'Pedidos selecionados', value: String(pedidosParaImprimir.length) },
+        ],
+        sections: secoes,
+      },
+      'Nao foi possivel abrir a janela de impressao.',
+    );
+  };
+
+  const imprimirResumoRelatoriosPlanilha = () => {
+    const periodo = `${nomesMeses[mesRelatorio]} / ${anoRelatorio}`;
+
+    abrirRelatorioPlanilha({
+      title: 'Resumo gerencial padronizado',
+      subtitle: `Periodo analisado: ${periodo}`,
+      documentTitle: `Resumo de ${periodo}`,
+      orientation: 'landscape',
+      popupFeatures: 'width=1200,height=760',
+      metrics: [
+        { label: 'Periodo', value: periodo },
+        { label: 'Faturamento do mes', value: formatarMoedaAdmin(faturamentoTotal) },
+        { label: 'Pedidos do mes', value: String(pedidosDoMesRelatorio.length) },
+        { label: 'Vendas da semana', value: `${pedidosDaSemana.length} pedidos` },
+        { label: 'Faturamento da semana', value: formatarMoedaAdmin(faturamentoSemana) },
+        { label: 'Faturamento do dia', value: formatarMoedaAdmin(faturamentoDia) },
+      ],
+      sections: [
+        {
+          title: 'Produtos mais vendidos',
+          columns: [
+            { label: 'Posicao', width: '10%', align: 'center' },
+            { label: 'Produto', width: '52%' },
+            { label: 'Quantidade', width: '18%', align: 'center' },
+            { label: 'Faturamento', width: '20%', align: 'right' },
+          ],
+          rows: rankingProdutos.map((produto, index) => [
+            { value: `${index + 1}`, align: 'center' },
+            { value: String(produto.nome || 'Produto sem nome') },
+            { value: String(produto.qtd || 0), align: 'center' },
+            { value: formatarMoedaAdmin(produto.valor), align: 'right' },
+          ]),
+          emptyMessage: 'Nenhuma venda registrada ainda.',
+        },
+        {
+          title: 'Clientes VIP do mes',
+          columns: [
+            { label: 'Posicao', width: '10%', align: 'center' },
+            { label: 'Cliente', width: '34%' },
+            { label: 'WhatsApp', width: '22%' },
+            { label: 'Pedidos', width: '14%', align: 'center' },
+            { label: 'Valor gasto', width: '20%', align: 'right' },
+          ],
+          rows: rankingClientes.map((cliente, index) => [
+            { value: `${index + 1}`, align: 'center' },
+            { value: String(cliente.nome || 'Cliente sem nome') },
+            { value: String(cliente.whatsapp || 'Nao informado') },
+            { value: String(cliente.qtdPedidos || 0), align: 'center' },
+            { value: formatarMoedaAdmin(cliente.valorGasto), align: 'right' },
+          ]),
+          emptyMessage: 'Nenhum cliente registrado neste mes.',
+        },
+      ],
+    });
+  };
+
   const clienteEstaEmFoco = (cliente: { whatsapp?: string; nome?: string }) => {
     if (!clienteEmFoco) return false;
     const focoZap = normalizarNumero(clienteEmFoco.whatsapp || '');
@@ -2586,7 +2991,7 @@ function AdminPageContent() {
             {activeTab === 'entregadores' && (
               <button
                 type="button"
-                onClick={imprimirRelatorioEntregadoresDia}
+                onClick={imprimirRelatorioEntregadoresDiaPlanilha}
                 className="w-full sm:w-auto rounded-2xl bg-slate-900 px-6 py-3 text-white font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-slate-800 transition-all"
               >
                 <Printer size={18} />
@@ -2976,7 +3381,7 @@ function AdminPageContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={imprimirRelatorioEntregasMarcadas}
+                    onClick={imprimirRelatorioEntregasMarcadasPlanilha}
                     disabled={!entregasSelecionadas.length}
                     className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wide text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
                   >
@@ -3465,14 +3870,14 @@ function AdminPageContent() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => imprimirHistoricoCliente(c, true)}
+                            onClick={() => imprimirHistoricoClientePlanilha(c, true)}
                             className="px-3 py-2 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors text-xs font-bold uppercase"
                           >
                             Imprimir c/ Cadastro
                           </button>
                           <button
                             type="button"
-                            onClick={() => imprimirHistoricoCliente(c, false)}
+                            onClick={() => imprimirHistoricoClientePlanilha(c, false)}
                             className="px-3 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-600 transition-colors text-xs font-bold uppercase"
                           >
                             Imprimir s/ Cadastro
@@ -3528,7 +3933,7 @@ function AdminPageContent() {
                 <button onClick={marcarVendasEmDestaque} className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all">Marcar</button>
                 <button onClick={desmarcarVendasSelecionadas} className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all">Desmarcar</button>
                 <button onClick={() => void excluirVendasSelecionadas()} className="w-full sm:w-auto bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all"><Trash2 size={18} /> Excluir</button>
-                <button onClick={imprimirVendasSelecionadas} className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all"><Printer size={18} /> Imprimir Vendas</button>
+                <button onClick={imprimirVendasSelecionadasPlanilha} className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all"><Printer size={18} /> Imprimir Vendas</button>
                 <button onClick={() => { window.location.href = '/admin/vendas'; }} className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"><TrendingUp size={18} /> Outras Visoes</button>
               </div>
             </div>
@@ -3633,7 +4038,7 @@ function AdminPageContent() {
                     <option key={ano} value={ano}>{ano}</option>
                   ))}
                 </select>
-                <button onClick={() => window.print()} className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-slate-700 transition-all"><Printer size={20} /> Imprimir Relatorio</button>
+                <button onClick={imprimirResumoRelatoriosPlanilha} className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-slate-700 transition-all"><Printer size={20} /> Imprimir Relatorio</button>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
