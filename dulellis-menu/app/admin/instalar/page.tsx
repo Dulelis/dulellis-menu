@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShieldCheck, Smartphone } from "lucide-react";
-import { AdminInstallPrompt } from "@/components/AdminInstallPrompt";
+import { Smartphone } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Instalar admin",
+  title: "Atalho do admin",
 };
 
 export default function AdminInstallPage() {
@@ -12,24 +11,19 @@ export default function AdminInstallPage() {
     <main className="admin-app-shell min-h-[100dvh] bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.22),transparent_30%),linear-gradient(180deg,#020617_0%,#0f172a_55%,#111827_100%)] px-4 py-8 text-white">
       <div className="mx-auto max-w-md">
         <section className="overflow-hidden rounded-[2.8rem] border border-white/10 bg-white/8 p-8 shadow-[0_26px_70px_rgba(2,6,23,0.4)] backdrop-blur-xl">
-          <div className="flex items-center justify-between gap-3">
-            <div className="rounded-[1.7rem] bg-cyan-400/15 p-4 text-cyan-300">
-              <ShieldCheck size={26} />
-            </div>
-            <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
-              Link exclusivo admin
-            </span>
+          <div className="inline-flex rounded-[1.7rem] bg-cyan-400/15 p-4 text-cyan-300">
+            <Smartphone size={26} />
           </div>
 
           <p className="mt-6 text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300">
             Dulelis Admin
           </p>
           <h1 className="mt-2 text-4xl font-black tracking-tight text-white">
-            Instale o painel no seu celular
+            Crie um atalho do painel no Chrome
           </h1>
           <p className="mt-3 text-sm font-bold leading-6 text-slate-300">
-            Esse link foi preparado para instalar uma PWA separada da vitrine, com icone proprio,
-            abertura em tela cheia e atalho direto para o admin.
+            O admin nao sera mais instalado como app separado. Para abrir mais rapido no celular,
+            use o atalho do proprio Chrome e deixe a vitrine como a unica PWA do site.
           </p>
 
           <div className="mt-6 rounded-[2rem] border border-white/10 bg-slate-950/30 p-5">
@@ -39,18 +33,30 @@ export default function AdminInstallPage() {
               </div>
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.24em] text-white">
-                  Como usar
+                  Como fazer no Android
                 </p>
-                <p className="mt-1 text-sm font-bold leading-6 text-slate-300">
-                  Instale por aqui e depois entre normalmente no painel. O app administrativo fica
-                  separado da PWA da vitrine.
-                </p>
+                <ol className="mt-2 space-y-2 text-sm font-bold leading-6 text-slate-300">
+                  <li>1. Abra o login do admin no Chrome.</li>
+                  <li>2. Toque no menu de 3 pontos do navegador.</li>
+                  <li>3. Escolha adicionar a tela inicial.</li>
+                  <li>4. Confirme o nome do atalho e salve.</li>
+                </ol>
               </div>
             </div>
           </div>
 
-          <div className="mt-6">
-            <AdminInstallPrompt />
+          <div className="mt-6 rounded-[2rem] border border-cyan-300/15 bg-cyan-400/10 p-5">
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
+              Observacao
+            </p>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-100">
+              Esse atalho abre o painel pelo navegador do celular, sem competir com a PWA da
+              vitrine.
+            </p>
+            <p className="mt-3 text-xs font-bold leading-5 text-slate-300">
+              Se voce abriu o link pelo WhatsApp ou Instagram, use a opcao de abrir no Chrome
+              antes de salvar o atalho.
+            </p>
           </div>
 
           <div className="mt-8 space-y-3">
@@ -61,7 +67,7 @@ export default function AdminInstallPage() {
               Ir para login do admin
             </Link>
             <p className="text-center text-xs font-bold text-slate-400">
-              Depois de instalado, abra pelo icone do app no celular.
+              Depois disso, o atalho aparece na tela inicial como acesso rapido do painel.
             </p>
           </div>
         </section>

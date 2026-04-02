@@ -2063,7 +2063,7 @@ function AdminPageContent() {
               href="/admin/instalar"
               className="w-full sm:w-auto rounded-2xl border border-cyan-200 bg-cyan-50 px-6 py-3 text-center text-xs font-black uppercase tracking-widest text-cyan-800 shadow-sm transition-all hover:bg-cyan-100"
             >
-              Instalar app admin
+              Atalho no celular
             </a>
             {activeTab === 'painel' && (
               <button

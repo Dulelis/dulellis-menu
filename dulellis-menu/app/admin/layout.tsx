@@ -1,29 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { AdminPwaRegistration } from "@/components/AdminPwaRegistration";
+import { AdminShortcutCleanup } from "@/components/AdminShortcutCleanup";
 
 export const metadata: Metadata = {
   title: {
     default: "Dulelis Admin",
     template: "%s | Dulelis Admin",
   },
-  description: "Painel administrativo da Dulelis Delivery em formato de app para uso no celular.",
-  applicationName: "Dulelis Admin",
-  manifest: "/admin/manifest.webmanifest",
-  icons: {
-    icon: [
-      { url: "/admin-icon-192.png", type: "image/png", sizes: "192x192" },
-      { url: "/admin-icon-512.png", type: "image/png", sizes: "512x512" },
-    ],
-    apple: [{ url: "/admin-apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
-  },
-  appleWebApp: {
-    capable: true,
-    title: "Dulelis Admin",
-    statusBarStyle: "black-translucent",
-  },
+  description: "Painel administrativo da Dulelis Delivery para gerenciar pedidos e produtos.",
+  applicationName: null,
+  manifest: null,
+  icons: null,
+  appleWebApp: null,
   other: {
-    "mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-title": "Admin Dulelis",
+    "mobile-web-app-capable": "no",
+    "apple-mobile-web-app-title": "Dulelis Admin",
   },
 };
 
@@ -42,7 +32,7 @@ export default function AdminLayout({
 }>) {
   return (
     <>
-      <AdminPwaRegistration />
+      <AdminShortcutCleanup />
       {children}
     </>
   );
