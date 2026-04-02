@@ -4,6 +4,7 @@ create table if not exists public.entregadores (
   id bigserial primary key,
   nome text not null,
   whatsapp text,
+  pix text,
   modelo_moto text,
   placa_moto text,
   cor_moto text,
@@ -12,6 +13,9 @@ create table if not exists public.entregadores (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table if exists public.entregadores
+  add column if not exists pix text;
 
 create table if not exists public.entregas (
   id bigserial primary key,

@@ -86,6 +86,39 @@ function extrairCoordenadasValidas(registro: any) {
   return { latitude, longitude };
 }
 
+function normalizarTextoComparacao(valor: unknown) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function formatarMoedaAdmin(valor: unknown) {
+  return `R$ ${Number(valor || 0).toFixed(2)}`;
+}
+
+function obterValorAcertoEntrega(entrega: any) {
+  return Math.max(0, Number(entrega?.pedido?.taxa_entrega || 0));
+}
+
+function obterValorReceberNaEntrega(pedido: any) {
+  const forma = normalizarTextoComparacao(pedido?.forma_pagamento);
+  if (forma === 'dinheiro' || forma === 'cartao na entrega') {
+    return Math.max(0, Number(pedido?.total || 0));
+  }
+  return 0;
+}
+
+function escaparHtml(valor: unknown) {
+  return String(valor ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function AdminPageContent() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<AdminTab>('estoque');
@@ -161,6 +194,7 @@ function AdminPageContent() {
   const [novoEntregador, setNovoEntregador] = useState({
     nome: '',
     whatsapp: '',
+    pix: '',
     modelo_moto: '',
     placa_moto: '',
     cor_moto: '',
@@ -782,6 +816,7 @@ function AdminPageContent() {
     setNovoEntregador({
       nome: '',
       whatsapp: '',
+      pix: '',
       modelo_moto: '',
       placa_moto: '',
       cor_moto: '',
@@ -795,6 +830,7 @@ function AdminPageContent() {
     setNovoEntregador({
       nome: String(entregador.nome || ''),
       whatsapp: String(entregador.whatsapp || ''),
+      pix: String(entregador.pix || ''),
       modelo_moto: String(entregador.modelo_moto || ''),
       placa_moto: String(entregador.placa_moto || ''),
       cor_moto: String(entregador.cor_moto || ''),
@@ -810,6 +846,7 @@ function AdminPageContent() {
     const payload = {
       nome: String(novoEntregador.nome || '').trim(),
       whatsapp: normalizarNumero(String(novoEntregador.whatsapp || '')),
+      pix: String(novoEntregador.pix || '').trim(),
       modelo_moto: String(novoEntregador.modelo_moto || '').trim(),
       placa_moto: String(novoEntregador.placa_moto || '').trim().toUpperCase(),
       cor_moto: String(novoEntregador.cor_moto || '').trim(),
@@ -840,10 +877,14 @@ function AdminPageContent() {
       fecharModalEntregador();
       await carregarDados();
     } catch (error: any) {
+      const mensagem = String(error?.message || '');
+      const mensagemLower = mensagem.toLowerCase();
       alert(
-        String(error?.message || '').toLowerCase().includes('does not exist')
-          ? 'Rode o SQL create_entregadores_entregas.sql no Supabase antes de cadastrar entregadores.'
-          : `Erro ao salvar entregador: ${error.message}`,
+        mensagemLower.includes('pix') && mensagemLower.includes('does not exist')
+          ? 'Rode o SQL upgrade_entregadores_pix.sql no Supabase para liberar o campo PIX dos entregadores.'
+          : mensagemLower.includes('does not exist')
+            ? 'Rode o SQL create_entregadores_entregas.sql no Supabase antes de cadastrar entregadores.'
+            : `Erro ao salvar entregador: ${mensagem}`,
       );
     }
   };
@@ -1695,13 +1736,15 @@ function AdminPageContent() {
     return entregadores.map((entregador) => {
       const lista = entregasDoDia.filter((item) => Number(item?.entregador_id || 0) === Number(entregador.id || 0));
       const pendentes = lista.filter((item) => String(item?.acerto_status || '').trim().toLowerCase() !== 'acertado');
-      const valorTaxas = lista.reduce((acc, item) => acc + Math.max(0, Number(item?.pedido?.taxa_entrega || 0)), 0);
+      const valorTaxas = lista.reduce((acc, item) => acc + obterValorAcertoEntrega(item), 0);
+      const valorReceber = lista.reduce((acc, item) => acc + obterValorReceberNaEntrega(item?.pedido), 0);
       return {
         ...entregador,
         entregasHoje: lista,
         totalEntregasHoje: lista.length,
         pendenciasAcerto: pendentes.length,
         valorTaxasHoje: valorTaxas,
+        valorReceberHoje: valorReceber,
       };
     });
   }, [entregadores, entregasDoDia]);
@@ -1713,6 +1756,187 @@ function AdminPageContent() {
   const entregasAoVivoAgora = React.useMemo(() => {
     return entregasEmAndamento.filter((entrega) => obterResumoRastreamentoEntrega(entrega).aoVivo);
   }, [entregasEmAndamento, obterResumoRastreamentoEntrega]);
+  const imprimirRelatorioEntregadoresDia = () => {
+    const entregadoresComMovimento = resumoEntregadoresHoje.filter((item) => item.totalEntregasHoje > 0);
+    if (entregadoresComMovimento.length === 0) {
+      alert('Nao ha entregas do dia para gerar o relatorio.');
+      return;
+    }
+
+    const popup = window.open('', '_blank', 'width=1100,height=760');
+    if (!popup) {
+      alert('Nao foi possivel abrir a janela do relatorio.');
+      return;
+    }
+
+    const dataRelatorio = new Date().toLocaleDateString('pt-BR');
+    const totalEntregas = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.totalEntregasHoje || 0), 0);
+    const totalAcerto = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.valorTaxasHoje || 0), 0);
+    const totalReceber = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.valorReceberHoje || 0), 0);
+    const totalPendencias = entregadoresComMovimento.reduce((acc, item) => acc + Number(item.pendenciasAcerto || 0), 0);
+
+    const secoes = entregadoresComMovimento
+      .map((entregador) => {
+        const linhas = (entregador.entregasHoje || [])
+          .map((entrega: any) => {
+            const pedido = entrega?.pedido || {};
+            const pagamento = obterResumoPagamento(pedido);
+            const valorAcerto = obterValorAcertoEntrega(entrega);
+            const valorReceber = obterValorReceberNaEntrega(pedido);
+            const acertado = String(entrega?.acerto_status || '').trim().toLowerCase() === 'acertado';
+            return `
+              <tr>
+                <td>
+                  <strong>Entrega #${Number(entrega?.id || 0)}</strong><br />
+                  <span class="muted">Aceite: ${escaparHtml(entrega?.aceito_em ? new Date(entrega.aceito_em).toLocaleString('pt-BR') : 'Nao informado')}</span>
+                </td>
+                <td>
+                  <strong>Pedido #${Number(entrega?.pedido_id || pedido?.id || 0)}</strong><br />
+                  <span class="muted">${escaparHtml(String(pedido?.cliente_nome || 'Cliente'))}</span>
+                </td>
+                <td>
+                  <strong>${escaparHtml(pagamento.titulo)}</strong><br />
+                  <span class="muted">${escaparHtml(pagamento.situacao)}${pedido?.total ? ` • Total ${formatarMoedaAdmin(pedido.total)}` : ''}</span>
+                </td>
+                <td>${formatarMoedaAdmin(valorAcerto)}</td>
+                <td>${formatarMoedaAdmin(valorReceber)}</td>
+                <td>${acertado ? 'Acertado' : 'Pendente'}</td>
+              </tr>
+            `;
+          })
+          .join('');
+
+        return `
+          <section class="driver-card">
+            <div class="driver-header">
+              <div>
+                <div class="eyebrow">Entregador</div>
+                <h2>${escaparHtml(String(entregador.nome || 'Entregador'))}</h2>
+                <div class="driver-meta">
+                  WhatsApp: ${escaparHtml(String(entregador.whatsapp || 'Nao informado'))}
+                  ${entregador.pix ? ` • PIX: ${escaparHtml(String(entregador.pix))}` : ' • PIX: Nao informado'}
+                </div>
+              </div>
+              <div class="status-chip">${entregador.ativo !== false ? 'Ativo' : 'Inativo'}</div>
+            </div>
+
+            <div class="summary-grid">
+              <div class="summary-box">
+                <span class="summary-label">Entregas</span>
+                <strong>${Number(entregador.totalEntregasHoje || 0)}</strong>
+              </div>
+              <div class="summary-box">
+                <span class="summary-label">Acerto do dia</span>
+                <strong>${formatarMoedaAdmin(entregador.valorTaxasHoje)}</strong>
+              </div>
+              <div class="summary-box">
+                <span class="summary-label">Receber na entrega</span>
+                <strong>${formatarMoedaAdmin(entregador.valorReceberHoje)}</strong>
+              </div>
+              <div class="summary-box">
+                <span class="summary-label">Pendencias</span>
+                <strong>${Number(entregador.pendenciasAcerto || 0)}</strong>
+              </div>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Entrega</th>
+                  <th>Pedido</th>
+                  <th>Pagamento</th>
+                  <th>Valor acerto</th>
+                  <th>Receber</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>${linhas}</tbody>
+            </table>
+          </section>
+        `;
+      })
+      .join('');
+
+    const htmlRelatorioEntregadores = `
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Relatorio de entregadores - ${dataRelatorio}</title>
+          <style>
+            @page { size: A4; margin: 14mm; }
+            * { box-sizing: border-box; }
+            body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: #f8fafc; }
+            .page { padding: 28px; }
+            .hero { background: linear-gradient(135deg, #111827 0%, #1e293b 100%); color: #fff; border-radius: 24px; padding: 24px; }
+            .hero h1 { margin: 0; font-size: 28px; }
+            .hero p { margin: 8px 0 0; color: #cbd5e1; font-weight: 700; }
+            .totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+            .total-card { background: #fff; color: #0f172a; border-radius: 18px; padding: 14px 16px; }
+            .total-card span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #64748b; font-weight: 700; }
+            .total-card strong { display: block; margin-top: 8px; font-size: 22px; }
+            .driver-card { margin-top: 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 22px; padding: 20px; page-break-inside: avoid; }
+            .driver-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+            .eyebrow { font-size: 10px; text-transform: uppercase; letter-spacing: .18em; color: #64748b; font-weight: 700; }
+            .driver-header h2 { margin: 8px 0 0; font-size: 21px; }
+            .driver-meta { margin-top: 6px; font-size: 12px; color: #475569; font-weight: 700; word-break: break-word; }
+            .status-chip { border-radius: 999px; padding: 8px 12px; background: #ecfeff; color: #0f766e; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; }
+            .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+            .summary-box { border-radius: 16px; background: #f8fafc; padding: 12px; }
+            .summary-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: #64748b; font-weight: 700; }
+            .summary-box strong { display: block; margin-top: 8px; font-size: 18px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+            th, td { border-bottom: 1px solid #e2e8f0; text-align: left; padding: 12px 10px; vertical-align: top; font-size: 12px; }
+            th { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #64748b; }
+            td strong { color: #0f172a; }
+            .muted { color: #64748b; font-size: 11px; font-weight: 700; }
+            @media print {
+              body { background: #fff; }
+              .page { padding: 0; }
+              .driver-card { box-shadow: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <section class="hero">
+              <h1>Relatorio do dia por entregador</h1>
+              <p>Dulelis Confeitaria • ${dataRelatorio}</p>
+              <div class="totals">
+                <div class="total-card">
+                  <span>Entregas</span>
+                  <strong>${totalEntregas}</strong>
+                </div>
+                <div class="total-card">
+                  <span>Acerto do dia</span>
+                  <strong>${formatarMoedaAdmin(totalAcerto)}</strong>
+                </div>
+                <div class="total-card">
+                  <span>Receber na entrega</span>
+                  <strong>${formatarMoedaAdmin(totalReceber)}</strong>
+                </div>
+                <div class="total-card">
+                  <span>Pendencias</span>
+                  <strong>${totalPendencias}</strong>
+                </div>
+              </div>
+            </section>
+            ${secoes}
+          </div>
+          <script>
+            window.onload = () => {
+              window.print();
+              window.onafterprint = () => window.close();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+    popup.document.open();
+    popup.document.write(htmlRelatorioEntregadores);
+    popup.document.close();
+  };
 
   const limparHistoricoCliente = async (cliente: any) => {
     const zap = normalizarNumero(String(cliente.whatsapp || ''));
@@ -2065,6 +2289,16 @@ function AdminPageContent() {
             >
               Atalho no celular
             </a>
+            {activeTab === 'entregadores' && (
+              <button
+                type="button"
+                onClick={imprimirRelatorioEntregadoresDia}
+                className="w-full sm:w-auto rounded-2xl bg-slate-900 px-6 py-3 text-white font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-slate-800 transition-all"
+              >
+                <Printer size={18} />
+                Gerar relatorio do dia
+              </button>
+            )}
             {activeTab === 'painel' && (
               <button
                 type="button"
@@ -2505,7 +2739,19 @@ function AdminPageContent() {
                     </div>
 
                     <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-xs font-bold text-slate-600">
-                      Taxas do dia: <span className="text-slate-900">R$ {Number(entregador.valorTaxasHoje || 0).toFixed(2)}</span>
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Acerto do dia</span>
+                        <span className="text-slate-900">{formatarMoedaAdmin(entregador.valorTaxasHoje)}</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <span>Receber na entrega</span>
+                        <span className="text-slate-900">{formatarMoedaAdmin(entregador.valorReceberHoje)}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3 text-xs font-bold text-cyan-700">
+                      Pix do dia:{' '}
+                      <span className="break-all text-cyan-950">{entregador.pix || 'Nao informado'}</span>
                     </div>
 
                     <div className="mt-3 rounded-2xl border border-orange-100 bg-orange-50 p-3 text-xs font-bold text-orange-700">
@@ -3328,6 +3574,12 @@ function AdminPageContent() {
                 className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
                 value={novoEntregador.whatsapp}
                 onChange={e => setNovoEntregador({ ...novoEntregador, whatsapp: e.target.value })}
+              />
+              <input
+                placeholder="Chave PIX para repasse do dia"
+                className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
+                value={novoEntregador.pix}
+                onChange={e => setNovoEntregador({ ...novoEntregador, pix: e.target.value })}
               />
               <p className="text-[11px] font-bold text-slate-500">
                 Os 4 ultimos numeros do WhatsApp serao usados para o aceite da entrega no QR.
