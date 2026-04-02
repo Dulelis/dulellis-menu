@@ -2283,12 +2283,6 @@ function AdminPageContent() {
           </h1>
 
           <div className="flex w-full flex-wrap items-center gap-2 sm:gap-3 md:w-auto">
-            <a
-              href="/admin/instalar"
-              className="w-full sm:w-auto rounded-2xl border border-cyan-200 bg-cyan-50 px-6 py-3 text-center text-xs font-black uppercase tracking-widest text-cyan-800 shadow-sm transition-all hover:bg-cyan-100"
-            >
-              Atalho no celular
-            </a>
             {activeTab === 'entregadores' && (
               <button
                 type="button"

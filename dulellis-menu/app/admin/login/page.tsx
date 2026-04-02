@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, Suspense, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function AdminLoginForm() {
@@ -90,21 +89,6 @@ function AdminLoginForm() {
           </button>
         </form>
 
-        <div className="mt-6 rounded-[1.6rem] border border-slate-200 bg-slate-50 p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
-            Atalho no celular
-          </p>
-          <p className="mt-2 text-sm font-bold leading-6 text-slate-600">
-            No Chrome do Android, abra o menu e escolha adicionar a tela inicial. Isso cria um
-            atalho simples para o painel, sem instalar um app separado da vitrine.
-          </p>
-          <Link
-            href="/admin/instalar"
-            className="mt-4 inline-flex rounded-full bg-cyan-500 px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-slate-950 shadow-lg shadow-cyan-500/20"
-          >
-            Ver passo a passo
-          </Link>
-        </div>
       </section>
     </main>
   );
