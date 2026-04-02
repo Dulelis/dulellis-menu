@@ -425,15 +425,26 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
+    const payloadFinalizacao: Record<string, unknown> = {
+      status: "finalizada",
+      concluido_em: now,
+      observacao: pontoFinalEntrega,
+      rastreamento_ativo: false,
+      rastreamento_token: null,
+    };
+
+    if (latitude !== null && longitude !== null) {
+      payloadFinalizacao.latitude = latitude;
+      payloadFinalizacao.longitude = longitude;
+      payloadFinalizacao.precisao_metros = accuracy;
+      payloadFinalizacao.velocidade_m_s = speed;
+      payloadFinalizacao.direcao_graus = heading;
+      payloadFinalizacao.localizacao_atualizada_em = now;
+    }
+
     const { data: entregaFinalizada, error: erroFinalizacao } = await supabase
       .from("entregas")
-      .update({
-        status: "finalizada",
-        concluido_em: now,
-        observacao: pontoFinalEntrega,
-        rastreamento_ativo: false,
-        rastreamento_token: null,
-      })
+      .update(payloadFinalizacao)
       .eq("id", Number(entregaAtual.id || 0))
       .select("*")
       .maybeSingle();

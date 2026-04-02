@@ -1106,6 +1106,11 @@ function AdminPageContent() {
     if (Number.isNaN(data.getTime())) return 'Nao informado';
     return data.toLocaleString('pt-BR');
   }, []);
+  const formatarCoordenadasEntrega = useCallback((entrega: any) => {
+    const coordenadas = extrairCoordenadasValidas(entrega);
+    if (!coordenadas) return 'Nao informadas';
+    return `${coordenadas.latitude.toFixed(6)}, ${coordenadas.longitude.toFixed(6)}`;
+  }, []);
   const obterResumoRastreamentoEntrega = useCallback((entrega: any) => {
     const coordenadas = extrairCoordenadasValidas(entrega);
     const atualizacaoTexto = String(entrega?.localizacao_atualizada_em || '').trim();
@@ -1115,9 +1120,9 @@ function AdminPageContent() {
 
     if (finalizada) {
       return {
-        label: 'Finalizada',
-        badgeClass: 'bg-slate-100 text-slate-600',
-        detalhe: 'Entrega encerrada.',
+        label: coordenadas ? 'Local final' : 'Finalizada',
+        badgeClass: coordenadas ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600',
+        detalhe: coordenadas ? 'Localizacao final salva no fechamento da entrega.' : 'Entrega encerrada sem localizacao registrada.',
         aoVivo: false,
         temCoordenadas: Boolean(coordenadas),
       };
@@ -1125,38 +1130,28 @@ function AdminPageContent() {
 
     if (!coordenadas) {
       return {
-        label: entrega?.rastreamento_ativo ? 'Aguardando GPS' : 'Sem rastreio',
+        label: 'Sem localizacao',
         badgeClass: 'bg-amber-50 text-amber-700',
-        detalhe: 'O motoboy ainda nao enviou a primeira localizacao.',
+        detalhe: 'A localizacao sera capturada quando o entregador finalizar o pedido.',
         aoVivo: false,
         temCoordenadas: false,
       };
     }
 
-    if (diffMs <= 90_000 && entrega?.rastreamento_ativo !== false) {
-      return {
-        label: 'Ao vivo',
-        badgeClass: 'bg-emerald-50 text-emerald-700',
-        detalhe: 'Localizacao atualizada em tempo real.',
-        aoVivo: true,
-        temCoordenadas: true,
-      };
-    }
-
     if (diffMs <= 10 * 60_000) {
       return {
-        label: 'Ultimo ping',
+        label: 'Local recente',
         badgeClass: 'bg-sky-50 text-sky-700',
-        detalhe: 'Mostrando a ultima posicao enviada pelo entregador.',
+        detalhe: 'Mostrando a ultima localizacao salva para esta entrega.',
         aoVivo: false,
         temCoordenadas: true,
       };
     }
 
     return {
-      label: 'Sinal antigo',
+      label: 'Local salvo',
       badgeClass: 'bg-slate-100 text-slate-600',
-      detalhe: 'A localizacao esta desatualizada e pode nao refletir o trajeto atual.',
+      detalhe: 'Existe uma localizacao salva para consulta no mapa.',
       aoVivo: false,
       temCoordenadas: true,
     };
@@ -1765,9 +1760,9 @@ function AdminPageContent() {
     return entregasDetalhadas.filter((entrega) => String(entrega?.status || '').trim().toLowerCase() !== 'finalizada');
   }, [entregasDetalhadas]);
 
-  const entregasAoVivoAgora = React.useMemo(() => {
-    return entregasEmAndamento.filter((entrega) => obterResumoRastreamentoEntrega(entrega).aoVivo);
-  }, [entregasEmAndamento, obterResumoRastreamentoEntrega]);
+  const entregasComLocalRegistradoHoje = React.useMemo(() => {
+    return entregasDoDia.filter((entrega) => Boolean(extrairCoordenadasValidas(entrega)));
+  }, [entregasDoDia]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const imprimirRelatorioEntregadoresDia = () => {
     const entregadoresComMovimento = resumoEntregadoresHoje.filter((item) => item.totalEntregasHoje > 0);
@@ -3341,9 +3336,9 @@ function AdminPageContent() {
                 <p className="text-sm font-bold text-emerald-700/80">entregas para fechamento</p>
               </div>
               <div className="rounded-[2rem] border border-sky-200 bg-sky-50 p-5 shadow-sm">
-                <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">Ao vivo agora</p>
-                <p className="mt-2 text-3xl font-black text-sky-700">{entregasAoVivoAgora.length}</p>
-                <p className="text-sm font-bold text-sky-700/80">motoboys com GPS recente</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">Locais registrados</p>
+                <p className="mt-2 text-3xl font-black text-sky-700">{entregasComLocalRegistradoHoje.length}</p>
+                <p className="text-sm font-bold text-sky-700/80">entregas com coordenadas salvas hoje</p>
               </div>
             </div>
 
@@ -3408,7 +3403,7 @@ function AdminPageContent() {
                   <h3 className="text-lg font-black text-slate-800">Entregas em andamento</h3>
                 </div>
                 <p className="text-sm font-bold text-slate-500">
-                  O Maps so abre quando voce clicar em rastrear.
+                  Abra a rota do pedido quando quiser conferir o destino no mapa.
                 </p>
               </div>
 
@@ -3451,7 +3446,7 @@ function AdminPageContent() {
                           {rastreamento.detalhe}
                         </p>
                         <p className="mt-3 text-xs font-bold text-slate-500">
-                          Ultimo ping: {formatarDataRastreamento(entrega?.localizacao_atualizada_em)}
+                          Local salvo em: {formatarDataRastreamento(entrega?.localizacao_atualizada_em)}
                         </p>
                         {linkRastreamento ? (
                           <a
@@ -3460,7 +3455,7 @@ function AdminPageContent() {
                             rel="noreferrer"
                             className="mt-4 inline-flex rounded-xl bg-slate-900 px-3 py-2 text-xs font-black uppercase text-white transition-colors hover:bg-slate-800"
                           >
-                            Rastrear entrega
+                            Abrir rota
                           </a>
                         ) : null}
                         <div className="mt-4 flex flex-wrap gap-2">
@@ -3477,7 +3472,7 @@ function AdminPageContent() {
                     );
                   }) : (
                     <div className="rounded-[1.75rem] border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm font-medium italic text-slate-400 md:col-span-2 xl:col-span-3">
-                      Nenhuma entrega em andamento para rastrear agora.
+                      Nenhuma entrega em andamento para acompanhar agora.
                     </div>
                   )}
               </div>
@@ -3624,15 +3619,20 @@ function AdminPageContent() {
 
                         <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rastreamento</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Localizacao</p>
                             <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${rastreamento.badgeClass}`}>
                               {rastreamento.label}
                             </span>
                           </div>
                           <p className="mt-2 text-sm font-bold text-slate-700">{rastreamento.detalhe}</p>
                           <p className="mt-2 text-xs font-bold text-slate-500">
-                            Ultimo ping: {formatarDataRastreamento(entrega?.localizacao_atualizada_em)}
+                            Local salvo em: {formatarDataRastreamento(entrega?.localizacao_atualizada_em)}
                           </p>
+                          {rastreamento.temCoordenadas ? (
+                            <p className="mt-2 text-xs font-bold text-slate-500">
+                              Coordenadas: {formatarCoordenadasEntrega(entrega)}
+                            </p>
+                          ) : null}
                         </div>
 
                         {entrega?.observacao ? (
@@ -3673,7 +3673,7 @@ function AdminPageContent() {
                               rel="noreferrer"
                               className="px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-colors text-xs font-black uppercase"
                             >
-                              Rastrear entrega
+                              {rastreamento.temCoordenadas ? 'Ver local no mapa' : 'Abrir destino no mapa'}
                             </a>
                           ) : null}
                         </div>

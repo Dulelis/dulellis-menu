@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Bike, Loader2, MapPin, Navigation, PackageCheck, Radar } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Bike, Loader2, MapPin, Navigation, PackageCheck } from "lucide-react";
 
 type Entregador = {
   id: number;
@@ -55,52 +55,19 @@ type ApiResponse = {
   };
 };
 
-type TrackingStatus = "idle" | "starting" | "live";
-
 type Props = {
   pedidoId: number;
 };
 
-const TRACKING_MIN_INTERVAL_MS = 12000;
-const TRACKING_MIN_DISTANCE_METERS = 25;
-const GEOLOCATION_PERMISSION_KEY = "delivery-site-geolocation-permission";
-const GEOLOCATION_PROMPTED_KEY = "delivery-site-geolocation-prompted";
 const GEOLOCATION_OPTIONS = {
   enableHighAccuracy: true,
   timeout: 15000,
   maximumAge: 5000,
 };
 
-function tokenStorageKey(pedidoId: number) {
-  return `delivery-tracking-token:${pedidoId}`;
-}
-
-function trackingEnabledStorageKey(pedidoId: number) {
-  return `delivery-tracking-enabled:${pedidoId}`;
-}
-
-function calcularDistanciaMetros(
-  latitudeOrigem: number,
-  longitudeOrigem: number,
-  latitudeDestino: number,
-  longitudeDestino: number,
-) {
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const raioTerra = 6371000;
-  const deltaLatitude = toRad(latitudeDestino - latitudeOrigem);
-  const deltaLongitude = toRad(longitudeDestino - longitudeOrigem);
-  const a =
-    Math.sin(deltaLatitude / 2) ** 2 +
-    Math.cos(toRad(latitudeOrigem)) *
-      Math.cos(toRad(latitudeDestino)) *
-      Math.sin(deltaLongitude / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return raioTerra * c;
-}
-
 function obterMensagemErroGeolocalizacao(error?: GeolocationPositionError | null, bloqueada = false) {
   if (bloqueada || error?.code === 1) {
-    return "A localizacao deste site esta bloqueada no aparelho. Libere nas permissoes do navegador e toque em Ativar rastreamento novamente.";
+    return "A localizacao deste site esta bloqueada no aparelho. Libere nas permissoes do navegador e tente finalizar com localizacao novamente.";
   }
   if (error?.code === 2) {
     return "Nao foi possivel localizar o aparelho agora. Tente novamente em um local com sinal melhor.";
@@ -122,158 +89,55 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const [entregadores, setEntregadores] = useState<Entregador[]>([]);
   const [entregadorId, setEntregadorId] = useState<number>(0);
   const [codigoTelefone, setCodigoTelefone] = useState("");
-  const [trackingToken, setTrackingToken] = useState("");
-  const [trackingStatus, setTrackingStatus] = useState<TrackingStatus>("idle");
-  const [trackingEnabled, setTrackingEnabled] = useState(false);
 
-  const trackingWatchIdRef = useRef<number | null>(null);
-  const trackingRequestRef = useRef(false);
-  const ultimaCoordenadaRef = useRef<{ latitude: number; longitude: number } | null>(null);
-  const ultimoEnvioRef = useRef(0);
-  const ultimaPosicaoCapturadaRef = useRef<GeolocationCoordinates | null>(null);
-
-  const salvarTrackingToken = useCallback(
-    (token: string) => {
-      setTrackingToken(token);
-      if (typeof window !== "undefined") {
-        if (token) {
-          window.localStorage.setItem(tokenStorageKey(pedidoId), token);
-        } else {
-          window.localStorage.removeItem(tokenStorageKey(pedidoId));
-        }
-      }
-    },
-    [pedidoId],
-  );
-
-  const persistirTrackingAtivo = useCallback(
-    (ativo: boolean) => {
-      setTrackingEnabled(ativo);
-      if (typeof window !== "undefined") {
-        if (ativo) {
-          window.localStorage.setItem(trackingEnabledStorageKey(pedidoId), "1");
-        } else {
-          window.localStorage.removeItem(trackingEnabledStorageKey(pedidoId));
-        }
-      }
-    },
-    [pedidoId],
-  );
-
-  const limparTrackingLocal = useCallback(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(tokenStorageKey(pedidoId));
-      window.localStorage.removeItem(trackingEnabledStorageKey(pedidoId));
-    }
-    setTrackingToken("");
-    setTrackingEnabled(false);
-    setTrackingStatus("idle");
-    trackingRequestRef.current = false;
-    ultimaCoordenadaRef.current = null;
-    ultimoEnvioRef.current = 0;
-  }, [pedidoId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || pedidoId <= 0) return;
-    const tokenSalvo = window.localStorage.getItem(tokenStorageKey(pedidoId)) || "";
-    const rastreamentoSalvo = window.localStorage.getItem(trackingEnabledStorageKey(pedidoId)) === "1";
-    if (tokenSalvo) {
-      setTrackingToken(tokenSalvo);
-      if (rastreamentoSalvo) {
-        setTrackingEnabled(true);
-        setTrackingStatus("starting");
-      }
-    }
-  }, [pedidoId]);
-
-  const solicitarPermissaoGeolocalizacao = useCallback(async (options?: { silencioso?: boolean }) => {
+  const capturarLocalizacaoAtual = useCallback(async (options?: { silencioso?: boolean }) => {
     if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.geolocation) {
       if (!options?.silencioso) {
         setAvisoRastreamento("Este aparelho nao disponibiliza localizacao para o site.");
       }
-      return false;
+      return null;
     }
 
     if (!window.isSecureContext) {
       if (!options?.silencioso) {
         setAvisoRastreamento("Abra este link em um site seguro com HTTPS para liberar a localizacao.");
       }
-      return false;
+      return null;
     }
 
-    window.localStorage.setItem(GEOLOCATION_PROMPTED_KEY, "1");
+    if ("permissions" in navigator && navigator.permissions?.query) {
+      try {
+        const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+        if (status.state === "denied") {
+          if (!options?.silencioso) {
+            setAvisoRastreamento(obterMensagemErroGeolocalizacao(null, true));
+          }
+          return null;
+        }
+      } catch (error) {
+        console.error("Falha ao consultar permissao de geolocalizacao.", error);
+      }
+    }
 
-    return await new Promise<boolean>((resolve) => {
+    return await new Promise<GeolocationCoordinates | null>((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          ultimaPosicaoCapturadaRef.current = position.coords;
-          window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "granted");
           if (!options?.silencioso) {
             setAvisoRastreamento("");
           }
-          resolve(true);
+          resolve(position.coords);
         },
         (error) => {
-          console.error("Falha ao solicitar permissao de localizacao.", error);
-          if (error.code === 1) {
-            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "denied");
-          }
+          console.error("Falha ao capturar a localizacao atual.", error);
           if (!options?.silencioso) {
-            setAvisoRastreamento(obterMensagemErroGeolocalizacao(error));
+            setAvisoRastreamento(obterMensagemErroGeolocalizacao(error, error.code === 1));
           }
-          resolve(false);
+          resolve(null);
         },
         GEOLOCATION_OPTIONS,
       );
     });
   }, []);
-
-  const garantirPermissaoGeolocalizacao = useCallback(
-    async (options?: { silencioso?: boolean }) => {
-      if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.geolocation) {
-        if (!options?.silencioso) {
-          setAvisoRastreamento("Este aparelho nao disponibiliza localizacao para o site.");
-        }
-        return false;
-      }
-
-      if (!window.isSecureContext) {
-        if (!options?.silencioso) {
-          setAvisoRastreamento("Abra este link em um site seguro com HTTPS para liberar a localizacao.");
-        }
-        return false;
-      }
-
-      if ("permissions" in navigator && navigator.permissions?.query) {
-        try {
-          const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
-          if (status.state === "granted") {
-            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "granted");
-            if (ultimaPosicaoCapturadaRef.current) {
-              if (!options?.silencioso) {
-                setAvisoRastreamento("");
-              }
-              return true;
-            }
-            return await solicitarPermissaoGeolocalizacao(options);
-          }
-
-          if (status.state === "denied") {
-            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "denied");
-            if (!options?.silencioso) {
-              setAvisoRastreamento(obterMensagemErroGeolocalizacao(null, true));
-            }
-            return false;
-          }
-        } catch (error) {
-          console.error("Falha ao consultar permissao de geolocalizacao.", error);
-        }
-      }
-
-      return await solicitarPermissaoGeolocalizacao(options);
-    },
-    [solicitarPermissaoGeolocalizacao],
-  );
 
   useEffect(() => {
     let ativo = true;
@@ -318,223 +182,11 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const entregaFinalizada = String(entrega?.status || "").trim().toLowerCase() === "finalizada";
   const enderecoCompleto = [pedido?.endereco, pedido?.numero].filter(Boolean).join(", ");
   const localCompleto = [pedido?.bairro, pedido?.cidade].filter(Boolean).join(" - ");
-
-  useEffect(() => {
-    let ativo = true;
-
-    async function prepararPermissaoInicial() {
-      if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.geolocation) return;
-      if (pedidoId <= 0 || entregaFinalizada) return;
-
-      const jaSolicitado = window.localStorage.getItem(GEOLOCATION_PROMPTED_KEY) === "1";
-      const permissaoSalva = window.localStorage.getItem(GEOLOCATION_PERMISSION_KEY) || "";
-
-      if ("permissions" in navigator && navigator.permissions?.query) {
-        try {
-          const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
-          if (!ativo) return;
-
-          if (status.state === "granted") {
-            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "granted");
-            void solicitarPermissaoGeolocalizacao({ silencioso: true });
-            return;
-          }
-
-          if (status.state === "denied") {
-            window.localStorage.setItem(GEOLOCATION_PERMISSION_KEY, "denied");
-            return;
-          }
-        } catch (error) {
-          console.error("Falha ao consultar permissao de geolocalizacao.", error);
-        }
-      }
-
-      if (!jaSolicitado && permissaoSalva !== "denied") {
-        await solicitarPermissaoGeolocalizacao({ silencioso: true });
-      }
-    }
-
-    void prepararPermissaoInicial();
-
-    return () => {
-      ativo = false;
-    };
-  }, [entregaFinalizada, pedidoId, solicitarPermissaoGeolocalizacao]);
-
-  const sincronizarLocalizacao = useCallback(
-    async (coords: GeolocationCoordinates, tokenSobrescrito?: string) => {
-      const tokenAtual = String(tokenSobrescrito || trackingToken || "").trim();
-      if (!tokenAtual || pedidoId <= 0) return;
-
-      const latitude = Number(coords.latitude);
-      const longitude = Number(coords.longitude);
-      ultimaPosicaoCapturadaRef.current = coords;
-      const ultima = ultimaCoordenadaRef.current;
-      const agora = Date.now();
-      const distancia = ultima
-        ? calcularDistanciaMetros(ultima.latitude, ultima.longitude, latitude, longitude)
-        : Number.POSITIVE_INFINITY;
-
-      if (
-        ultima &&
-        agora - ultimoEnvioRef.current < TRACKING_MIN_INTERVAL_MS &&
-        distancia < TRACKING_MIN_DISTANCE_METERS
-      ) {
-        return;
-      }
-
-      if (trackingRequestRef.current) return;
-      trackingRequestRef.current = true;
-
-      try {
-        const res = await fetch("/api/public/delivery", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "location",
-            pedido_id: pedidoId,
-            tracking_token: tokenAtual,
-            latitude,
-            longitude,
-            accuracy: coords.accuracy,
-            speed: coords.speed,
-            heading: coords.heading,
-          }),
-        });
-        const json = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          error?: string;
-          data?: { entrega?: Entrega | null };
-        };
-        if (!res.ok || json.ok === false || !json.data?.entrega) {
-          throw new Error(json.error || "Nao foi possivel enviar sua localizacao.");
-        }
-
-        setEntrega(json.data.entrega);
-        setTrackingStatus("live");
-        ultimaCoordenadaRef.current = { latitude, longitude };
-        ultimoEnvioRef.current = agora;
-      } catch (error) {
-        console.error("Falha ao compartilhar a localizacao da entrega.", error);
-      } finally {
-        trackingRequestRef.current = false;
-      }
-    },
-    [pedidoId, trackingToken],
-  );
-
-  const pararRastreamento = useCallback(() => {
-    if (trackingWatchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
-      navigator.geolocation.clearWatch(trackingWatchIdRef.current);
-      trackingWatchIdRef.current = null;
-    }
-  }, []);
-
-  const iniciarRastreamento = useCallback(async (tokenSobrescrito?: string, options?: { solicitarPermissao?: boolean; silencioso?: boolean }) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation || pedidoId <= 0) {
-      persistirTrackingAtivo(false);
-      setTrackingStatus("idle");
-      if (!options?.silencioso) {
-        setAvisoRastreamento("Este aparelho nao disponibiliza localizacao para o site.");
-      }
-      return false;
-    }
-
-    if (options?.solicitarPermissao !== false) {
-      const permissaoConcedida = await garantirPermissaoGeolocalizacao({ silencioso: options?.silencioso });
-      if (!permissaoConcedida) {
-        persistirTrackingAtivo(false);
-        setTrackingStatus("idle");
-        return false;
-      }
-    }
-
-    const tokenAtual = String(tokenSobrescrito || trackingToken || "").trim();
-    if (!tokenAtual) {
-      persistirTrackingAtivo(false);
-      setTrackingStatus("idle");
-      if (!options?.silencioso) {
-        setAvisoRastreamento("Nao foi possivel preparar o rastreamento desta entrega. Recarregue o link e tente novamente.");
-      }
-      return false;
-    }
-
-    pararRastreamento();
-    persistirTrackingAtivo(true);
-    setTrackingStatus("starting");
-    if (!options?.silencioso) {
-      setAvisoRastreamento("");
-    }
-
-    const iniciarWatch = () => {
-      trackingWatchIdRef.current = navigator.geolocation.watchPosition(
-        (position) => {
-          void sincronizarLocalizacao(position.coords, tokenAtual);
-        },
-        (error) => {
-          console.error("Falha no watch do rastreamento.", error);
-          if (error.code === 1) {
-            persistirTrackingAtivo(false);
-            setTrackingStatus("idle");
-            pararRastreamento();
-            if (!options?.silencioso) {
-              setAvisoRastreamento(obterMensagemErroGeolocalizacao(error));
-            }
-          }
-        },
-        GEOLOCATION_OPTIONS,
-      );
-    };
-
-    iniciarWatch();
-
-    if (ultimaPosicaoCapturadaRef.current) {
-      void sincronizarLocalizacao(ultimaPosicaoCapturadaRef.current, tokenAtual);
-    }
-
-    return await new Promise<boolean>((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          void sincronizarLocalizacao(position.coords, tokenAtual);
-          resolve(true);
-        },
-        (error) => {
-          console.error("Falha ao ativar o rastreamento.", error);
-          if (error.code === 1) {
-            persistirTrackingAtivo(false);
-            setTrackingStatus("idle");
-            pararRastreamento();
-            if (!options?.silencioso) {
-              setAvisoRastreamento(obterMensagemErroGeolocalizacao(error));
-            }
-            resolve(false);
-            return;
-          }
-          resolve(true);
-        },
-        GEOLOCATION_OPTIONS,
-      );
-    });
-  }, [garantirPermissaoGeolocalizacao, pararRastreamento, pedidoId, persistirTrackingAtivo, sincronizarLocalizacao, trackingToken]);
-
-  useEffect(() => {
-    if (!trackingEnabled || !trackingToken || !entregaAceita || entregaFinalizada) return;
-    if (trackingWatchIdRef.current !== null) return;
-    void iniciarRastreamento(undefined, { solicitarPermissao: false, silencioso: true });
-
-    return () => {
-      pararRastreamento();
-    };
-  }, [entregaAceita, entregaFinalizada, iniciarRastreamento, pararRastreamento, trackingEnabled, trackingToken]);
-
-  useEffect(() => {
-    if (carregando) return;
-    if (!entregaAceita || entregaFinalizada) {
-      pararRastreamento();
-      limparTrackingLocal();
-      setAvisoRastreamento("");
-    }
-  }, [carregando, entregaAceita, entregaFinalizada, limparTrackingLocal, pararRastreamento]);
+  const possuiCoordenadasEntrega =
+    Number.isFinite(Number(entrega?.latitude)) && Number.isFinite(Number(entrega?.longitude));
+  const coordenadasEntrega = possuiCoordenadasEntrega
+    ? `${Number(entrega?.latitude || 0).toFixed(6)}, ${Number(entrega?.longitude || 0).toFixed(6)}`
+    : "";
 
   async function aceitarEntrega() {
     if (codigoTelefone.replace(/\D/g, "").length !== 4) {
@@ -562,7 +214,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         data?: {
           entrega?: Entrega | null;
           entregador?: { nome?: string | null } | null;
-          tracking_token?: string;
         };
       };
       if (!res.ok || json.ok === false || !json.data?.entrega) {
@@ -570,10 +221,6 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       }
       setEntrega(json.data.entrega);
       setEntregadorId(Number(json.data.entrega.entregador_id || 0));
-      if (json.data.tracking_token) {
-        salvarTrackingToken(json.data.tracking_token);
-        await iniciarRastreamento(json.data.tracking_token);
-      }
       setSucesso(
         json.data.entregador?.nome
           ? `Entrega aceita por ${json.data.entregador.nome}.`
@@ -593,13 +240,28 @@ export default function EntregaPageClient({ pedidoId }: Props) {
     setSucesso("");
     setAvisoRastreamento("");
     try {
+      const coordenadas = await capturarLocalizacaoAtual();
+      const finalizarSemLocalizacao =
+        !coordenadas &&
+        typeof window !== "undefined" &&
+        window.confirm("Nao foi possivel capturar a localizacao agora. Deseja finalizar a entrega mesmo assim?");
+
+      if (!coordenadas && !finalizarSemLocalizacao) {
+        setSalvando(false);
+        return;
+      }
+
       const res = await fetch("/api/public/delivery", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "finish",
           pedido_id: pedidoId,
-          tracking_token: trackingToken || undefined,
+          latitude: coordenadas ? Number(coordenadas.latitude) : undefined,
+          longitude: coordenadas ? Number(coordenadas.longitude) : undefined,
+          accuracy: coordenadas?.accuracy,
+          speed: coordenadas?.speed,
+          heading: coordenadas?.heading,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {
@@ -610,20 +272,18 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       if (!res.ok || json.ok === false || !json.data?.entrega) {
         throw new Error(json.error || "Nao foi possivel finalizar a entrega.");
       }
-      pararRastreamento();
       setEntrega(json.data.entrega);
-      limparTrackingLocal();
-      setSucesso("Entrega finalizada com sucesso.");
+      setAvisoRastreamento("");
+      setSucesso(
+        coordenadas
+          ? "Entrega finalizada com localizacao registrada."
+          : "Entrega finalizada sem localizacao registrada.",
+      );
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Falha ao finalizar entrega.");
     } finally {
       setSalvando(false);
     }
-  }
-
-  function ativarRastreamento() {
-    setAvisoRastreamento("");
-    void iniciarRastreamento(undefined, { solicitarPermissao: true });
   }
 
   return (
@@ -742,21 +402,22 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                   </div>
                 ) : null}
 
-                {entregaAceita && !entregaFinalizada ? (
-                  <button
-                    type="button"
-                    onClick={ativarRastreamento}
-                    disabled={salvando || trackingStatus === "starting"}
-                    className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors ${trackingStatus === "live" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"} disabled:cursor-not-allowed disabled:opacity-70`}
-                  >
-                    {trackingStatus === "starting" ? <Loader2 className="animate-spin" size={16} /> : <Radar size={16} />}
-                    {trackingStatus === "live" ? "Rastreamento ativo" : "Ativar rastreamento"}
-                  </button>
-                ) : null}
-
                 {avisoRastreamento ? (
                   <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
                     {avisoRastreamento}
+                  </div>
+                ) : null}
+
+                {entregaFinalizada && possuiCoordenadasEntrega ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+                    <p>
+                      <strong className="text-emerald-950">Coordenadas finais:</strong> {coordenadasEntrega}
+                    </p>
+                    {entrega?.localizacao_atualizada_em ? (
+                      <p className="mt-1 font-bold text-emerald-700">
+                        Registrada em {new Date(String(entrega.localizacao_atualizada_em)).toLocaleString("pt-BR")}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -780,7 +441,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                     className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {salvando ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />}
-                    Finalizar entrega
+                    Finalizar com localizacao
                   </button>
                 ) : null}
 
