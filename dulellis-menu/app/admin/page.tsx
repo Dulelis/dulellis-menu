@@ -6,6 +6,7 @@
 import React, { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import Script from 'next/script';
 import { useSearchParams } from 'next/navigation';
+import { PropagandaFrame } from '@/components/PropagandaFrame';
 import { supabase } from '@/lib/supabase';
 import { openSpreadsheetReport } from '@/lib/admin-report-print';
 import {
@@ -228,6 +229,7 @@ function AdminPageContent() {
   const pedidosConhecidosRef = useRef<Set<number>>(new Set());
   const pedidosComAlarmeAtivoRef = useRef<Set<number>>(new Set());
   const audioContextAlarmeRef = useRef<AudioContext | null>(null);
+  const audioContextAlarmeAquecidoRef = useRef(false);
   const alarmePendenteRef = useRef(false);
   const pedidosIniciaisMapeadosRef = useRef(false);
   const preferenciaAlarmeCarregadaRef = useRef(false);
@@ -314,15 +316,35 @@ function AdminPageContent() {
       (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextCtor) return null;
 
-    if (!audioContextAlarmeRef.current) {
+    if (!audioContextAlarmeRef.current || audioContextAlarmeRef.current.state === 'closed') {
       audioContextAlarmeRef.current = new AudioContextCtor();
+      audioContextAlarmeAquecidoRef.current = false;
     }
 
     const contexto = audioContextAlarmeRef.current;
-    if (contexto.state === 'suspended') {
-      await contexto.resume();
+    if (String(contexto.state) !== 'running') {
+      try {
+        await contexto.resume();
+      } catch {}
     }
-    setAlarmeSonoroLiberado(contexto.state === 'running');
+
+    if (String(contexto.state) === 'running' && !audioContextAlarmeAquecidoRef.current) {
+      const oscilador = contexto.createOscillator();
+      const ganho = contexto.createGain();
+
+      oscilador.type = 'sine';
+      oscilador.frequency.setValueAtTime(440, contexto.currentTime);
+      ganho.gain.setValueAtTime(0.0001, contexto.currentTime);
+
+      oscilador.connect(ganho);
+      ganho.connect(contexto.destination);
+      oscilador.start(contexto.currentTime);
+      oscilador.stop(contexto.currentTime + 0.02);
+
+      audioContextAlarmeAquecidoRef.current = true;
+    }
+
+    setAlarmeSonoroLiberado(String(contexto.state) === 'running');
     return contexto;
   }, []);
 
@@ -418,20 +440,18 @@ function AdminPageContent() {
   }, [notificarNovoPedido]);
 
   const alternarAlarmePedidos = useCallback(() => {
-    setAlarmePedidosAtivo((anterior) => {
-      const proximo = !anterior;
-      if (proximo) {
-        void solicitarPermissaoNotificacoes();
-        void prepararAudioAlarme();
-      }
-      return proximo;
-    });
-  }, [prepararAudioAlarme, solicitarPermissaoNotificacoes]);
+    if (!alarmePedidosAtivo) {
+      void prepararAudioAlarme();
+      void solicitarPermissaoNotificacoes();
+    }
+    setAlarmePedidosAtivo((anterior) => !anterior);
+  }, [alarmePedidosAtivo, prepararAudioAlarme, solicitarPermissaoNotificacoes]);
 
   const testarAlarmePedidos = useCallback(async () => {
-    await solicitarPermissaoNotificacoes();
+    await prepararAudioAlarme();
     await tocarAlarmeNovoPedido();
-  }, [solicitarPermissaoNotificacoes, tocarAlarmeNovoPedido]);
+    void solicitarPermissaoNotificacoes();
+  }, [prepararAudioAlarme, solicitarPermissaoNotificacoes, tocarAlarmeNovoPedido]);
 
   const carregarDados = useCallback(async () => {
     const res = await fetch('/api/admin/data', { cache: 'no-store' });
@@ -547,7 +567,7 @@ function AdminPageContent() {
       if (!alarmePedidosAtivo) return;
       void prepararAudioAlarme()
         .then((contexto) => {
-          if (contexto?.state === 'running' && alarmePendenteRef.current) {
+          if (String(contexto?.state) === 'running' && alarmePendenteRef.current) {
             alarmePendenteRef.current = false;
             void tocarAlarmeNovoPedido();
           }
@@ -556,10 +576,21 @@ function AdminPageContent() {
     };
 
     window.addEventListener('pointerdown', desbloquearAudio, { passive: true });
+    window.addEventListener('touchstart', desbloquearAudio, { passive: true });
     window.addEventListener('keydown', desbloquearAudio);
+    window.addEventListener('focus', desbloquearAudio);
+    const desbloquearAoVoltar = () => {
+      if (document.visibilityState === 'visible') {
+        desbloquearAudio();
+      }
+    };
+    document.addEventListener('visibilitychange', desbloquearAoVoltar);
     return () => {
       window.removeEventListener('pointerdown', desbloquearAudio);
+      window.removeEventListener('touchstart', desbloquearAudio);
       window.removeEventListener('keydown', desbloquearAudio);
+      window.removeEventListener('focus', desbloquearAudio);
+      document.removeEventListener('visibilitychange', desbloquearAoVoltar);
     };
   }, [alarmePedidosAtivo, prepararAudioAlarme, tocarAlarmeNovoPedido]);
 
@@ -3552,9 +3583,16 @@ function AdminPageContent() {
           <div className="grid gap-4">
             {propagandas.map((propaganda) => (
               <div key={propaganda.id} className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="w-28 h-20 rounded-2xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                <div className="relative w-28 h-20 rounded-2xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
                   {propaganda.imagem_url ? (
-                    <img src={propaganda.imagem_url} alt={propaganda.titulo || 'Propaganda'} className="w-full h-full object-cover" />
+                    <PropagandaFrame
+                      src={propaganda.imagem_url}
+                      alt={propaganda.titulo || 'Propaganda'}
+                      className="absolute inset-0"
+                      paddingClassName="p-1.5"
+                      imageClassName="drop-shadow-[0_8px_16px_rgba(15,23,42,0.2)]"
+                      sizes="112px"
+                    />
                   ) : (
                     <Megaphone className="text-slate-300" size={26} />
                   )}
@@ -4575,9 +4613,16 @@ function AdminPageContent() {
           <div className="bg-white p-5 sm:p-8 rounded-[2rem] sm:rounded-[3rem] w-full max-w-md shadow-2xl overflow-y-auto max-h-[90vh]">
             <h2 className="text-2xl font-black mb-6 italic text-slate-800">{editandoPropagandaId ? 'Editar Propaganda' : 'Nova Propaganda'}</h2>
             <form onSubmit={salvarPropaganda} className="space-y-4">
-              <label className="w-full h-40 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer overflow-hidden hover:bg-slate-100 transition-all">
+              <label className="relative w-full h-40 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer overflow-hidden hover:bg-slate-100 transition-all">
                 {novaPropaganda.imagem_url ? (
-                  <img src={novaPropaganda.imagem_url} alt="Preview propaganda" className="w-full h-full object-cover" />
+                  <PropagandaFrame
+                    src={novaPropaganda.imagem_url}
+                    alt="Preview propaganda"
+                    className="absolute inset-0"
+                    paddingClassName="p-3"
+                    imageClassName="drop-shadow-[0_18px_30px_rgba(15,23,42,0.18)]"
+                    sizes="(max-width: 768px) calc(100vw - 4rem), 448px"
+                  />
                 ) : (
                   <div className="text-center">
                     {uploadingPropaganda ? (
