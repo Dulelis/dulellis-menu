@@ -11,11 +11,12 @@ import { openSpreadsheetReport } from '@/lib/admin-report-print';
 import {
   Package, Users, PlusCircle, Minus, Plus,
   Trash2, Pencil, Loader2, Camera, Image as ImageIcon,
-  Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map as MapIcon, RotateCcw, ChevronDown, ChevronUp, BadgePercent, Megaphone, Clock3, Bike, BellRing
+  Phone, MapPin, Cake, MessageSquare, TrendingUp, DollarSign, ShoppingBag, Printer, Award, Map as MapIcon, RotateCcw, ChevronDown, ChevronUp, BadgePercent, Megaphone, Clock3, Bike, BellRing, BellOff
 } from 'lucide-react';
 
 const QZ_TRAY_SCRIPT_URL = 'https://unpkg.com/qz-tray@2.2.4/qz-tray.js';
 const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
+const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = 'dulellis.admin.order-alarm.enabled';
 
 type QzGlobal = {
   websocket?: {
@@ -91,6 +92,12 @@ function formatarMoedaAdmin(valor: unknown) {
   return `R$ ${Number(valor || 0).toFixed(2)}`;
 }
 
+function pedidoTemPixAprovadoAdmin(pedido: any) {
+  const forma = String(pedido?.forma_pagamento || '').trim().toLowerCase();
+  const statusPagamento = String(pedido?.status_pagamento || '').trim().toLowerCase();
+  return forma === 'pix' && ['approved', 'paid', 'authorized', 'pago'].includes(statusPagamento);
+}
+
 function obterValorAcertoEntrega(entrega: any) {
   return Math.max(0, Number(entrega?.pedido?.taxa_entrega || 0));
 }
@@ -141,6 +148,8 @@ function AdminPageContent() {
   const [editandoPropagandaId, setEditandoPropagandaId] = useState<number | null>(null);
   const [mostrarModalEntregador, setMostrarModalEntregador] = useState(false);
   const [editandoEntregadorId, setEditandoEntregadorId] = useState<number | null>(null);
+  const [alarmePedidosAtivo, setAlarmePedidosAtivo] = useState(true);
+  const [alertaNovoPedido, setAlertaNovoPedido] = useState('');
   const [alertaEntregaAceita, setAlertaEntregaAceita] = useState('');
   
   // Agora o padrão começa em 2km
@@ -207,6 +216,10 @@ function AdminPageContent() {
   const imprimirPedidoAceitoRef = useRef<(pedido: any, popupExistente?: Window | null) => Promise<void>>(async () => {});
   const assinaturasPedidosRef = useRef<Map<number, string>>(new Map());
   const pedidosPixImpressosRef = useRef<Set<number>>(new Set());
+  const pedidosConhecidosRef = useRef<Set<number>>(new Set());
+  const audioContextAlarmeRef = useRef<AudioContext | null>(null);
+  const preferenciaAlarmeCarregadaRef = useRef(false);
+  const ignorarPrimeiraPersistenciaAlarmeRef = useRef(true);
   const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
     categoria,
     itens: estoque.filter((item) => String(item.categoria || '').trim().toLowerCase() === categoria.toLowerCase()),
@@ -281,6 +294,68 @@ function AdminPageContent() {
     return Boolean(websocket.isActive());
   }, []);
 
+  const prepararAudioAlarme = useCallback(async () => {
+    if (typeof window === 'undefined') return null;
+
+    const AudioContextCtor =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return null;
+
+    if (!audioContextAlarmeRef.current) {
+      audioContextAlarmeRef.current = new AudioContextCtor();
+    }
+
+    const contexto = audioContextAlarmeRef.current;
+    if (contexto.state === 'suspended') {
+      await contexto.resume();
+    }
+    return contexto;
+  }, []);
+
+  const tocarAlarmeNovoPedido = useCallback(async () => {
+    if (!alarmePedidosAtivo) return;
+
+    try {
+      const contexto = await prepararAudioAlarme();
+      if (!contexto) return;
+
+      const tons = [880, 660, 880];
+      const inicioBase = contexto.currentTime + 0.02;
+
+      tons.forEach((frequencia, indice) => {
+        const oscilador = contexto.createOscillator();
+        const ganho = contexto.createGain();
+        const inicio = inicioBase + indice * 0.26;
+        const fim = inicio + 0.16;
+
+        oscilador.type = 'square';
+        oscilador.frequency.setValueAtTime(frequencia, inicio);
+
+        ganho.gain.setValueAtTime(0.0001, inicio);
+        ganho.gain.exponentialRampToValueAtTime(0.18, inicio + 0.01);
+        ganho.gain.exponentialRampToValueAtTime(0.0001, fim);
+
+        oscilador.connect(ganho);
+        ganho.connect(contexto.destination);
+        oscilador.start(inicio);
+        oscilador.stop(fim + 0.02);
+      });
+    } catch (error) {
+      console.warn('Nao foi possivel tocar o alarme de novo pedido.', error);
+    }
+  }, [alarmePedidosAtivo, prepararAudioAlarme]);
+
+  const alternarAlarmePedidos = useCallback(() => {
+    setAlarmePedidosAtivo((anterior) => {
+      const proximo = !anterior;
+      if (proximo) {
+        void prepararAudioAlarme();
+      }
+      return proximo;
+    });
+  }, [prepararAudioAlarme]);
+
   const carregarDados = useCallback(async () => {
     const res = await fetch('/api/admin/data', { cache: 'no-store' });
     const json = (await res.json().catch(() => ({}))) as {
@@ -332,12 +407,56 @@ function AdminPageContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    try {
+      const salvo = window.localStorage.getItem(ADMIN_ALARME_PEDIDOS_STORAGE_KEY);
+      if (salvo !== null) {
+        setAlarmePedidosAtivo(salvo !== 'false');
+      }
+    } catch {}
+    preferenciaAlarmeCarregadaRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!preferenciaAlarmeCarregadaRef.current) return;
+    if (ignorarPrimeiraPersistenciaAlarmeRef.current) {
+      ignorarPrimeiraPersistenciaAlarmeRef.current = false;
+      return;
+    }
+    try {
+      window.localStorage.setItem(ADMIN_ALARME_PEDIDOS_STORAGE_KEY, String(alarmePedidosAtivo));
+    } catch {}
+  }, [alarmePedidosAtivo]);
+
+  useEffect(() => {
     void carregarDados();
   }, [carregarDados]);
 
   useEffect(() => {
     entregadoresRef.current = entregadores;
   }, [entregadores]);
+
+  useEffect(() => {
+    for (const pedido of pedidos) {
+      const id = Number(pedido?.id || 0);
+      if (id > 0) {
+        pedidosConhecidosRef.current.add(id);
+      }
+    }
+  }, [pedidos]);
+
+  useEffect(() => {
+    const desbloquearAudio = () => {
+      if (!alarmePedidosAtivo) return;
+      void prepararAudioAlarme();
+    };
+
+    window.addEventListener('pointerdown', desbloquearAudio, { passive: true });
+    window.addEventListener('keydown', desbloquearAudio);
+    return () => {
+      window.removeEventListener('pointerdown', desbloquearAudio);
+      window.removeEventListener('keydown', desbloquearAudio);
+    };
+  }, [alarmePedidosAtivo, prepararAudioAlarme]);
 
   useEffect(() => {
     const agendarRecarga = () => {
@@ -354,6 +473,15 @@ function AdminPageContent() {
       const pedidoId = Number(pedidoAtualizado?.id || 0);
 
       if (pedidoId > 0) {
+        const pedidoJaConhecido = pedidosConhecidosRef.current.has(pedidoId);
+        if (!pedidoJaConhecido) {
+          pedidosConhecidosRef.current.add(pedidoId);
+          if (normalizarStatusPedido(pedidoAtualizado) === 'aguardando_aceite') {
+            setAlertaNovoPedido(`Novo pedido #${pedidoId} aguardando aceite.`);
+            void tocarAlarmeNovoPedido();
+          }
+        }
+
         const assinatura = gerarAssinaturaPedido(pedidoAtualizado);
         const assinaturaAnterior = assinaturasPedidosRef.current.get(pedidoId);
         assinaturasPedidosRef.current.set(pedidoId, assinatura);
@@ -361,7 +489,7 @@ function AdminPageContent() {
         if (
           assinaturaAnterior &&
           assinaturaAnterior !== assinatura &&
-          pedidoTemPixAprovado(pedidoAtualizado) &&
+          pedidoTemPixAprovadoAdmin(pedidoAtualizado) &&
           !pedidosPixImpressosRef.current.has(pedidoId)
         ) {
           pedidosPixImpressosRef.current.add(pedidoId);
@@ -410,7 +538,7 @@ function AdminPageContent() {
       }
       void supabase.removeChannel(channel);
     };
-  }, [carregarDados]);
+  }, [carregarDados, tocarAlarmeNovoPedido]);
 
   useEffect(() => {
     if (!QZ_PRINTER_NAME) return;
@@ -423,6 +551,12 @@ function AdminPageContent() {
     const timer = window.setInterval(aquecer, 15000);
     return () => window.clearInterval(timer);
   }, [garantirQzPronto]);
+
+  useEffect(() => {
+    if (!alertaNovoPedido) return;
+    const timer = window.setTimeout(() => setAlertaNovoPedido(''), 9000);
+    return () => window.clearTimeout(timer);
+  }, [alertaNovoPedido]);
 
   useEffect(() => {
     if (!alertaEntregaAceita) return;
@@ -1019,6 +1153,16 @@ function AdminPageContent() {
     return 'Regra personalizada';
   };
   const normalizarNumero = (valor: string) => valor.replace(/\D/g, '');
+  const pedidoEhRetiradaNoBalcao = useCallback(
+    (pedido: any) =>
+      String(pedido?.observacao || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .includes('tipo de entrega: retirar no balcao'),
+    [],
+  );
   const normalizarStatusPedido = (pedido: any) => {
     const status = String(pedido?.status_pedido || '').trim().toLowerCase();
     if (status in STATUS_PEDIDO_LABELS) return status;
@@ -1032,15 +1176,22 @@ function AdminPageContent() {
       String(pedido?.pagamento_id || '').trim(),
       String(pedido?.pagamento_atualizado_em || '').trim(),
     ].join('|');
-  const pedidoTemPixAprovado = (pedido: any) => {
-    const forma = String(pedido?.forma_pagamento || '').trim().toLowerCase();
-    const statusPagamento = String(pedido?.status_pagamento || '').trim().toLowerCase();
-    return forma === 'pix' && ['approved', 'paid', 'authorized', 'pago'].includes(statusPagamento);
+  const obterRotuloStatusPedido = (pedido: any) => {
+    const status = normalizarStatusPedido(pedido);
+    if (status === 'saiu_entrega' && pedidoEhRetiradaNoBalcao(pedido)) return 'Pronto para retirada';
+    return STATUS_PEDIDO_LABELS[status] || 'Aguardando aceite';
   };
-  const obterRotuloStatusPedido = (pedido: any) => STATUS_PEDIDO_LABELS[normalizarStatusPedido(pedido)] || 'Aguardando aceite';
   const obterClasseStatusPedido = (pedido: any) =>
     STATUS_PEDIDO_CORES[normalizarStatusPedido(pedido)] || STATUS_PEDIDO_CORES.aguardando_aceite;
-  const obterProximoFluxoPedido = (pedido: any) => STATUS_PEDIDO_FLUXO[normalizarStatusPedido(pedido)] || null;
+  const obterProximoFluxoPedido = (pedido: any) => {
+    const status = normalizarStatusPedido(pedido);
+    const fluxo = STATUS_PEDIDO_FLUXO[status] || null;
+    if (!fluxo) return null;
+    if (status === 'em_preparo' && pedidoEhRetiradaNoBalcao(pedido)) {
+      return { ...fluxo, label: 'Pronto para retirada' };
+    }
+    return fluxo;
+  };
   const extrairPontoReferencia = (cliente: any) => {
     const pontoDireto = String(cliente?.ponto_referencia || '').trim();
     if (pontoDireto) return pontoDireto;
@@ -1147,10 +1298,11 @@ function AdminPageContent() {
   const montarLinkAceiteEntrega = useCallback((registro: any) => {
     const pedidoId = Number(registro?.id || 0);
     if (!pedidoId) return '';
+    if (pedidoEhRetiradaNoBalcao(registro)) return '';
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     if (!origin) return '';
     return `${origin}/entrega?pedido=${pedidoId}`;
-  }, []);
+  }, [pedidoEhRetiradaNoBalcao]);
   const gerarQrCodeEscPos = useCallback((conteudo: string) => {
     const texto = String(conteudo || '').trim();
     if (!texto) return '';
@@ -1177,10 +1329,11 @@ function AdminPageContent() {
     }
     return Array.isArray(itensArray) ? itensArray : [];
   };
-  const obterResumoPagamento = (pedido: any) => {
+  const obterResumoPagamento = useCallback((pedido: any) => {
     const forma = String(pedido?.forma_pagamento || '').trim() || 'Nao informado';
     const statusPagamento = String(pedido?.status_pagamento || '').trim().toLowerCase();
     const referencia = String(pedido?.pagamento_referencia || '').trim();
+    const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(pedido);
 
     if (forma.toLowerCase() === 'pix') {
       if (['approved', 'aprovado', 'paid'].includes(statusPagamento)) {
@@ -1203,7 +1356,7 @@ function AdminPageContent() {
       return {
         titulo: 'Dinheiro',
         situacao: 'A receber',
-        detalhe: 'Receber na entrega',
+        detalhe: retiradaNoBalcao ? 'Receber no balcao' : 'Receber na entrega',
         classe: 'bg-slate-100 text-slate-700 border-slate-200',
       };
     }
@@ -1212,7 +1365,7 @@ function AdminPageContent() {
       return {
         titulo: 'Cartao na entrega',
         situacao: 'A receber',
-        detalhe: 'Cobrar na entrega',
+        detalhe: retiradaNoBalcao ? 'Cobrar no balcao' : 'Cobrar na entrega',
         classe: 'bg-indigo-50 text-indigo-700 border-indigo-200',
       };
     }
@@ -1223,29 +1376,34 @@ function AdminPageContent() {
       detalhe: referencia ? `Ref. ${referencia}` : 'Forma registrada no pedido',
       classe: 'bg-sky-50 text-sky-700 border-sky-200',
     };
-  };
+  }, [pedidoEhRetiradaNoBalcao]);
   const completarPedidoComCliente = useCallback((pedido: any) => {
     const whatsappPedido = normalizarNumero(String(pedido?.whatsapp || ''));
     if (!whatsappPedido) return pedido;
 
     const clienteRelacionado = clientes.find((cliente) => normalizarNumero(String(cliente?.whatsapp || '')) === whatsappPedido);
     if (!clienteRelacionado) return pedido;
+    const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(pedido);
 
     return {
       ...clienteRelacionado,
       ...pedido,
       cliente_nome: String(pedido?.cliente_nome || clienteRelacionado?.nome || 'Cliente'),
       whatsapp: String(pedido?.whatsapp || clienteRelacionado?.whatsapp || ''),
-      cep: String(pedido?.cep || clienteRelacionado?.cep || ''),
-      endereco: String(pedido?.endereco || clienteRelacionado?.endereco || ''),
-      numero: String(pedido?.numero || clienteRelacionado?.numero || ''),
-      bairro: String(pedido?.bairro || clienteRelacionado?.bairro || ''),
-      cidade: String(pedido?.cidade || clienteRelacionado?.cidade || ''),
-      ponto_referencia: String(pedido?.ponto_referencia || clienteRelacionado?.ponto_referencia || ''),
+      cep: retiradaNoBalcao ? String(pedido?.cep || '') : String(pedido?.cep || clienteRelacionado?.cep || ''),
+      endereco: retiradaNoBalcao
+        ? String(pedido?.endereco || 'Retirada no balcao')
+        : String(pedido?.endereco || clienteRelacionado?.endereco || ''),
+      numero: retiradaNoBalcao ? String(pedido?.numero || '') : String(pedido?.numero || clienteRelacionado?.numero || ''),
+      bairro: retiradaNoBalcao ? String(pedido?.bairro || '') : String(pedido?.bairro || clienteRelacionado?.bairro || ''),
+      cidade: retiradaNoBalcao ? String(pedido?.cidade || '') : String(pedido?.cidade || clienteRelacionado?.cidade || ''),
+      ponto_referencia: retiradaNoBalcao
+        ? String(pedido?.ponto_referencia || '')
+        : String(pedido?.ponto_referencia || clienteRelacionado?.ponto_referencia || ''),
       observacao: String(pedido?.observacao || clienteRelacionado?.observacao || ''),
       data_aniversario: String(pedido?.data_aniversario || clienteRelacionado?.data_aniversario || ''),
     };
-  }, [clientes]);
+  }, [clientes, pedidoEhRetiradaNoBalcao]);
   const montarCupomPedido = useCallback((pedido: any) => {
     const pedidoCompleto = completarPedidoComCliente(pedido);
     const itens = parseItensPedido(pedidoCompleto);
@@ -1349,7 +1507,7 @@ function AdminPageContent() {
       negritoOff +
       fonteNormal +
       '\x1d\x56\x41\x03';
-  }, [completarPedidoComCliente, gerarQrCodeEscPos, montarEnderecoEntrega, montarLinkAceiteEntrega]);
+  }, [completarPedidoComCliente, gerarQrCodeEscPos, montarEnderecoEntrega, montarLinkAceiteEntrega, obterResumoPagamento]);
   const prepararPopupImpressao = (popup: Window | null | undefined, pedidoId?: number) => {
     if (!popup || popup.closed) return;
     popup.document.open();
@@ -1498,7 +1656,7 @@ function AdminPageContent() {
       </html>
     `);
     popup.document.close();
-  }, [completarPedidoComCliente, garantirQzPronto, montarCupomPedido, montarEnderecoEntrega, montarLinkAceiteEntrega]);
+  }, [completarPedidoComCliente, garantirQzPronto, montarCupomPedido, montarEnderecoEntrega, montarLinkAceiteEntrega, obterResumoPagamento]);
 
   useEffect(() => {
     imprimirPedidoAceitoRef.current = imprimirPedidoAceito;
@@ -1557,7 +1715,7 @@ function AdminPageContent() {
       if (
         assinaturaAnterior &&
         assinaturaAnterior !== assinatura &&
-        pedidoTemPixAprovado(pedido) &&
+        pedidoTemPixAprovadoAdmin(pedido) &&
         !pedidosPixImpressosRef.current.has(id)
       ) {
         pedidosPixImpressosRef.current.add(id);
@@ -3031,6 +3189,19 @@ function AdminPageContent() {
 
             <button
               type="button"
+              onClick={alternarAlarmePedidos}
+              className={`w-full sm:w-auto px-4 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all border ${
+                alarmePedidosAtivo
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {alarmePedidosAtivo ? <BellRing size={18} /> : <BellOff size={18} />}
+              {alarmePedidosAtivo ? 'Alarme ligado' : 'Alarme desligado'}
+            </button>
+
+            <button
+              type="button"
               onClick={() => { void sairAdmin(); }}
               disabled={saindo}
               className="w-full sm:w-auto bg-slate-200 text-slate-700 px-4 py-3 rounded-2xl font-bold text-sm hover:bg-slate-300 transition-all disabled:opacity-60"
@@ -3039,6 +3210,15 @@ function AdminPageContent() {
             </button>
           </div>
         </header>
+
+        {alertaNovoPedido ? (
+          <div className="mb-6 rounded-[1.75rem] border border-violet-200 bg-violet-50 px-4 py-4 text-sm font-black text-violet-700 shadow-sm">
+            <div className="flex items-center gap-3">
+              <BellRing size={18} className="shrink-0" />
+              <span>{alertaNovoPedido}</span>
+            </div>
+          </div>
+        ) : null}
 
         {alertaEntregaAceita ? (
           <div className="mb-6 rounded-[1.75rem] border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-black text-amber-700 shadow-sm">

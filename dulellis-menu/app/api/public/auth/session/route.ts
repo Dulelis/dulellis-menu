@@ -19,6 +19,18 @@ function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
 }
 
+function normalizarTexto(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function pedidoEhRetiradaNoBalcao(observacao?: string | null) {
+  return normalizarTexto(String(observacao || "")).includes("tipo de entrega: retirar no balcao");
+}
+
 function normalizarEmail(value: string): string {
   return String(value || "").trim().toLowerCase();
 }
@@ -143,22 +155,26 @@ async function buscarUltimaTaxaEntrega(
   const zap = normalizarNumero(whatsapp);
   if (zap.length < 10) return null;
 
-  const tentativasSelect = ["taxa_entrega,created_at", "created_at"];
+  const tentativasSelect = ["taxa_entrega,observacao,created_at", "taxa_entrega,created_at", "created_at"];
   for (const selectCols of tentativasSelect) {
     const { data, error } = await supabase
       .from("pedidos")
       .select(selectCols)
       .eq("whatsapp", zap)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) continue;
+      .limit(30);
+    if (error || !Array.isArray(data) || !data.length) continue;
 
-    if ("taxa_entrega" in data) {
-      const taxa = Number((data as { taxa_entrega?: number | string | null }).taxa_entrega ?? NaN);
-      return Number.isFinite(taxa) ? Math.max(0, taxa) : null;
+    for (const pedido of data as Array<{ taxa_entrega?: number | string | null; observacao?: string | null }>) {
+      if ("observacao" in pedido && pedidoEhRetiradaNoBalcao(pedido.observacao)) {
+        continue;
+      }
+      if ("taxa_entrega" in pedido) {
+        const taxa = Number(pedido.taxa_entrega ?? NaN);
+        return Number.isFinite(taxa) ? Math.max(0, taxa) : null;
+      }
     }
-    return null;
+    continue;
   }
 
   return null;

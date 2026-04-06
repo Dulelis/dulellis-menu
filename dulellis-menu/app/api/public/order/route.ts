@@ -25,14 +25,44 @@ type Body = {
   forma_pagamento?: string;
   taxa_entrega?: number;
   referencia?: string;
+  tipo_entrega?: string;
+  troco_para?: number | string;
 };
 
 function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
 }
 
+function normalizarTexto(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
 function dataHojeISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function tipoEntregaEhRetirada(tipoEntrega?: string): boolean {
+  const texto = normalizarTexto(String(tipoEntrega || ""));
+  return texto.includes("retirar") || texto.includes("balcao");
+}
+
+function formatarMoedaBR(valor: number): string {
+  return `R$ ${Number(valor || 0).toFixed(2).replace(".", ",")}`;
+}
+
+function montarObservacaoPedido(observacaoCliente: string, tipoEntrega: string, trocoPara: number | null): string {
+  const linhas = [String(observacaoCliente || "").trim()].filter(Boolean);
+  if (tipoEntregaEhRetirada(tipoEntrega)) {
+    linhas.push("Tipo de entrega: Retirar no balcao.");
+  }
+  if (trocoPara !== null && Number.isFinite(trocoPara) && trocoPara > 0) {
+    linhas.push(`Troco para: ${formatarMoedaBR(trocoPara)}.`);
+  }
+  return linhas.join("\n");
 }
 
 function aniversarioEhHoje(dataAniversario?: string): boolean {
@@ -146,6 +176,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as Body;
+  const tipoEntrega = String(body.tipo_entrega || "");
+  const retiradaNoBalcao = tipoEntregaEhRetirada(tipoEntrega);
+  const formaPagamento = String(body.forma_pagamento || "");
+  const trocoParaBruto = Number(body.troco_para);
+  const trocoPara =
+    normalizarTexto(formaPagamento) === "dinheiro" && Number.isFinite(trocoParaBruto) && trocoParaBruto > 0
+      ? Number(trocoParaBruto)
+      : null;
   const itensEntrada = Array.isArray(body.itens) ? body.itens : [];
   const itensValidos = itensEntrada
     .map((i) => ({ id: Number(i.id), qtd: Number(i.qtd) }))
@@ -180,7 +218,7 @@ export async function POST(request: NextRequest) {
   }
 
   const subtotal = itensPedido.reduce((acc, i) => acc + i.preco * i.qtd, 0);
-  const taxaEntrega = Math.max(0, Number(body.taxa_entrega || 0));
+  const taxaEntrega = retiradaNoBalcao ? 0 : Math.max(0, Number(body.taxa_entrega || 0));
   const cliente = body.cliente || {};
   const aniversarioHoje = aniversarioEhHoje(String(cliente.data_aniversario || "").slice(0, 10));
   const hoje = dataHojeISO();
@@ -219,6 +257,13 @@ export async function POST(request: NextRequest) {
     observacao: String(cliente.observacao || "").trim(),
     data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
   };
+  const observacaoPedido = montarObservacaoPedido(payloadCliente.observacao, tipoEntrega, trocoPara);
+  const enderecoPedido = retiradaNoBalcao ? "Retirada no balcao" : payloadCliente.endereco || null;
+  const numeroPedido = retiradaNoBalcao ? null : payloadCliente.numero || null;
+  const bairroPedido = retiradaNoBalcao ? null : payloadCliente.bairro || null;
+  const cidadePedido = retiradaNoBalcao ? null : payloadCliente.cidade || null;
+  const cepPedido = retiradaNoBalcao ? null : payloadCliente.cep || null;
+  const pontoReferenciaPedido = retiradaNoBalcao ? null : payloadCliente.ponto_referencia || null;
 
   const { data: clienteExistente } = await supabase
     .from("clientes")
@@ -233,22 +278,21 @@ export async function POST(request: NextRequest) {
   }
 
   const referencia = String(body.referencia || `dulelis-${Date.now()}`);
-  const formaPagamento = String(body.forma_pagamento || "");
   const pedidoPayload = {
     cliente_nome: payloadCliente.nome,
     whatsapp: payloadCliente.whatsapp,
-    cep: payloadCliente.cep || null,
-    endereco: payloadCliente.endereco || null,
-    numero: payloadCliente.numero || null,
-    bairro: payloadCliente.bairro || null,
-    cidade: payloadCliente.cidade || null,
-    ponto_referencia: payloadCliente.ponto_referencia || null,
+    cep: cepPedido,
+    endereco: enderecoPedido,
+    numero: numeroPedido,
+    bairro: bairroPedido,
+    cidade: cidadePedido,
+    ponto_referencia: pontoReferenciaPedido,
     data_aniversario: payloadCliente.data_aniversario || null,
     itens: itensPedido,
     total,
     taxa_entrega: taxaEntrega,
     forma_pagamento: formaPagamento,
-    observacao: payloadCliente.observacao || null,
+    observacao: observacaoPedido || null,
     pagamento_referencia: referencia || null,
     status_pagamento: formaPagamento === "Pix" ? "pending" : null,
     status_pedido: "aguardando_aceite",
@@ -261,7 +305,7 @@ export async function POST(request: NextRequest) {
     total,
     taxa_entrega: taxaEntrega,
     forma_pagamento: formaPagamento,
-    observacao: payloadCliente.observacao || null,
+    observacao: observacaoPedido || null,
     pagamento_referencia: referencia || null,
     status_pagamento: formaPagamento === "Pix" ? "pending" : null,
     status_pedido: "aguardando_aceite",
@@ -269,18 +313,18 @@ export async function POST(request: NextRequest) {
   const pedidoPayloadComPagamento = {
     cliente_nome: payloadCliente.nome,
     whatsapp: payloadCliente.whatsapp,
-    cep: payloadCliente.cep || null,
-    endereco: payloadCliente.endereco || null,
-    numero: payloadCliente.numero || null,
-    bairro: payloadCliente.bairro || null,
-    cidade: payloadCliente.cidade || null,
-    ponto_referencia: payloadCliente.ponto_referencia || null,
+    cep: cepPedido,
+    endereco: enderecoPedido,
+    numero: numeroPedido,
+    bairro: bairroPedido,
+    cidade: cidadePedido,
+    ponto_referencia: pontoReferenciaPedido,
     data_aniversario: payloadCliente.data_aniversario || null,
     itens: itensPedido,
     total,
     taxa_entrega: taxaEntrega,
     forma_pagamento: formaPagamento,
-    observacao: payloadCliente.observacao || null,
+    observacao: observacaoPedido || null,
     status_pedido: "aguardando_aceite",
   };
   const pedidoPayloadSemObservacao = {

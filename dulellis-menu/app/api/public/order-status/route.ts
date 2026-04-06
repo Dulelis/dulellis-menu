@@ -12,11 +12,24 @@ type PedidoStatus = {
   forma_pagamento?: string | null;
   status_pedido?: string | null;
   status_pagamento?: string | null;
+  observacao?: string | null;
   created_at?: string | null;
 };
 
 function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
+}
+
+function normalizarTexto(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function pedidoEhRetiradaNoBalcao(pedido: PedidoStatus) {
+  return normalizarTexto(String(pedido.observacao || "")).includes("tipo de entrega: retirar no balcao");
 }
 
 function whatsappEquivalente(a: string, b: string): boolean {
@@ -39,7 +52,10 @@ function statusResumo(pedido: PedidoStatus) {
     return { chave: "em_preparo", texto: "Pedido em preparo" };
   }
   if (["saiu_entrega", "saiu_para_entrega", "entrega"].includes(statusPedido)) {
-    return { chave: "saiu_entrega", texto: "Saiu para entrega" };
+    return {
+      chave: "saiu_entrega",
+      texto: pedidoEhRetiradaNoBalcao(pedido) ? "Pronto para retirada" : "Saiu para entrega",
+    };
   }
 
   const status = String(pedido.status_pagamento || "").trim().toLowerCase();
@@ -107,9 +123,9 @@ export async function GET(request: Request) {
   }
 
   const tentativasSelect = [
-    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,created_at",
-    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,created_at",
-    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,observacao,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,observacao,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,observacao,created_at",
     "id,cliente_nome,whatsapp,total,created_at",
   ];
 

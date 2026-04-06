@@ -58,6 +58,9 @@ const FORMA_DINHEIRO = "Dinheiro";
 const FORMA_CARTAO_ENTREGA = "Cartao na entrega";
 const FORMA_PIX_CARTAO = "Pix";
 const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_CARTAO_ENTREGA, FORMA_PIX_CARTAO];
+const TIPO_ENTREGA = "Entrega";
+const TIPO_RETIRADA_BALCAO = "Retirar no balcão";
+const TIPOS_ENTREGA = [TIPO_ENTREGA, TIPO_RETIRADA_BALCAO] as const;
 const VITRINE_MODAL_SLIDE_MS = 6000;
 const AUTH_DRAFT_STORAGE_KEY = "dulellis.auth.draft";
 const VITRINE_CACHE_STORAGE_KEY = "dulellis.vitrine.cache.v1";
@@ -200,6 +203,7 @@ type VitrineCache = {
 };
 
 type MobileAppTab = "home" | "highlights" | "menu" | "order";
+type TipoEntrega = (typeof TIPOS_ENTREGA)[number];
 
 const CLIENTE_INICIAL: Cliente = {
   nome: "",
@@ -299,6 +303,26 @@ function formatarCep(cep: string) {
   const digitos = normalizarNumero(String(cep || "")).slice(0, 8);
   if (digitos.length <= 5) return digitos;
   return `${digitos.slice(0, 5)}-${digitos.slice(5)}`;
+}
+
+function parseValorMonetario(valor: string) {
+  const texto = String(valor || "").trim();
+  if (!texto) return null;
+
+  const semEspacos = texto.replace(/\s+/g, "").replace(/^R\$/i, "");
+  const normalizado =
+    semEspacos.includes(",") && semEspacos.includes(".")
+      ? semEspacos.replace(/\./g, "").replace(",", ".")
+      : semEspacos.includes(",")
+        ? semEspacos.replace(",", ".")
+        : semEspacos;
+  const numero = Number(normalizado);
+  if (!Number.isFinite(numero) || numero <= 0) return null;
+  return Number(numero.toFixed(2));
+}
+
+function formatarMoedaBR(valor: number) {
+  return `R$ ${Number(valor || 0).toFixed(2).replace(".", ",")}`;
 }
 
 function normalizarTexto(valor: string) {
@@ -518,7 +542,9 @@ function ClientePageContent() {
   const [enderecoSalvoCliente, setEnderecoSalvoCliente] = useState<Cliente | null>(null);
   const [modoEnderecoEntrega, setModoEnderecoEntrega] = useState<"saved" | "new">("saved");
   const cadastroManualRef = useRef(false);
+  const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega>(TIPO_ENTREGA);
   const [formaPagamento, setFormaPagamento] = useState("");
+  const [trocoPara, setTrocoPara] = useState("");
   const [referenciaPagamento, setReferenciaPagamento] = useState("");
   const [vitrineSlideIndex, setVitrineSlideIndex] = useState(0);
   const [modalAcompanhamentoAberto, setModalAcompanhamentoAberto] = useState(false);
@@ -666,6 +692,13 @@ function ClientePageContent() {
     () => Math.max(0, subtotal + taxaEntrega - descontoPromocoes),
     [descontoPromocoes, subtotal, taxaEntrega],
   );
+  const retiradaNoBalcao = tipoEntrega === TIPO_RETIRADA_BALCAO;
+  const trocoParaValor = useMemo(() => parseValorMonetario(trocoPara), [trocoPara]);
+  const trocoParaPreenchido = trocoPara.trim().length > 0;
+  const trocoParaInvalido =
+    formaPagamento === FORMA_DINHEIRO &&
+    trocoParaPreenchido &&
+    (trocoParaValor === null || trocoParaValor < totalGeral);
 
   const carregarDadosIniciais = useCallback(async (mostrarLoading = true) => {
     try {
@@ -1263,6 +1296,33 @@ function ClientePageContent() {
     [aplicarEnderecoSalvo, aplicarTaxaUltimoPedido, executarBuscaCep, ultimaTaxaEntregaSalva],
   );
 
+  const selecionarTipoEntrega = useCallback(
+    (proximoTipo: TipoEntrega) => {
+      setTipoEntrega(proximoTipo);
+
+      if (proximoTipo === TIPO_RETIRADA_BALCAO) {
+        setDistanciaKm(null);
+        setTaxaEntrega(0);
+        setMsgTaxa("Retirada no balcão na loja.");
+        return;
+      }
+
+      const cepAtual = normalizarNumero(cliente.cep).slice(0, 8);
+      if (modoEnderecoEntrega === "saved" && aplicarTaxaUltimoPedido(ultimaTaxaEntregaSalva)) {
+        return;
+      }
+      if (cepAtual.length === 8) {
+        void executarBuscaCep(cepAtual);
+        return;
+      }
+
+      setDistanciaKm(null);
+      setTaxaEntrega(0);
+      setMsgTaxa("Aguardando endereço...");
+    },
+    [aplicarTaxaUltimoPedido, cliente.cep, executarBuscaCep, modoEnderecoEntrega, ultimaTaxaEntregaSalva],
+  );
+
   const verificarCadastroAuthPorWhatsapp = useCallback(async () => {
     if (authEsqueciSenha) return false;
 
@@ -1395,7 +1455,9 @@ function ClientePageContent() {
       setModoEnderecoEntrega("saved");
       setCliente(CLIENTE_INICIAL);
       setCarrinho([]);
+      setTipoEntrega(TIPO_ENTREGA);
       setFormaPagamento("");
+      setTrocoPara("");
       setAbaCarrinho(false);
       setPasso(1);
       setPodeAcompanharPedido(false);
@@ -1653,6 +1715,7 @@ function ClientePageContent() {
       setAbaCarrinho(false);
       setPasso(1);
       setFormaPagamento("");
+      setTrocoPara("");
     } catch (error) {
       const mensagem = obterMensagemErro(error) || "Erro ao limpar carrinho.";
       console.error("Erro ao limpar carrinho:", error);
@@ -1777,10 +1840,11 @@ function ClientePageContent() {
     const cadastroOk = Boolean(
       cliente.nome &&
         normalizarNumero(cliente.whatsapp).length >= 10 &&
-        cliente.cep &&
-        cliente.endereco &&
-        cliente.numero &&
-        cliente.ponto_referencia.trim(),
+        (retiradaNoBalcao ||
+          (cliente.cep &&
+            cliente.endereco &&
+            cliente.numero &&
+            cliente.ponto_referencia.trim())),
     );
     if (!cadastroOk) return;
     setLoading(true);
@@ -1788,7 +1852,9 @@ function ClientePageContent() {
       const clienteSalvo = await salvarOuAtualizarCliente(cliente);
       const enderecoAtualizado = normalizarClienteParaEntrega(clienteSalvo);
       setEnderecoSalvoCliente(enderecoAtualizado);
-      setUltimaTaxaEntregaSalva(taxaEntrega);
+      if (!retiradaNoBalcao) {
+        setUltimaTaxaEntregaSalva(taxaEntrega);
+      }
       setModoEnderecoEntrega("saved");
       aplicarEnderecoSalvo(enderecoAtualizado);
       setPasso(2);
@@ -1799,7 +1865,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [aplicarEnderecoSalvo, cliente, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega]);
+  }, [aplicarEnderecoSalvo, cliente, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega]);
 
   const resumoEnderecoSalvo = useMemo(() => {
     if (!enderecoSalvoCliente || !clienteTemEnderecoSalvo(enderecoSalvoCliente)) return "";
@@ -1830,6 +1896,14 @@ function ClientePageContent() {
       return;
     }
     if (!carrinho.length) return;
+    if (formaPagamento === FORMA_DINHEIRO && trocoParaPreenchido && trocoParaValor === null) {
+      alert("Informe um valor valido para troco.");
+      return;
+    }
+    if (formaPagamento === FORMA_DINHEIRO && trocoParaValor !== null && trocoParaValor < totalGeral) {
+      alert(`O troco precisa ser igual ou maior que o total do pedido (${formatarMoedaBR(totalGeral)}).`);
+      return;
+    }
 
     setLoading(true);
     let janelaPagamento: Window | null = null;
@@ -1841,7 +1915,9 @@ function ClientePageContent() {
       const payloadCliente = await salvarOuAtualizarCliente(cliente);
       const enderecoAtualizado = normalizarClienteParaEntrega(payloadCliente);
       setEnderecoSalvoCliente(enderecoAtualizado);
-      setUltimaTaxaEntregaSalva(taxaEntrega);
+      if (!retiradaNoBalcao) {
+        setUltimaTaxaEntregaSalva(taxaEntrega);
+      }
       setModoEnderecoEntrega("saved");
       const pagamentoTexto = formaPagamento;
       const resPedido = await fetch("/api/public/order", {
@@ -1851,8 +1927,10 @@ function ClientePageContent() {
           cliente: payloadCliente,
           itens: carrinho.map((i) => ({ id: i.id, qtd: i.qtd })),
           forma_pagamento: pagamentoTexto,
-          taxa_entrega: taxaEntrega,
+          taxa_entrega: retiradaNoBalcao ? 0 : taxaEntrega,
           referencia: referenciaPagamento || undefined,
+          tipo_entrega: tipoEntrega,
+          troco_para: formaPagamento === FORMA_DINHEIRO && trocoParaValor !== null ? trocoParaValor : undefined,
         }),
       });
       const jsonPedido = (await resPedido.json().catch(() => ({}))) as {
@@ -1899,7 +1977,9 @@ function ClientePageContent() {
       setDistanciaKm(null);
       setTaxaEntrega(0);
       setMsgTaxa("Aguardando endereço...");
+      setTipoEntrega(TIPO_ENTREGA);
       setFormaPagamento("");
+      setTrocoPara("");
       setReferenciaPagamento("");
 
       abrirModalPedidoFinalizado();
@@ -1914,7 +1994,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [abrirModalPedidoFinalizado, aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega]);
+  }, [abrirModalPedidoFinalizado, aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, tipoEntrega, totalGeral, trocoParaPreenchido, trocoParaValor]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -1992,10 +2072,11 @@ function ClientePageContent() {
   const formOk = Boolean(
     cliente.nome &&
       normalizarNumero(cliente.whatsapp).length >= 10 &&
-      cliente.cep &&
-      cliente.endereco &&
-      cliente.numero &&
-      cliente.ponto_referencia.trim(),
+      (retiradaNoBalcao ||
+        (cliente.cep &&
+          cliente.endereco &&
+          cliente.numero &&
+          cliente.ponto_referencia.trim())),
   );
   const mensagensVitrine = useMemo(() => {
     const mensagensPropaganda = propagandasAtivasHoje.slice(0, 8).map((item) => ({
@@ -2967,7 +3048,7 @@ function ClientePageContent() {
           >
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-3xl font-black italic text-slate-800">
-                {passo === 1 ? "Endereço para entrega" : passo === 2 ? "Revisão do pedido" : "Pagamento"}
+                {passo === 1 ? "Entrega ou retirada" : passo === 2 ? "Revisão do pedido" : "Pagamento"}
               </h3>
               <button
                 type="button"
@@ -2982,15 +3063,43 @@ function ClientePageContent() {
               <div className="space-y-4">
                 <div className="rounded-[2rem] border border-pink-100 bg-pink-50 px-5 py-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-500">
-                    Endereço de Entrega
+                    {retiradaNoBalcao ? "Retirada no balcão" : "Endereço de Entrega"}
                   </p>
                   <p className="mt-1 text-sm font-bold text-slate-700">
-                    Confira ou preencha o endereço onde vamos entregar seu pedido.
+                    {retiradaNoBalcao
+                      ? "Confirme seus dados para separarmos o pedido para retirada na loja."
+                      : "Confira ou preencha o endereço onde vamos entregar seu pedido."}
                   </p>
                 </div>
-                <div className="bg-blue-50 text-blue-800 p-4 rounded-3xl border border-blue-100 gentle-blink">
-                  <p className="text-[12px] font-bold tracking-wide">
-                    Escolha seu endereço salvo ou informe um novo endereço para esta entrega.
+                <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      Como receber
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-700">
+                      Escolha se vamos entregar ou se voce prefere retirar no balcão.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {TIPOS_ENTREGA.map((tipo) => (
+                      <button
+                        key={tipo}
+                        type="button"
+                        onClick={() => selecionarTipoEntrega(tipo)}
+                        className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
+                          tipoEntrega === tipo
+                            ? "bg-pink-600 text-white shadow-lg shadow-pink-100"
+                            : "border border-slate-200 bg-white text-slate-600"
+                        }`}
+                      >
+                        {tipo}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[12px] font-bold text-slate-500">
+                    {retiradaNoBalcao
+                      ? "Seu pedido sera separado para retirada na loja e o frete ficara zerado."
+                      : "Escolha seu endereco salvo ou informe um novo endereco para esta entrega."}
                   </p>
                 </div>
                 <div className="relative">
@@ -3062,151 +3171,186 @@ function ClientePageContent() {
                   />
                 </div>
 
-                {enderecoSalvoCliente && clienteTemEnderecoSalvo(enderecoSalvoCliente) && (
-                  <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4 space-y-3">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                        Entrega
-                      </p>
-                      <p className="mt-1 text-sm font-bold text-slate-700">
-                        Escolha usar o endereço salvo ou preencher outro para este pedido.
-                      </p>
-                      {resumoEnderecoSalvo ? (
-                        <p className="mt-1 text-xs font-medium text-slate-500">{resumoEnderecoSalvo}</p>
-                      ) : null}
-                    </div>
+                {!retiradaNoBalcao ? (
+                  <>
+                    {enderecoSalvoCliente && clienteTemEnderecoSalvo(enderecoSalvoCliente) && (
+                      <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-4 space-y-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                            Entrega
+                          </p>
+                          <p className="mt-1 text-sm font-bold text-slate-700">
+                            Escolha usar o endereco salvo ou preencher outro para este pedido.
+                          </p>
+                          {resumoEnderecoSalvo ? (
+                            <p className="mt-1 text-xs font-medium text-slate-500">{resumoEnderecoSalvo}</p>
+                          ) : null}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void selecionarEnderecoSalvo(enderecoSalvoCliente);
+                            }}
+                            className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
+                              modoEnderecoEntrega === "saved"
+                                ? "bg-slate-900 text-white"
+                                : "border border-slate-200 bg-white text-slate-600"
+                            }`}
+                          >
+                            Endereco salvo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModoEnderecoEntrega("new");
+                              prepararNovoEndereco();
+                            }}
+                            className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
+                              modoEnderecoEntrega === "new"
+                                ? "bg-pink-600 text-white"
+                                : "border border-slate-200 bg-white text-slate-600"
+                            }`}
+                          >
+                            Novo endereco
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void selecionarEnderecoSalvo(enderecoSalvoCliente);
-                        }}
-                        className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
-                          modoEnderecoEntrega === "saved"
-                            ? "bg-slate-900 text-white"
-                            : "bg-white text-slate-600 border border-slate-200"
-                        }`}
-                      >
-                        Endereço salvo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModoEnderecoEntrega("new");
-                          prepararNovoEndereco();
-                        }}
-                        className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
-                          modoEnderecoEntrega === "new"
-                            ? "bg-pink-600 text-white"
-                            : "bg-white text-slate-600 border border-slate-200"
-                        }`}
-                      >
-                        Novo endereço
-                      </button>
+                      <div className="relative">
+                        <label htmlFor="cep" className="sr-only">CEP</label>
+                        <input
+                          placeholder="CEP *"
+                          id="cep"
+                          maxLength={9}
+                          inputMode="numeric"
+                          value={formatarCep(cliente.cep)}
+                          className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
+                          onChange={(e) => atualizarCepDigitado(e.target.value)}
+                        />
+                        {buscandoCep && (
+                          <Loader2
+                            className="absolute right-4 top-5 animate-spin text-pink-500"
+                            size={20}
+                          />
+                        )}
+                      </div>
+                      <label htmlFor="cidade" className="sr-only">Cidade</label>
+                      <input
+                        id="cidade"
+                        placeholder="Cidade"
+                        value={cliente.cidade}
+                        className="w-full p-5 rounded-3xl bg-slate-50 border-none font-bold text-slate-400"
+                        disabled
+                      />
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void executarBuscaCep(cliente.cep)}
+                      disabled={buscandoCep || normalizarNumero(cliente.cep).slice(0, 8).length !== 8}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
+                    >
+                      Buscar endereco pelo CEP
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void buscarCepPorEndereco()}
+                      disabled={buscandoCep || !cliente.endereco.trim()}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
+                    >
+                      Nao sei o CEP, localizar pelo endereco
+                    </button>
+
+                    <div className="grid grid-cols-4 gap-3">
+                      <label htmlFor="rua" className="sr-only">Rua</label>
+                      <input
+                        id="rua"
+                        placeholder="Rua *"
+                        value={cliente.endereco}
+                        className="col-span-3 w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
+                        onChange={(e) => {
+                          cadastroManualRef.current = true;
+                          setCliente((prev) => ({ ...prev, endereco: e.target.value }));
+                        }}
+                      />
+                      <label htmlFor="numero" className="sr-only">Numero</label>
+                      <input
+                        id="numero"
+                        placeholder="Nº *"
+                        value={cliente.numero}
+                        className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold text-center"
+                        onChange={(e) => {
+                          cadastroManualRef.current = true;
+                          setCliente((prev) => ({ ...prev, numero: e.target.value }));
+                        }}
+                      />
+                    </div>
+
+                    <label htmlFor="bairro" className="sr-only">Bairro</label>
+                    <input
+                      id="bairro"
+                      placeholder="Bairro *"
+                      value={cliente.bairro}
+                      className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
+                      onChange={(e) => {
+                        cadastroManualRef.current = true;
+                        setCliente((prev) => ({ ...prev, bairro: e.target.value }));
+                      }}
+                    />
+
+                    <label htmlFor="ponto_referencia" className="sr-only">Ponto de Referencia</label>
+                    <input
+                      id="ponto_referencia"
+                      placeholder="Ponto de Referencia *"
+                      value={cliente.ponto_referencia}
+                      className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
+                      onChange={(e) => {
+                        cadastroManualRef.current = true;
+                        setCliente((prev) => ({ ...prev, ponto_referencia: e.target.value }));
+                      }}
+                    />
+
+                    <div
+                      className={`p-5 rounded-[2rem] border-2 transition-all flex items-center gap-4 ${distanciaKm !== null ? "bg-blue-50 border-blue-200" : "bg-slate-50 border-slate-100"}`}
+                    >
+                      <div
+                        className={`p-3 rounded-2xl ${distanciaKm !== null ? "bg-blue-500 text-white" : "bg-slate-200 text-slate-400"}`}
+                      >
+                        <Bike size={24} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-blue-400 tracking-tighter">
+                          Entrega
+                        </p>
+                        <p
+                          className={`text-sm font-black ${distanciaKm !== null ? "text-blue-700" : "text-slate-500"}`}
+                        >
+                          {msgTaxa}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-[2rem] border border-emerald-100 bg-emerald-50 px-5 py-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-600">
+                      Retirada no balcão
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-700">
+                      Seu pedido sera separado na loja para retirada. Nao cobraremos taxa de entrega.
+                    </p>
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="relative">
-                    <label htmlFor="cep" className="sr-only">CEP</label>
-                    <input
-                      placeholder="CEP *"
-                      id="cep"
-                      maxLength={9}
-                      inputMode="numeric"
-                      value={formatarCep(cliente.cep)}
-                      className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                      onChange={(e) => atualizarCepDigitado(e.target.value)}
-                    />
-                    {buscandoCep && (
-                      <Loader2
-                        className="absolute right-4 top-5 animate-spin text-pink-500"
-                        size={20}
-                      />
-                    )}
-                  </div>
-                  <label htmlFor="cidade" className="sr-only">Cidade</label>
-                  <input
-                    id="cidade"
-                    placeholder="Cidade"
-                    value={cliente.cidade}
-                    className="w-full p-5 rounded-3xl bg-slate-50 border-none font-bold text-slate-400"
-                    disabled
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void executarBuscaCep(cliente.cep)}
-                  disabled={buscandoCep || normalizarNumero(cliente.cep).slice(0, 8).length !== 8}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
-                >
-                  Buscar endereço pelo CEP
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => void buscarCepPorEndereco()}
-                  disabled={buscandoCep || !cliente.endereco.trim()}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
-                >
-                  Não sei o CEP, localizar pelo endereço
-                </button>
-
-                <div className="grid grid-cols-4 gap-3">
-                  <label htmlFor="rua" className="sr-only">Rua</label>
-                  <input
-                    id="rua"
-                    placeholder="Rua *"
-                    value={cliente.endereco}
-                    className="col-span-3 w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                    onChange={(e) => {
-                      cadastroManualRef.current = true;
-                      setCliente((prev) => ({ ...prev, endereco: e.target.value }));
-                    }}
-                  />
-                  <label htmlFor="numero" className="sr-only">Número</label>
-                  <input
-                    id="numero"
-                    placeholder="Nº *"
-                    value={cliente.numero}
-                    className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold text-center"
-                    onChange={(e) => {
-                      cadastroManualRef.current = true;
-                      setCliente((prev) => ({ ...prev, numero: e.target.value }));
-                    }}
-                  />
-                </div>
-
-                <label htmlFor="bairro" className="sr-only">Bairro</label>
-                <input
-                  id="bairro"
-                  placeholder="Bairro *"
-                  value={cliente.bairro}
-                  className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                  onChange={(e) => {
-                    cadastroManualRef.current = true;
-                    setCliente((prev) => ({ ...prev, bairro: e.target.value }));
-                  }}
-                />
-
-                <label htmlFor="ponto_referencia" className="sr-only">Ponto de Referência</label>
-                <input
-                  id="ponto_referencia"
-                  placeholder="Ponto de Referência *"
-                  value={cliente.ponto_referencia}
-                  className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
-                  onChange={(e) => {
-                    cadastroManualRef.current = true;
-                    setCliente((prev) => ({ ...prev, ponto_referencia: e.target.value }));
-                  }}
-                />
-
-                <label htmlFor="observacao_entrega" className="sr-only">Observacao da entrega</label>
+                <label htmlFor="observacao_entrega" className="sr-only">
+                  {retiradaNoBalcao ? "Observacao do pedido" : "Observacao da entrega"}
+                </label>
                 <textarea
                   id="observacao_entrega"
-                  placeholder="Observacao da entrega"
+                  placeholder={retiradaNoBalcao ? "Observacao do pedido" : "Observacao da entrega"}
                   value={cliente.observacao}
                   className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold min-h-28 resize-none"
                   onChange={(e) => {
@@ -3214,26 +3358,6 @@ function ClientePageContent() {
                     setCliente((prev) => ({ ...prev, observacao: e.target.value }));
                   }}
                 />
-
-                <div
-                  className={`p-5 rounded-[2rem] border-2 transition-all flex items-center gap-4 ${distanciaKm !== null ? "bg-blue-50 border-blue-200" : "bg-slate-50 border-slate-100"}`}
-                >
-                  <div
-                    className={`p-3 rounded-2xl ${distanciaKm !== null ? "bg-blue-500 text-white" : "bg-slate-200 text-slate-400"}`}
-                  >
-                    <Bike size={24} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase text-blue-400 tracking-tighter">
-                      Entrega
-                    </p>
-                    <p
-                      className={`text-sm font-black ${distanciaKm !== null ? "text-blue-700" : "text-slate-500"}`}
-                    >
-                      {msgTaxa}
-                    </p>
-                  </div>
-                </div>
 
                 <button
                   type="button"
@@ -3251,24 +3375,38 @@ function ClientePageContent() {
                     Revisão do Pedido
                   </p>
                   <p className="mt-1 text-sm font-bold text-slate-700">
-                    Revise os itens, o endereço e o valor total antes de seguir.
+                    Revise os itens, a forma de recebimento e o valor total antes de seguir.
                   </p>
                 </div>
                 <div className="bg-slate-50 rounded-[2.5rem] border border-slate-100 p-5 space-y-3">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Entrega</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      {retiradaNoBalcao ? "Retirada" : "Entrega"}
+                    </p>
                     <p className="mt-1 text-sm font-black text-slate-800">
-                      {[cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereço não informado"}
+                      {retiradaNoBalcao
+                        ? "Retirar no balcão"
+                        : ([cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereco nao informado")}
                     </p>
                     <p className="mt-1 text-xs font-bold text-slate-500">
-                      {cliente.ponto_referencia ? `Ponto de referência: ${cliente.ponto_referencia}` : "Sem ponto de referência"}
+                      {retiradaNoBalcao
+                        ? "Nao cobramos taxa de entrega para retirada."
+                        : cliente.ponto_referencia
+                          ? `Ponto de referencia: ${cliente.ponto_referencia}`
+                          : "Sem ponto de referencia"}
                     </p>
                   </div>
                   <div className="border-t border-slate-200 pt-3">
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Contato</p>
                     <p className="mt-1 text-sm font-black text-slate-800">{cliente.nome || "Cliente"}</p>
-                    <p className="text-xs font-bold text-slate-500">{cliente.whatsapp || "WhatsApp não informado"}</p>
+                    <p className="text-xs font-bold text-slate-500">{cliente.whatsapp || "WhatsApp nao informado"}</p>
                   </div>
+                  {cliente.observacao ? (
+                    <div className="border-t border-slate-200 pt-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Observacao</p>
+                      <p className="mt-1 text-xs font-bold text-slate-500">{cliente.observacao}</p>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="max-h-56 overflow-y-auto space-y-3 p-4 bg-slate-50 rounded-[2.5rem] border border-slate-100">
@@ -3303,8 +3441,8 @@ function ClientePageContent() {
                       </div>
                     )}
                     <div className="flex justify-between text-xs font-bold text-blue-400 border-b border-white/10 pb-3">
-                      <span>Taxa de Entrega</span>
-                      <span>R$ {taxaEntrega.toFixed(2)}</span>
+                      <span>{retiradaNoBalcao ? "Retirada no Balcao" : "Taxa de Entrega"}</span>
+                      <span>{retiradaNoBalcao ? "Gratis" : `R$ ${taxaEntrega.toFixed(2)}`}</span>
                     </div>
                     <div className="flex justify-between items-end pt-3">
                       <div>
@@ -3408,8 +3546,8 @@ function ClientePageContent() {
                       </div>
                     )}
                     <div className="flex justify-between text-xs font-bold text-blue-400 border-b border-white/10 pb-3">
-                      <span>Taxa de Entrega</span>
-                      <span>R$ {taxaEntrega.toFixed(2)}</span>
+                      <span>{retiradaNoBalcao ? "Retirada no Balcao" : "Taxa de Entrega"}</span>
+                      <span>{retiradaNoBalcao ? "Gratis" : `R$ ${taxaEntrega.toFixed(2)}`}</span>
                     </div>
                     <div className="flex justify-between items-end pt-3">
                       <div>
@@ -3423,12 +3561,47 @@ function ClientePageContent() {
                   </div>
                 </div>
 
+                <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Recebimento
+                  </p>
+                  <p className="mt-1 text-sm font-black text-slate-800">
+                    {retiradaNoBalcao
+                      ? "Retirada no balcão"
+                      : ([cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereco nao informado")}
+                  </p>
+                </div>
+
                 <div className="bg-white p-4 rounded-[2.2rem] border border-slate-100">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">
                     Forma de Pagamento
                   </p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {FORMAS_PAGAMENTO.map((forma) => (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                    <button
+                      type="button"
+                      onClick={() => void selecionarFormaPagamento(FORMA_DINHEIRO)}
+                      className={`p-3 rounded-2xl text-xs font-black uppercase tracking-wide border-2 transition-all ${formaPagamento === FORMA_DINHEIRO ? "bg-pink-600 border-pink-600 text-white" : "bg-slate-50 border-slate-100 text-slate-500"}`}
+                    >
+                      {FORMA_DINHEIRO}
+                    </button>
+                    <div className={`rounded-2xl border-2 p-3 transition-all ${formaPagamento === FORMA_DINHEIRO ? "border-pink-200 bg-pink-50" : "border-slate-100 bg-slate-50"}`}>
+                      <label htmlFor="troco_para" className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Troco para
+                      </label>
+                      <input
+                        id="troco_para"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Ex.: 50,00"
+                        value={trocoPara}
+                        onChange={(e) => setTrocoPara(e.target.value)}
+                        disabled={formaPagamento !== FORMA_DINHEIRO}
+                        className="mt-2 w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none transition-all focus:border-pink-200 disabled:bg-slate-100 disabled:text-slate-400"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {FORMAS_PAGAMENTO.filter((forma) => forma !== FORMA_DINHEIRO).map((forma) => (
                       <button
                         key={forma}
                         type="button"
@@ -3439,13 +3612,24 @@ function ClientePageContent() {
                       </button>
                     ))}
                   </div>
+                  {formaPagamento === FORMA_DINHEIRO ? (
+                    <p className={`mt-3 text-[11px] font-bold ${trocoParaInvalido ? "text-rose-600" : "text-slate-500"}`}>
+                      {trocoParaPreenchido
+                        ? trocoParaValor === null
+                          ? "Informe um valor valido, por exemplo 50,00."
+                          : trocoParaValor < totalGeral
+                            ? `O troco precisa ser igual ou maior que ${formatarMoedaBR(totalGeral)}.`
+                            : `Troco registrado para ${formatarMoedaBR(trocoParaValor)}.`
+                        : "Deixe em branco se nao precisar de troco."}
+                    </p>
+                  ) : null}
                 </div>
 
                 <button
                   type="button"
                   onClick={finalizarPedido}
-                  disabled={!formaPagamento || interacoesBloqueadas || loading}
-                  className={`w-full rounded-[2.5rem] p-7 font-black uppercase tracking-widest text-xl flex items-center justify-center gap-3 transition-all duration-150 ${formaPagamento && !interacoesBloqueadas && !loading ? "bg-green-500 text-white shadow-xl shadow-green-200/70 active:scale-[0.985] active:translate-y-1 active:shadow-md" : "bg-slate-100 text-slate-300 shadow-none"}`}
+                  disabled={!formaPagamento || trocoParaInvalido || interacoesBloqueadas || loading}
+                  className={`w-full rounded-[2.5rem] p-7 font-black uppercase tracking-widest text-xl flex items-center justify-center gap-3 transition-all duration-150 ${formaPagamento && !trocoParaInvalido && !interacoesBloqueadas && !loading ? "bg-green-500 text-white shadow-xl shadow-green-200/70 active:scale-[0.985] active:translate-y-1 active:shadow-md" : "bg-slate-100 text-slate-300 shadow-none"}`}
                 >
                   {loading ? (
                     <>
