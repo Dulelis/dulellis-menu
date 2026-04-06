@@ -3,8 +3,6 @@ import RetornoActions from "./RetornoActions";
 import { getServiceSupabase } from "@/lib/server-supabase";
 
 const WHATSAPP_LOJA = "5547988347100";
-const LOJA_LAT = -26.8941;
-const LOJA_LNG = -48.6538;
 const LOJA_ENDERECO_RETIRADA = "Rua Vandelino Lopes Fagundes";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
@@ -15,7 +13,7 @@ const LOJA_ENDERECO_RETIRADA_RESUMO = [
   LOJA_CIDADE_UF_RETIRADA,
   `CEP ${LOJA_CEP_RETIRADA}`,
 ].join(", ");
-const LOJA_LINK_MAPS_RETIRADA = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${LOJA_LAT},${LOJA_LNG}`)}`;
+const LOJA_LINK_MAPS_RETIRADA = "https://maps.app.goo.gl/Vu3gjbNE1GDicuhR7";
 
 function getStatusInfo(status: string) {
   const normalizado = status.trim().toLowerCase();

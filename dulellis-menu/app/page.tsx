@@ -230,7 +230,7 @@ const LOJA_ENDERECO_RETIRADA_RESUMO = [
   LOJA_CIDADE_UF_RETIRADA,
   LOJA_CEP_RETIRADA,
 ].join(", ");
-const LOJA_LINK_MAPS_RETIRADA = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${LOJA_LAT},${LOJA_LNG}`)}`;
+const LOJA_LINK_MAPS_RETIRADA = "https://maps.app.goo.gl/Vu3gjbNE1GDicuhR7";
 
 type BlocoRetiradaLojaProps = {
   className?: string;
@@ -1931,6 +1931,18 @@ function ClientePageContent() {
     return partes.join(", ");
   }, [enderecoSalvoCliente]);
 
+  const acompanhamentoEhRetiradaNoBalcao = useMemo(() => {
+    if (typeof pedidoAcompanhamento?.retiradaNoBalcao === "boolean") {
+      return pedidoAcompanhamento.retiradaNoBalcao;
+    }
+
+    const whatsappAcompanhamentoAtual = normalizarNumero(whatsappAcompanhamento);
+    const whatsappClienteAtual = normalizarNumero(cliente.whatsapp);
+    if (!ultimoPedidoFoiRetirada) return false;
+    if (whatsappAcompanhamentoAtual.length < 10 || whatsappClienteAtual.length < 10) return false;
+    return whatsappAcompanhamentoAtual === whatsappClienteAtual;
+  }, [pedidoAcompanhamento?.retiradaNoBalcao, whatsappAcompanhamento, cliente.whatsapp, ultimoPedidoFoiRetirada]);
+
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
 
@@ -2536,6 +2548,7 @@ function ClientePageContent() {
             </div>
             <div
               className="relative mt-1 rounded-xl overflow-hidden border border-white/10 h-60 sm:h-64 bg-white/5"
+              onContextMenu={(event) => event.preventDefault()}
               onTouchStart={pausarBannerNoToque}
               onTouchEnd={retomarBannerAoSoltar}
               onTouchCancel={retomarBannerAoSoltar}
@@ -2559,6 +2572,7 @@ function ClientePageContent() {
                   retomarBannerAoSoltar();
                 }
               }}
+              style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
             >
               {slideAtualVitrine?.imagem_url ? (
                 <Image
@@ -2566,7 +2580,8 @@ function ClientePageContent() {
                   alt={slideAtualVitrine?.titulo || "Banner"}
                   fill
                   sizes="(max-width: 640px) calc(100vw - 2rem), 640px"
-                  className="h-full w-full object-cover"
+                  draggable={false}
+                  className="pointer-events-none h-full w-full select-none object-cover"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-pink-100/80">
@@ -3132,7 +3147,7 @@ function ClientePageContent() {
                     </p>
                   ) : null}
                 </div>
-                {pedidoAcompanhamento.retiradaNoBalcao ? (
+                {acompanhamentoEhRetiradaNoBalcao ? (
                   <BlocoRetiradaLoja
                     className="text-left"
                     descricao={
@@ -3144,9 +3159,17 @@ function ClientePageContent() {
                 ) : null}
               </div>
             ) : (
-              <p className="mt-5 text-xs font-bold text-slate-500">
-                Informe seu WhatsApp para consultar o último pedido.
-              </p>
+              <div className="mt-5 space-y-4">
+                <p className="text-xs font-bold text-slate-500">
+                  Informe seu WhatsApp para consultar o último pedido.
+                </p>
+                {acompanhamentoEhRetiradaNoBalcao ? (
+                  <BlocoRetiradaLoja
+                    className="text-left"
+                    descricao="Seu pedido foi finalizado para retirada. O endereco e o Maps estao aqui para facilitar."
+                  />
+                ) : null}
+              </div>
             )}
           </div>
         </div>
