@@ -23,10 +23,15 @@ export function PwaRegistration() {
 
     const registrar = async () => {
       try {
-        const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        const registration = await navigator.serviceWorker.register("/sw.js", {
+          scope: "/",
+        });
         void registration.update();
       } catch (error) {
-        console.warn("Nao foi possivel registrar o service worker da PWA.", error);
+        console.warn(
+          "Não foi possível registrar o service worker da PWA.",
+          error,
+        );
       }
     };
 

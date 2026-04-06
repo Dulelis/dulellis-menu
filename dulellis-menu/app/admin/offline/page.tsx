@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Admin sem conexao",
+  title: "Admin sem conexão",
 };
 
 export default function AdminOfflinePage() {
@@ -11,14 +11,14 @@ export default function AdminOfflinePage() {
       <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-md items-center">
         <section className="w-full rounded-[2.5rem] border border-white/10 bg-white/8 p-8 text-center shadow-[0_24px_60px_rgba(2,6,23,0.4)] backdrop-blur-xl">
           <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300">
-            Admin sem conexao
+            Admin sem conexão
           </p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-white">
             O painel precisa de internet
           </h1>
           <p className="mt-3 text-sm font-bold leading-6 text-slate-300">
-            Quando a conexao voltar, abra o login novamente para carregar pedidos, produtos e as
-            configuracoes mais recentes.
+            Quando a conexão voltar, abra o login novamente para carregar
+            pedidos, produtos e as configurações mais recentes.
           </p>
           <div className="mt-8 space-y-3">
             <Link

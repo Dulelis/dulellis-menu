@@ -22,8 +22,9 @@ export default function AdminInstallPage() {
             Crie um atalho do painel no Chrome
           </h1>
           <p className="mt-3 text-sm font-bold leading-6 text-slate-300">
-            O admin nao sera mais instalado como app separado. Para abrir mais rapido no celular,
-            use o atalho do proprio Chrome e deixe a vitrine como a unica PWA do site.
+            O admin não será mais instalado como app separado. Para abrir mais
+            rápido no celular, use o atalho do próprio Chrome e deixe a vitrine
+            como a única PWA do site.
           </p>
 
           <div className="mt-6 rounded-[2rem] border border-white/10 bg-slate-950/30 p-5">
@@ -38,7 +39,7 @@ export default function AdminInstallPage() {
                 <ol className="mt-2 space-y-2 text-sm font-bold leading-6 text-slate-300">
                   <li>1. Abra o login do admin no Chrome.</li>
                   <li>2. Toque no menu de 3 pontos do navegador.</li>
-                  <li>3. Escolha adicionar a tela inicial.</li>
+                  <li>3. Escolha adicionar à tela inicial.</li>
                   <li>4. Confirme o nome do atalho e salve.</li>
                 </ol>
               </div>
@@ -47,15 +48,15 @@ export default function AdminInstallPage() {
 
           <div className="mt-6 rounded-[2rem] border border-cyan-300/15 bg-cyan-400/10 p-5">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
-              Observacao
+              Observação
             </p>
             <p className="mt-2 text-sm font-bold leading-6 text-slate-100">
-              Esse atalho abre o painel pelo navegador do celular, sem competir com a PWA da
-              vitrine.
+              Esse atalho abre o painel pelo navegador do celular, sem competir
+              com a PWA da vitrine.
             </p>
             <p className="mt-3 text-xs font-bold leading-5 text-slate-300">
-              Se voce abriu o link pelo WhatsApp ou Instagram, use a opcao de abrir no Chrome
-              antes de salvar o atalho.
+              Se você abriu o link pelo WhatsApp ou Instagram, use a opção de
+              abrir no Chrome antes de salvar o atalho.
             </p>
           </div>
 
@@ -64,10 +65,11 @@ export default function AdminInstallPage() {
               href="/admin/login?next=/admin"
               className="block rounded-[1.6rem] bg-cyan-400 px-5 py-4 text-center text-sm font-black uppercase tracking-[0.22em] text-slate-950 shadow-lg shadow-cyan-500/20 transition-transform active:scale-[0.98]"
             >
-              Ir para login do admin
+              Ir para o login do admin
             </Link>
             <p className="text-center text-xs font-bold text-slate-400">
-              Depois disso, o atalho aparece na tela inicial como acesso rapido do painel.
+              Depois disso, o atalho aparece na tela inicial como acesso rápido
+              do painel.
             </p>
           </div>
         </section>

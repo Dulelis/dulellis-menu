@@ -26,11 +26,15 @@ export function AdminShortcutCleanup() {
 
       try {
         const registrations = await navigator.serviceWorker.getRegistrations();
-        const controllerScript = navigator.serviceWorker.controller?.scriptURL || "";
+        const controllerScript =
+          navigator.serviceWorker.controller?.scriptURL || "";
         const controlaAdmin = controllerScript.includes(ADMIN_SW_URL);
         const adminRegistrations = registrations.filter((registration) => {
           const scriptUrl = obterScriptUrl(registration);
-          return registration.scope.includes(ADMIN_SCOPE) || scriptUrl.includes(ADMIN_SW_URL);
+          return (
+            registration.scope.includes(ADMIN_SCOPE) ||
+            scriptUrl.includes(ADMIN_SW_URL)
+          );
         });
 
         if (adminRegistrations.length > 0) {
@@ -40,7 +44,10 @@ export function AdminShortcutCleanup() {
           precisaRecarregar = controlaAdmin && removidos.some(Boolean);
         }
       } catch (error) {
-        console.warn("Nao foi possivel limpar o modo app antigo do admin.", error);
+        console.warn(
+          "Não foi possível limpar o modo app antigo do admin.",
+          error,
+        );
       }
 
       if ("caches" in window) {
@@ -52,7 +59,10 @@ export function AdminShortcutCleanup() {
               .map((key) => caches.delete(key)),
           );
         } catch (error) {
-          console.warn("Nao foi possivel limpar o cache antigo do admin.", error);
+          console.warn(
+            "Não foi possível limpar o cache antigo do admin.",
+            error,
+          );
         }
       }
 
