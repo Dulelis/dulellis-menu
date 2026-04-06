@@ -186,6 +186,7 @@ export async function GET(request: Request) {
       created_at: String(pedidoFinal.created_at || ""),
       status_chave: resumo.chave,
       status_texto: resumo.texto,
+      retiradaNoBalcao: pedidoEhRetiradaNoBalcao(pedidoFinal),
     },
   });
 }

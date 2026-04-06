@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AppBottomNav } from "@/components/AppBottomNav";
+import { PropagandaFrame } from "@/components/PropagandaFrame";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
 import { validateCustomerFullName } from "@/lib/customer-name-policy";
@@ -21,6 +22,7 @@ import {
   LogIn,
   LogOut,
   Loader2,
+  MapPin,
   Minus,
   Phone,
   Plus,
@@ -31,6 +33,10 @@ import {
 
 const LOJA_LAT = -26.8941;
 const LOJA_LNG = -48.6538;
+const LOJA_ENDERECO_RETIRADA = "Rua Vandelino Lopes Fagundes";
+const LOJA_BAIRRO_RETIRADA = "Centro";
+const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
+const LOJA_CEP_RETIRADA = "88370-390";
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
 const CIDADE_ATENDIDA = "Navegantes";
@@ -164,6 +170,7 @@ type PedidoAcompanhamento = {
   created_at: string;
   status_chave: "aguardando_aceite" | "recebido" | "em_preparo" | "saiu_entrega" | "aprovado" | "pendente" | "recusado";
   status_texto: string;
+  retiradaNoBalcao?: boolean;
 };
 
 type SessaoCliente = {
@@ -217,6 +224,49 @@ const CLIENTE_INICIAL: Cliente = {
   observacao: "",
   data_aniversario: "",
 };
+
+const LOJA_ENDERECO_RETIRADA_RESUMO = [
+  LOJA_ENDERECO_RETIRADA,
+  LOJA_BAIRRO_RETIRADA,
+  LOJA_CIDADE_UF_RETIRADA,
+  LOJA_CEP_RETIRADA,
+].join(", ");
+const LOJA_LINK_MAPS_RETIRADA = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${LOJA_LAT},${LOJA_LNG}`)}`;
+
+type BlocoRetiradaLojaProps = {
+  className?: string;
+  descricao: string;
+};
+
+function BlocoRetiradaLoja({ className = "", descricao }: BlocoRetiradaLojaProps) {
+  return (
+    <div className={`rounded-[2rem] border border-emerald-100 bg-emerald-50 px-5 py-4 ${className}`.trim()}>
+      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-600">
+        Retirada no balcão
+      </p>
+      <p className="mt-1 text-sm font-bold text-slate-700">{descricao}</p>
+      <div className="mt-4 rounded-[1.5rem] border border-emerald-200 bg-white/90 px-4 py-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+          Endereço para retirada
+        </p>
+        <p className="mt-1 text-sm font-black text-slate-800">{LOJA_ENDERECO_RETIRADA}</p>
+        <p className="mt-1 text-xs font-bold text-slate-500">
+          {LOJA_BAIRRO_RETIRADA}, {LOJA_CIDADE_UF_RETIRADA}
+        </p>
+        <p className="text-xs font-bold text-slate-500">CEP {LOJA_CEP_RETIRADA}</p>
+      </div>
+      <a
+        href={LOJA_LINK_MAPS_RETIRADA}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-700"
+      >
+        <MapPin size={16} />
+        Abrir no Maps
+      </a>
+    </div>
+  );
+}
 
 function salvarVitrineCache(cache: VitrineCache) {
   if (typeof window === "undefined") return;
@@ -547,8 +597,10 @@ function ClientePageContent() {
   const [trocoPara, setTrocoPara] = useState("");
   const [referenciaPagamento, setReferenciaPagamento] = useState("");
   const [vitrineSlideIndex, setVitrineSlideIndex] = useState(0);
+  const [vitrineAutoplayPausado, setVitrineAutoplayPausado] = useState(false);
   const [modalAcompanhamentoAberto, setModalAcompanhamentoAberto] = useState(false);
   const [modalPedidoFinalizadoAberto, setModalPedidoFinalizadoAberto] = useState(false);
+  const [ultimoPedidoFoiRetirada, setUltimoPedidoFoiRetirada] = useState(false);
   const [whatsappAcompanhamento, setWhatsappAcompanhamento] = useState("");
   const [carregandoAcompanhamento, setCarregandoAcompanhamento] = useState(false);
   const [pedidoAcompanhamento, setPedidoAcompanhamento] = useState<PedidoAcompanhamento | null>(null);
@@ -572,6 +624,9 @@ function ClientePageContent() {
   const authDraftRestauradoRef = useRef(false);
   const recarregarVitrineRef = useRef<number | null>(null);
   const recarregarAcompanhamentoRef = useRef<number | null>(null);
+  const vitrineSlideTimeoutRef = useRef<number | null>(null);
+  const vitrineSlideInicioRef = useRef<number | null>(null);
+  const vitrineSlideTempoRestanteRef = useRef(VITRINE_MODAL_SLIDE_MS);
   const topoVitrineRef = useRef<HTMLElement | null>(null);
   const destaquesVitrineRef = useRef<HTMLDivElement | null>(null);
   const cardapioRef = useRef<HTMLElement | null>(null);
@@ -1750,8 +1805,8 @@ function ClientePageContent() {
     return (json.data || payloadCliente) as Cliente;
   }, []);
 
-  const consultarAcompanhamentoPedido = useCallback(async () => {
-    const zap = normalizarNumero(whatsappAcompanhamento);
+  const consultarAcompanhamentoPedido = useCallback(async (whatsappBase?: string) => {
+    const zap = normalizarNumero(whatsappBase || whatsappAcompanhamento);
     if (zap.length < 10) {
       alert("Informe um WhatsApp válido.");
       return;
@@ -1967,6 +2022,7 @@ function ClientePageContent() {
       }
 
       setPodeAcompanharPedido(true);
+      setUltimoPedidoFoiRetirada(retiradaNoBalcao);
 
       setCarrinho([]);
       setAbaCarrinho(false);
@@ -2122,17 +2178,71 @@ function ClientePageContent() {
   }, [promocoesAtivasHoje, propagandasAtivasHoje]);
   const slideAtualVitrine = mensagensVitrine[vitrineSlideIndex];
 
+  const limparAutoplayVitrine = useCallback(() => {
+    if (vitrineSlideTimeoutRef.current !== null) {
+      window.clearTimeout(vitrineSlideTimeoutRef.current);
+      vitrineSlideTimeoutRef.current = null;
+    }
+  }, []);
+
+  const pausarAutoplayVitrine = useCallback(() => {
+    if (vitrineSlideInicioRef.current !== null) {
+      const decorrido = Date.now() - vitrineSlideInicioRef.current;
+      vitrineSlideTempoRestanteRef.current = Math.max(120, vitrineSlideTempoRestanteRef.current - decorrido);
+      vitrineSlideInicioRef.current = null;
+    }
+    limparAutoplayVitrine();
+  }, [limparAutoplayVitrine]);
+
+  const agendarProximoSlideVitrine = useCallback(() => {
+    if (mensagensVitrine.length < 2 || vitrineAutoplayPausado) return;
+
+    limparAutoplayVitrine();
+    const atraso = Math.max(120, vitrineSlideTempoRestanteRef.current);
+    vitrineSlideInicioRef.current = Date.now();
+    vitrineSlideTimeoutRef.current = window.setTimeout(() => {
+      vitrineSlideTempoRestanteRef.current = VITRINE_MODAL_SLIDE_MS;
+      vitrineSlideInicioRef.current = null;
+      setVitrineSlideIndex((prev) => (prev + 1) % mensagensVitrine.length);
+    }, atraso);
+  }, [limparAutoplayVitrine, mensagensVitrine.length, vitrineAutoplayPausado]);
+
+  const pausarBannerNoToque = useCallback(() => {
+    setVitrineAutoplayPausado(true);
+  }, []);
+
+  const retomarBannerAoSoltar = useCallback(() => {
+    setVitrineAutoplayPausado(false);
+  }, []);
+
   useEffect(() => {
     setVitrineSlideIndex(0);
+    vitrineSlideTempoRestanteRef.current = VITRINE_MODAL_SLIDE_MS;
+    vitrineSlideInicioRef.current = null;
   }, [mensagensVitrine.length]);
 
   useEffect(() => {
-    if (mensagensVitrine.length < 2) return;
-    const timer = window.setInterval(() => {
-      setVitrineSlideIndex((prev) => (prev + 1) % mensagensVitrine.length);
-    }, VITRINE_MODAL_SLIDE_MS);
-    return () => window.clearInterval(timer);
-  }, [mensagensVitrine.length]);
+    if (mensagensVitrine.length < 2) {
+      limparAutoplayVitrine();
+      vitrineSlideInicioRef.current = null;
+      return;
+    }
+
+    if (vitrineAutoplayPausado) {
+      pausarAutoplayVitrine();
+      return;
+    }
+
+    agendarProximoSlideVitrine();
+    return limparAutoplayVitrine;
+  }, [
+    agendarProximoSlideVitrine,
+    limparAutoplayVitrine,
+    mensagensVitrine.length,
+    pausarAutoplayVitrine,
+    vitrineAutoplayPausado,
+    vitrineSlideIndex,
+  ]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -2394,7 +2504,11 @@ function ClientePageContent() {
                     <button
                       key={`story-${msg.id}`}
                       type="button"
-                      onClick={() => setVitrineSlideIndex(idx)}
+                      onClick={() => {
+                        vitrineSlideTempoRestanteRef.current = VITRINE_MODAL_SLIDE_MS;
+                        vitrineSlideInicioRef.current = null;
+                        setVitrineSlideIndex(idx);
+                      }}
                       className="h-1.5 flex-1 rounded-full bg-white/30 overflow-hidden"
                       aria-label={`Ir para propaganda ${idx + 1}`}
                     >
@@ -2412,6 +2526,8 @@ function ClientePageContent() {
                             idx === vitrineSlideIndex
                               ? `encherBarra ${VITRINE_MODAL_SLIDE_MS}ms linear forwards`
                               : "none",
+                          animationPlayState:
+                            idx === vitrineSlideIndex && vitrineAutoplayPausado ? "paused" : "running",
                         }}
                       />
                     </button>
@@ -2421,12 +2537,36 @@ function ClientePageContent() {
             </div>
             <div className="relative mt-1 rounded-xl overflow-hidden border border-white/10 h-60 sm:h-64 bg-white/5">
               {slideAtualVitrine?.imagem_url ? (
-                <Image
+                <PropagandaFrame
                   src={slideAtualVitrine.imagem_url}
                   alt={slideAtualVitrine?.titulo || "Banner"}
-                  width={640}
-                  height={260}
-                  className="w-full h-full object-cover rounded-xl"
+                  className="absolute inset-0"
+                  paddingClassName="p-3"
+                  imageClassName="drop-shadow-[0_18px_35px_rgba(15,23,42,0.35)]"
+                  sizes="(max-width: 640px) calc(100vw - 2rem), 640px"
+                  onTouchStart={pausarBannerNoToque}
+                  onTouchEnd={retomarBannerAoSoltar}
+                  onTouchCancel={retomarBannerAoSoltar}
+                  onPointerDown={(event) => {
+                    if (event.pointerType === "touch") {
+                      pausarBannerNoToque();
+                    }
+                  }}
+                  onPointerUp={(event) => {
+                    if (event.pointerType === "touch") {
+                      retomarBannerAoSoltar();
+                    }
+                  }}
+                  onPointerCancel={(event) => {
+                    if (event.pointerType === "touch") {
+                      retomarBannerAoSoltar();
+                    }
+                  }}
+                  onPointerLeave={(event) => {
+                    if (event.pointerType === "touch") {
+                      retomarBannerAoSoltar();
+                    }
+                  }}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-pink-100/80">
@@ -2957,38 +3097,50 @@ function ClientePageContent() {
             </div>
 
             {pedidoAcompanhamento ? (
-              <div className="mt-5 rounded-3xl border border-slate-100 bg-slate-50 p-5 space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status atual</p>
-                <p
-                  className={`text-sm font-black ${
-                    pedidoAcompanhamento.status_chave === "aprovado"
-                      ? "text-green-600"
-                      : pedidoAcompanhamento.status_chave === "saiu_entrega"
-                        ? "text-sky-600"
-                        : pedidoAcompanhamento.status_chave === "em_preparo"
-                          ? "text-orange-600"
-                          : pedidoAcompanhamento.status_chave === "aguardando_aceite"
-                            ? "text-violet-600"
-                      : pedidoAcompanhamento.status_chave === "pendente"
-                        ? "text-amber-600"
-                        : pedidoAcompanhamento.status_chave === "recusado"
-                          ? "text-rose-600"
-                          : "text-slate-700"
-                  }`}
-                >
-                  {pedidoAcompanhamento.status_texto}
-                </p>
-                <p className="text-xs font-bold text-slate-700">Cliente: {pedidoAcompanhamento.cliente_nome || "Não informado"}</p>
-                <p className="text-xs font-bold text-slate-700">Pedido: #{pedidoAcompanhamento.id}</p>
-                <p className="text-xs font-bold text-slate-700">Pagamento: {pedidoAcompanhamento.forma_pagamento || "Não informado"}</p>
-                <p className="text-xs font-bold text-slate-700">Total: R$ {Number(pedidoAcompanhamento.total || 0).toFixed(2)}</p>
-                <p className="text-xs font-bold text-slate-700">
-                  Data: {pedidoAcompanhamento.created_at ? new Date(pedidoAcompanhamento.created_at).toLocaleString("pt-BR") : "Não informada"}
-                </p>
-                {pedidoAcompanhamento.pagamento_referencia ? (
-                  <p className="text-[11px] font-mono break-all text-slate-500">
-                    Ref: {pedidoAcompanhamento.pagamento_referencia}
+              <div className="mt-5 space-y-4">
+                <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5 space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status atual</p>
+                  <p
+                    className={`text-sm font-black ${
+                      pedidoAcompanhamento.status_chave === "aprovado"
+                        ? "text-green-600"
+                        : pedidoAcompanhamento.status_chave === "saiu_entrega"
+                          ? "text-sky-600"
+                          : pedidoAcompanhamento.status_chave === "em_preparo"
+                            ? "text-orange-600"
+                            : pedidoAcompanhamento.status_chave === "aguardando_aceite"
+                              ? "text-violet-600"
+                        : pedidoAcompanhamento.status_chave === "pendente"
+                          ? "text-amber-600"
+                          : pedidoAcompanhamento.status_chave === "recusado"
+                            ? "text-rose-600"
+                            : "text-slate-700"
+                    }`}
+                  >
+                    {pedidoAcompanhamento.status_texto}
                   </p>
+                  <p className="text-xs font-bold text-slate-700">Cliente: {pedidoAcompanhamento.cliente_nome || "Não informado"}</p>
+                  <p className="text-xs font-bold text-slate-700">Pedido: #{pedidoAcompanhamento.id}</p>
+                  <p className="text-xs font-bold text-slate-700">Pagamento: {pedidoAcompanhamento.forma_pagamento || "Não informado"}</p>
+                  <p className="text-xs font-bold text-slate-700">Total: R$ {Number(pedidoAcompanhamento.total || 0).toFixed(2)}</p>
+                  <p className="text-xs font-bold text-slate-700">
+                    Data: {pedidoAcompanhamento.created_at ? new Date(pedidoAcompanhamento.created_at).toLocaleString("pt-BR") : "Não informada"}
+                  </p>
+                  {pedidoAcompanhamento.pagamento_referencia ? (
+                    <p className="text-[11px] font-mono break-all text-slate-500">
+                      Ref: {pedidoAcompanhamento.pagamento_referencia}
+                    </p>
+                  ) : null}
+                </div>
+                {pedidoAcompanhamento.retiradaNoBalcao ? (
+                  <BlocoRetiradaLoja
+                    className="text-left"
+                    descricao={
+                      pedidoAcompanhamento.status_chave === "saiu_entrega"
+                        ? "Seu pedido ja esta pronto. Use o endereco abaixo para retirar na loja."
+                        : "Seu pedido sera retirado na loja. O endereco e o Maps estao aqui para facilitar."
+                    }
+                  />
                 ) : null}
               </div>
             ) : (
@@ -3010,19 +3162,29 @@ function ClientePageContent() {
               Pedido finalizado com sucesso!
             </h3>
             <p className="mt-4 text-base font-bold leading-relaxed text-slate-600 sm:text-lg">
-              Agradecemos pelo seu pedido. Estamos preparando tudo com carinho para você.
+              {ultimoPedidoFoiRetirada
+                ? "Agradecemos pelo seu pedido. Vamos separar tudo com carinho para a sua retirada na loja."
+                : "Agradecemos pelo seu pedido. Estamos preparando tudo com carinho para você."}
             </p>
             <p className="mt-2 text-sm font-black uppercase tracking-widest text-pink-500 sm:text-base">
               Acompanhe seu pedido aqui na vitrine sempre que quiser.
             </p>
+            {ultimoPedidoFoiRetirada ? (
+              <BlocoRetiradaLoja
+                className="mt-6 text-left"
+                descricao="Seu pedido ficara disponivel neste endereço para retirada, sem taxa de entrega."
+              />
+            ) : null}
             <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => {
+                  const whatsappPedido = normalizarNumero(cliente.whatsapp);
                   setModalPedidoFinalizadoAberto(false);
                   setPedidoAcompanhamento(null);
-                  setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
+                  setWhatsappAcompanhamento(whatsappPedido);
                   setModalAcompanhamentoAberto(true);
+                  void consultarAcompanhamentoPedido(whatsappPedido);
                 }}
                 className="w-full rounded-[2rem] bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
               >
@@ -3335,14 +3497,7 @@ function ClientePageContent() {
                     </div>
                   </>
                 ) : (
-                  <div className="rounded-[2rem] border border-emerald-100 bg-emerald-50 px-5 py-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-600">
-                      Retirada no balcão
-                    </p>
-                    <p className="mt-1 text-sm font-bold text-slate-700">
-                      Seu pedido sera separado na loja para retirada. Nao cobraremos taxa de entrega.
-                    </p>
-                  </div>
+                  <BlocoRetiradaLoja descricao="Seu pedido sera separado na loja para retirada. Nao cobraremos taxa de entrega." />
                 )}
 
                 <label htmlFor="observacao_entrega" className="sr-only">
@@ -3385,16 +3540,27 @@ function ClientePageContent() {
                     </p>
                     <p className="mt-1 text-sm font-black text-slate-800">
                       {retiradaNoBalcao
-                        ? "Retirar no balcão"
+                        ? LOJA_ENDERECO_RETIRADA_RESUMO
                         : ([cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereco nao informado")}
                     </p>
                     <p className="mt-1 text-xs font-bold text-slate-500">
                       {retiradaNoBalcao
-                        ? "Nao cobramos taxa de entrega para retirada."
+                        ? "Retire na loja e use o Maps se precisar da rota."
                         : cliente.ponto_referencia
                           ? `Ponto de referencia: ${cliente.ponto_referencia}`
                           : "Sem ponto de referencia"}
                     </p>
+                    {retiradaNoBalcao ? (
+                      <a
+                        href={LOJA_LINK_MAPS_RETIRADA}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-widest text-emerald-700 transition-colors hover:bg-emerald-100"
+                      >
+                        <MapPin size={14} />
+                        Abrir retirada no Maps
+                      </a>
+                    ) : null}
                   </div>
                   <div className="border-t border-slate-200 pt-3">
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Contato</p>
@@ -3567,9 +3733,20 @@ function ClientePageContent() {
                   </p>
                   <p className="mt-1 text-sm font-black text-slate-800">
                     {retiradaNoBalcao
-                      ? "Retirada no balcão"
+                      ? LOJA_ENDERECO_RETIRADA_RESUMO
                       : ([cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereco nao informado")}
                   </p>
+                  {retiradaNoBalcao ? (
+                    <a
+                      href={LOJA_LINK_MAPS_RETIRADA}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-widest text-emerald-700 transition-colors hover:bg-emerald-100"
+                    >
+                      <MapPin size={14} />
+                      Abrir retirada no Maps
+                    </a>
+                  ) : null}
                 </div>
 
                 <div className="bg-white p-4 rounded-[2.2rem] border border-slate-100">

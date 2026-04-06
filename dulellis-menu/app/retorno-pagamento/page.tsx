@@ -1,8 +1,21 @@
-import { CheckCircle2, Clock3, CreditCard, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, CreditCard, MapPin, XCircle } from "lucide-react";
 import RetornoActions from "./RetornoActions";
 import { getServiceSupabase } from "@/lib/server-supabase";
 
 const WHATSAPP_LOJA = "5547988347100";
+const LOJA_LAT = -26.8941;
+const LOJA_LNG = -48.6538;
+const LOJA_ENDERECO_RETIRADA = "Rua Vandelino Lopes Fagundes";
+const LOJA_BAIRRO_RETIRADA = "Centro";
+const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
+const LOJA_CEP_RETIRADA = "88370-390";
+const LOJA_ENDERECO_RETIRADA_RESUMO = [
+  LOJA_ENDERECO_RETIRADA,
+  LOJA_BAIRRO_RETIRADA,
+  LOJA_CIDADE_UF_RETIRADA,
+  `CEP ${LOJA_CEP_RETIRADA}`,
+].join(", ");
+const LOJA_LINK_MAPS_RETIRADA = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${LOJA_LAT},${LOJA_LNG}`)}`;
 
 function getStatusInfo(status: string) {
   const normalizado = status.trim().toLowerCase();
@@ -19,8 +32,8 @@ function getStatusInfo(status: string) {
 
   if (["pending", "in_process", "aguardando", "waiting"].includes(normalizado)) {
     return {
-      titulo: "Pagamento em análise",
-      descricao: "Seu pagamento está em processamento.",
+      titulo: "Pagamento em analise",
+      descricao: "Seu pagamento esta em processamento.",
       cor: "text-amber-600",
       card: "bg-amber-50 border-amber-200",
       Icone: Clock3,
@@ -29,8 +42,8 @@ function getStatusInfo(status: string) {
 
   if (["rejected", "cancelled", "canceled", "failed", "negado"].includes(normalizado)) {
     return {
-      titulo: "Pagamento não aprovado",
-      descricao: "Tente novamente com outro método de pagamento.",
+      titulo: "Pagamento nao aprovado",
+      descricao: "Tente novamente com outro metodo de pagamento.",
       cor: "text-rose-600",
       card: "bg-rose-50 border-rose-200",
       Icone: XCircle,
@@ -39,7 +52,7 @@ function getStatusInfo(status: string) {
 
   return {
     titulo: "Retorno do pagamento",
-    descricao: "Recebemos o retorno da transação.",
+    descricao: "Recebemos o retorno da transacao.",
     cor: "text-slate-700",
     card: "bg-slate-50 border-slate-200",
     Icone: CreditCard,
@@ -60,6 +73,7 @@ type PedidoResumo = {
   itens: PedidoItem[];
   enderecoCompleto: string;
   pontoReferencia: string;
+  retiradaNoBalcao: boolean;
 };
 
 type ClienteEndereco = {
@@ -74,12 +88,30 @@ function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
 }
 
+function normalizarTexto(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function pedidoEhRetiradaNoBalcao(observacao?: string | null) {
+  return normalizarTexto(String(observacao || "")).includes("tipo de entrega: retirar no balcao");
+}
+
 function whatsappEquivalente(a: string, b: string): boolean {
   const wa = normalizarNumero(a);
   const wb = normalizarNumero(b);
   if (!wa || !wb) return false;
   if (wa === wb) return true;
   return wa.slice(-10) === wb.slice(-10);
+}
+
+function formatarCep(cep: string) {
+  const digits = normalizarNumero(cep).slice(0, 8);
+  if (digits.length !== 8) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
 function limparEnderecoDePontoReferencia(endereco: string) {
@@ -93,6 +125,15 @@ function extrairPontoReferenciaDeEndereco(endereco: string) {
   const texto = String(endereco || "");
   const match = texto.match(/ponto\s+de\s+refer(?:e|ê)ncia:\s*(.+)$/i);
   return String(match?.[1] || "").trim();
+}
+
+function montarEnderecoCompleto(endereco: string, numero: string, bairro: string, cidade: string, cep: string) {
+  const enderecoPrincipal = [endereco, numero].filter(Boolean).join(", ").trim();
+  const cepFormatado = formatarCep(cep);
+
+  return [enderecoPrincipal, bairro, cidade, cepFormatado ? `CEP ${cepFormatado}` : ""]
+    .filter(Boolean)
+    .join(" - ");
 }
 
 function parseItensPedido(raw: unknown): PedidoItem[] {
@@ -158,26 +199,65 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
   const supabase = getServiceSupabase();
   if (!supabase) return null;
 
-  const { data: pedido, error: erroPedido } = await supabase
-    .from("pedidos")
-    .select("id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,created_at")
-    .eq("pagamento_referencia", ref)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const tentativasSelectPedido = [
+    "id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,observacao,endereco,numero,bairro,cidade,cep,ponto_referencia,created_at",
+    "id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,observacao,endereco,numero,bairro,cidade,ponto_referencia,created_at",
+    "id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,observacao,created_at",
+    "id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,created_at",
+  ];
 
-  if (erroPedido || !pedido) return null;
+  let pedido = null as Record<string, unknown> | null;
+  for (const selectCols of tentativasSelectPedido) {
+    const { data, error } = await supabase
+      .from("pedidos")
+      .select(selectCols)
+      .eq("pagamento_referencia", ref)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data) {
+      pedido = data as unknown as Record<string, unknown>;
+      break;
+    }
+  }
+
+  if (!pedido) return null;
 
   const whatsapp = String(pedido.whatsapp || "").trim();
   const clienteNome = String(pedido.cliente_nome || "").trim();
   const formaPagamento = String(pedido.forma_pagamento || "Pix").trim();
-  const itens = parseItensPedido((pedido as { itens?: unknown }).itens);
+  const itens = parseItensPedido(pedido.itens);
   const total = Number(pedido.total || 0);
+  const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(String(pedido.observacao || ""));
 
-  let enderecoCompleto = "";
+  let enderecoCompleto = retiradaNoBalcao ? LOJA_ENDERECO_RETIRADA_RESUMO : "";
   let pontoReferencia = "";
+
+  if (!retiradaNoBalcao) {
+    const enderecoBrutoPedido = String(pedido.endereco || "").trim();
+    const numeroPedido = String(pedido.numero || "").trim();
+    const bairroPedido = String(pedido.bairro || "").trim();
+    const cidadePedido = String(pedido.cidade || "").trim();
+    const cepPedido = String(pedido.cep || "").trim();
+    const pontoDiretoPedido = String(pedido.ponto_referencia || "").trim();
+
+    if (enderecoBrutoPedido) {
+      const pontoExtraidoPedido = extrairPontoReferenciaDeEndereco(enderecoBrutoPedido);
+      const enderecoLimpoPedido = limparEnderecoDePontoReferencia(enderecoBrutoPedido);
+      enderecoCompleto = montarEnderecoCompleto(
+        enderecoLimpoPedido,
+        numeroPedido,
+        bairroPedido,
+        cidadePedido,
+        cepPedido,
+      );
+      pontoReferencia = pontoDiretoPedido || pontoExtraidoPedido;
+    }
+  }
+
   const whatsappNormalizado = normalizarNumero(whatsapp);
-  if (whatsappNormalizado.length >= 10) {
+  if (!retiradaNoBalcao && !enderecoCompleto && whatsappNormalizado.length >= 10) {
     const exatos = await buscarClientesComSchemaFlexivel(
       supabase,
       { tipo: "eq", coluna: "whatsapp", valor: whatsappNormalizado },
@@ -215,7 +295,7 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
       const pontoDireto = String(cliente.ponto_referencia || "").trim();
       const pontoExtraido = extrairPontoReferenciaDeEndereco(enderecoBruto);
       const enderecoLimpo = limparEnderecoDePontoReferencia(enderecoBruto);
-      enderecoCompleto = [enderecoLimpo, numero].filter(Boolean).join(", ").trim();
+      enderecoCompleto = montarEnderecoCompleto(enderecoLimpo, numero, "", "", "");
       pontoReferencia = pontoDireto || pontoExtraido;
     }
   }
@@ -229,6 +309,7 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
     itens,
     enderecoCompleto,
     pontoReferencia,
+    retiradaNoBalcao,
   };
 }
 
@@ -246,29 +327,36 @@ function montarMensagemWhatsappPadraoPedido(
     const itensFormatados =
       pedido.itens.length > 0
         ? pedido.itens.map((i) => `- ${i.qtd}x ${i.nome}`).join("\n")
-        : "- Itens não informados";
+        : "- Itens nao informados";
+    const linhaRecebimento = pedido.retiradaNoBalcao
+      ? `Retirada no balcao: ${pedido.enderecoCompleto || LOJA_ENDERECO_RETIRADA_RESUMO}\n`
+      : `Endereco: ${pedido.enderecoCompleto || "Nao informado"}\n`;
+    const linhaPontoReferencia =
+      pedido.retiradaNoBalcao || !pedido.pontoReferencia
+        ? ""
+        : `Ponto de referencia: ${pedido.pontoReferencia}\n`;
 
     return (
       `Pedido Dulelis\n\n` +
       `Cliente: ${pedido.clienteNome || fallback.clienteNome || "Cliente"}\n` +
-      `Endereço: ${pedido.enderecoCompleto || "Não informado"}\n` +
-      `Ponto de Referência: ${pedido.pontoReferencia || "Não informado"}\n` +
+      linhaRecebimento +
+      linhaPontoReferencia +
       `Pagamento: ${pedido.formaPagamento || "Pix"}\n\n` +
       `Itens:\n${itensFormatados}\n\n` +
       `Total: R$ ${pedido.total.toFixed(2)}\n` +
-      `Referência do pedido: ${pedido.referencia}\n` +
-      (fallback.transactionId ? `Transação: ${fallback.transactionId}\n` : "") +
-      `Status do pagamento: ${fallback.status || "indisponível"}.\n` +
+      `Referencia do pedido: ${pedido.referencia}\n` +
+      (fallback.transactionId ? `Transacao: ${fallback.transactionId}\n` : "") +
+      `Status do pagamento: ${fallback.status || "indisponivel"}.\n` +
       `Pode confirmar meu pedido, por favor?`
     );
   }
 
   return [
-    fallback.clienteNome ? `Olá, sou ${fallback.clienteNome.replace(/\+/g, " ").trim()}.` : "Olá!",
+    fallback.clienteNome ? `Ola, sou ${fallback.clienteNome.replace(/\+/g, " ").trim()}.` : "Ola!",
     `${fallback.tituloStatus}.`,
     fallback.status ? `Status do pagamento: ${fallback.status}.` : "",
-    fallback.transactionId ? `Transação: ${fallback.transactionId}.` : "",
-    fallback.referencia ? `Referência do pedido: ${fallback.referencia}.` : "",
+    fallback.transactionId ? `Transacao: ${fallback.transactionId}.` : "",
+    fallback.referencia ? `Referencia do pedido: ${fallback.referencia}.` : "",
     "Pode confirmar meu pedido, por favor?",
   ]
     .filter(Boolean)
@@ -315,19 +403,56 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
         {transactionId ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-5">
             <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">
-              Código da transação
+              Codigo da transacao
             </p>
             <p className="text-sm font-mono break-all text-slate-700">{transactionId}</p>
+          </div>
+        ) : null}
+        {pedidoResumo ? (
+          <div
+            className={`rounded-2xl border p-4 mb-5 ${
+              pedidoResumo.retiradaNoBalcao ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-white"
+            }`}
+          >
+            <p
+              className={`text-[11px] font-bold uppercase tracking-widest ${
+                pedidoResumo.retiradaNoBalcao ? "text-emerald-700" : "text-slate-400"
+              }`}
+            >
+              {pedidoResumo.retiradaNoBalcao ? "Retirada no balcao" : "Recebimento"}
+            </p>
+            <p className="mt-2 text-sm font-bold text-slate-800">
+              {pedidoResumo.enderecoCompleto || "Endereco nao informado"}
+            </p>
+            {pedidoResumo.retiradaNoBalcao ? (
+              <>
+                <p className="mt-2 text-xs font-medium text-slate-600">
+                  Seu pedido sera separado na loja para retirada.
+                </p>
+                <a
+                  href={LOJA_LINK_MAPS_RETIRADA}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-widest text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  <MapPin size={14} />
+                  Abrir retirada no Maps
+                </a>
+              </>
+            ) : pedidoResumo.pontoReferencia ? (
+              <p className="mt-2 text-xs font-medium text-slate-600">
+                Ponto de referencia: {pedidoResumo.pontoReferencia}
+              </p>
+            ) : null}
           </div>
         ) : null}
         <RetornoActions
           whatsappLink={whatsappLink}
           refCode={referencia}
-          autoRedirect={aprovado}
+          autoRedirect={aprovado && !pedidoResumo?.retiradaNoBalcao}
+          retiradaNoBalcao={Boolean(pedidoResumo?.retiradaNoBalcao)}
         />
       </section>
     </main>
   );
 }
-
-
