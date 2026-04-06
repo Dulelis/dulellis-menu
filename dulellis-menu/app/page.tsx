@@ -2541,8 +2541,9 @@ function ClientePageContent() {
                   src={slideAtualVitrine.imagem_url}
                   alt={slideAtualVitrine?.titulo || "Banner"}
                   className="absolute inset-0"
-                  paddingClassName="p-3"
-                  imageClassName="drop-shadow-[0_18px_35px_rgba(15,23,42,0.35)]"
+                  paddingClassName="p-0"
+                  fitMode="cover"
+                  imageClassName="drop-shadow-[0_18px_35px_rgba(15,23,42,0.2)]"
                   sizes="(max-width: 640px) calc(100vw - 2rem), 640px"
                   onTouchStart={pausarBannerNoToque}
                   onTouchEnd={retomarBannerAoSoltar}

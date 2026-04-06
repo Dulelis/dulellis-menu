@@ -7,6 +7,7 @@ type PropagandaFrameProps = {
   className?: string;
   imageClassName?: string;
   paddingClassName?: string;
+  fitMode?: "contain" | "cover";
   sizes?: string;
   priority?: boolean;
 } & Omit<ComponentPropsWithoutRef<"div">, "children" | "className">;
@@ -17,13 +18,15 @@ export function PropagandaFrame({
   className = "",
   imageClassName = "",
   paddingClassName = "p-3",
+  fitMode = "contain",
   sizes = "100vw",
   priority = false,
   ...restProps
 }: PropagandaFrameProps) {
   const rootClassName = ["relative isolate overflow-hidden bg-white/10", className].filter(Boolean).join(" ");
   const imageContainerClassName = ["relative z-10 h-full w-full", paddingClassName].filter(Boolean).join(" ");
-  const foregroundClassName = ["object-contain", imageClassName].filter(Boolean).join(" ");
+  const foregroundFitClassName = fitMode === "cover" ? "object-cover" : "object-contain";
+  const foregroundClassName = [foregroundFitClassName, imageClassName].filter(Boolean).join(" ");
 
   return (
     <div className={rootClassName} {...restProps}>
