@@ -5,7 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AppBottomNav } from "@/components/AppBottomNav";
-import { PropagandaFrame } from "@/components/PropagandaFrame";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
 import { validateCustomerFullName } from "@/lib/customer-name-policy";
@@ -2535,39 +2534,39 @@ function ClientePageContent() {
                 </div>
               )}
             </div>
-            <div className="relative mt-1 rounded-xl overflow-hidden border border-white/10 h-60 sm:h-64 bg-white/5">
+            <div
+              className="relative mt-1 rounded-xl overflow-hidden border border-white/10 h-60 sm:h-64 bg-white/5"
+              onTouchStart={pausarBannerNoToque}
+              onTouchEnd={retomarBannerAoSoltar}
+              onTouchCancel={retomarBannerAoSoltar}
+              onPointerDown={(event) => {
+                if (event.pointerType === "touch") {
+                  pausarBannerNoToque();
+                }
+              }}
+              onPointerUp={(event) => {
+                if (event.pointerType === "touch") {
+                  retomarBannerAoSoltar();
+                }
+              }}
+              onPointerCancel={(event) => {
+                if (event.pointerType === "touch") {
+                  retomarBannerAoSoltar();
+                }
+              }}
+              onPointerLeave={(event) => {
+                if (event.pointerType === "touch") {
+                  retomarBannerAoSoltar();
+                }
+              }}
+            >
               {slideAtualVitrine?.imagem_url ? (
-                <PropagandaFrame
+                <Image
                   src={slideAtualVitrine.imagem_url}
                   alt={slideAtualVitrine?.titulo || "Banner"}
-                  className="absolute inset-0"
-                  paddingClassName="p-0"
-                  fitMode="cover"
-                  imageClassName="drop-shadow-[0_18px_35px_rgba(15,23,42,0.2)]"
+                  fill
                   sizes="(max-width: 640px) calc(100vw - 2rem), 640px"
-                  onTouchStart={pausarBannerNoToque}
-                  onTouchEnd={retomarBannerAoSoltar}
-                  onTouchCancel={retomarBannerAoSoltar}
-                  onPointerDown={(event) => {
-                    if (event.pointerType === "touch") {
-                      pausarBannerNoToque();
-                    }
-                  }}
-                  onPointerUp={(event) => {
-                    if (event.pointerType === "touch") {
-                      retomarBannerAoSoltar();
-                    }
-                  }}
-                  onPointerCancel={(event) => {
-                    if (event.pointerType === "touch") {
-                      retomarBannerAoSoltar();
-                    }
-                  }}
-                  onPointerLeave={(event) => {
-                    if (event.pointerType === "touch") {
-                      retomarBannerAoSoltar();
-                    }
-                  }}
+                  className="h-full w-full object-cover"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-pink-100/80">
