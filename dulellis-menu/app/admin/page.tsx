@@ -18,6 +18,7 @@ const QZ_TRAY_SCRIPT_URL = 'https://unpkg.com/qz-tray@2.2.4/qz-tray.js';
 const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = 'dulellis.admin.order-alarm.enabled';
 const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
+const ADMIN_ALARME_PEDIDOS_REPETICAO_MS = 10000;
 
 type QzGlobal = {
   websocket?: {
@@ -156,6 +157,7 @@ function AdminPageContent() {
   const [mostrarModalEntregador, setMostrarModalEntregador] = useState(false);
   const [editandoEntregadorId, setEditandoEntregadorId] = useState<number | null>(null);
   const [alarmePedidosAtivo, setAlarmePedidosAtivo] = useState(true);
+  const [alarmeSonoroLiberado, setAlarmeSonoroLiberado] = useState(false);
   const [alertaNovoPedido, setAlertaNovoPedido] = useState('');
   const [alertaEntregaAceita, setAlertaEntregaAceita] = useState('');
   
@@ -224,6 +226,7 @@ function AdminPageContent() {
   const assinaturasPedidosRef = useRef<Map<number, string>>(new Map());
   const pedidosPixImpressosRef = useRef<Set<number>>(new Set());
   const pedidosConhecidosRef = useRef<Set<number>>(new Set());
+  const pedidosComAlarmeAtivoRef = useRef<Set<number>>(new Set());
   const audioContextAlarmeRef = useRef<AudioContext | null>(null);
   const alarmePendenteRef = useRef(false);
   const pedidosIniciaisMapeadosRef = useRef(false);
@@ -319,35 +322,66 @@ function AdminPageContent() {
     if (contexto.state === 'suspended') {
       await contexto.resume();
     }
+    setAlarmeSonoroLiberado(contexto.state === 'running');
     return contexto;
+  }, []);
+
+  const solicitarPermissaoNotificacoes = useCallback(async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
+    if (Notification.permission === 'default') {
+      try {
+        return await Notification.requestPermission();
+      } catch {
+        return Notification.permission;
+      }
+    }
+    return Notification.permission;
+  }, []);
+
+  const mostrarNotificacaoNovoPedido = useCallback((pedidoId: number) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+
+    try {
+      new Notification('Novo pedido na Dulellis', {
+        body: `Pedido #${pedidoId} aguardando aceite.`,
+        tag: `pedido-${pedidoId}`,
+      });
+    } catch {}
   }, []);
 
   const tocarAlarmeNovoPedido = useCallback(async () => {
     if (!alarmePedidosAtivo) return;
 
     try {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate([220, 120, 220, 120, 320]);
+      }
+
       const contexto = await prepararAudioAlarme();
       if (!contexto || contexto.state !== 'running') {
+        setAlarmeSonoroLiberado(false);
         alarmePendenteRef.current = true;
         return;
       }
 
       alarmePendenteRef.current = false;
+      setAlarmeSonoroLiberado(true);
 
-      const tons = [880, 660, 880];
+      const tons = [988, 740, 988, 740, 1046];
       const inicioBase = contexto.currentTime + 0.02;
 
       tons.forEach((frequencia, indice) => {
         const oscilador = contexto.createOscillator();
         const ganho = contexto.createGain();
-        const inicio = inicioBase + indice * 0.26;
-        const fim = inicio + 0.16;
+        const inicio = inicioBase + indice * 0.24;
+        const fim = inicio + 0.17;
 
         oscilador.type = 'square';
         oscilador.frequency.setValueAtTime(frequencia, inicio);
 
         ganho.gain.setValueAtTime(0.0001, inicio);
-        ganho.gain.exponentialRampToValueAtTime(0.18, inicio + 0.01);
+        ganho.gain.exponentialRampToValueAtTime(0.32, inicio + 0.01);
         ganho.gain.exponentialRampToValueAtTime(0.0001, fim);
 
         oscilador.connect(ganho);
@@ -364,9 +398,11 @@ function AdminPageContent() {
   const notificarNovoPedido = useCallback((pedido: any) => {
     const pedidoId = Number(pedido?.id || 0);
     if (pedidoId <= 0) return;
+    pedidosComAlarmeAtivoRef.current.add(pedidoId);
     setAlertaNovoPedido(`Novo pedido #${pedidoId} aguardando aceite.`);
+    mostrarNotificacaoNovoPedido(pedidoId);
     void tocarAlarmeNovoPedido();
-  }, [tocarAlarmeNovoPedido]);
+  }, [mostrarNotificacaoNovoPedido, tocarAlarmeNovoPedido]);
 
   const registrarPedidosMonitorados = useCallback((lista: any[], dispararAlarmeParaNovos: boolean) => {
     for (const pedido of Array.isArray(lista) ? lista : []) {
@@ -385,11 +421,17 @@ function AdminPageContent() {
     setAlarmePedidosAtivo((anterior) => {
       const proximo = !anterior;
       if (proximo) {
+        void solicitarPermissaoNotificacoes();
         void prepararAudioAlarme();
       }
       return proximo;
     });
-  }, [prepararAudioAlarme]);
+  }, [prepararAudioAlarme, solicitarPermissaoNotificacoes]);
+
+  const testarAlarmePedidos = useCallback(async () => {
+    await solicitarPermissaoNotificacoes();
+    await tocarAlarmeNovoPedido();
+  }, [solicitarPermissaoNotificacoes, tocarAlarmeNovoPedido]);
 
   const carregarDados = useCallback(async () => {
     const res = await fetch('/api/admin/data', { cache: 'no-store' });
@@ -520,6 +562,29 @@ function AdminPageContent() {
       window.removeEventListener('keydown', desbloquearAudio);
     };
   }, [alarmePedidosAtivo, prepararAudioAlarme, tocarAlarmeNovoPedido]);
+
+  useEffect(() => {
+    const pedidosAguardandoAceite = new Set(
+      pedidos
+        .filter((pedido) => normalizarStatusPedidoAdmin(pedido) === 'aguardando_aceite')
+        .map((pedido) => Number(pedido?.id || 0))
+        .filter((id) => id > 0),
+    );
+
+    pedidosComAlarmeAtivoRef.current = new Set(
+      Array.from(pedidosComAlarmeAtivoRef.current).filter((id) => pedidosAguardandoAceite.has(id)),
+    );
+
+    if (!alarmePedidosAtivo || pedidosComAlarmeAtivoRef.current.size === 0) return;
+
+    const timer = window.setInterval(() => {
+      if (pedidosComAlarmeAtivoRef.current.size > 0) {
+        void tocarAlarmeNovoPedido();
+      }
+    }, ADMIN_ALARME_PEDIDOS_REPETICAO_MS);
+
+    return () => window.clearInterval(timer);
+  }, [alarmePedidosAtivo, pedidos, tocarAlarmeNovoPedido]);
 
   useEffect(() => {
     const agendarRecarga = () => {
@@ -3257,6 +3322,17 @@ function AdminPageContent() {
               {alarmePedidosAtivo ? 'Alarme ligado' : 'Alarme desligado'}
             </button>
 
+            {alarmePedidosAtivo ? (
+              <button
+                type="button"
+                onClick={() => { void testarAlarmePedidos(); }}
+                className="w-full sm:w-auto bg-white text-slate-700 px-4 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-sm border border-slate-200 hover:bg-slate-50 transition-all"
+              >
+                <BellRing size={18} />
+                Testar alarme
+              </button>
+            ) : null}
+
             <button
               type="button"
               onClick={() => { void sairAdmin(); }}
@@ -3265,6 +3341,12 @@ function AdminPageContent() {
             >
               {saindo ? 'Saindo...' : 'Sair'}
             </button>
+
+            {alarmePedidosAtivo && !alarmeSonoroLiberado ? (
+              <p className="w-full text-xs font-bold text-amber-700">
+                Clique em `Testar alarme` uma vez para liberar o som no navegador.
+              </p>
+            ) : null}
           </div>
         </header>
 
