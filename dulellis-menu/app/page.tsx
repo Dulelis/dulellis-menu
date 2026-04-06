@@ -2190,11 +2190,12 @@ function ClientePageContent() {
     topoVitrineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [carrinho.length, cliente.whatsapp, podeAcompanharPedido, sessaoCliente]);
 
+  const temAtalhoCarrinho = Boolean(sessaoCliente && carrinho.length > 0);
+
   return (
     <div
-      className={`app-page min-h-[100dvh] bg-[#FDFCFD] font-sans text-slate-900 ${
-        sessaoCliente && carrinho.length > 0 ? "pb-64" : "pb-40"
-      }`}
+      className="app-page min-h-[100dvh] bg-[#FDFCFD] font-sans text-slate-900"
+      data-has-cart={temAtalhoCarrinho ? "true" : "false"}
     >
       <PwaLaunchSplash loading={loading} />
       <header
@@ -2537,6 +2538,12 @@ function ClientePageContent() {
         </div>
       </footer>
 
+      <div
+        aria-hidden="true"
+        className="app-bottom-spacer"
+        data-has-cart={temAtalhoCarrinho ? "true" : "false"}
+      />
+
       <AppBottomNav
         activeTab={abaAppAtiva}
         cartCount={carrinho.reduce((total, item) => total + item.qtd, 0)}
@@ -2548,8 +2555,8 @@ function ClientePageContent() {
         onOrder={abrirAtalhoPedido}
       />
 
-      {sessaoCliente && carrinho.length > 0 && (
-        <div className="app-floating-cta fixed bottom-24 left-1/2 -translate-x-1/2 w-[94%] max-w-md bg-slate-900 text-white p-5 rounded-[3rem] shadow-2xl flex justify-between items-center z-50">
+      {temAtalhoCarrinho && (
+        <div className="app-floating-cta fixed left-1/2 -translate-x-1/2 w-[94%] max-w-md bg-slate-900 text-white p-5 rounded-[3rem] shadow-2xl flex justify-between items-center z-50">
           <div className="flex items-center gap-4 ml-2">
             <div className="bg-pink-600 p-3 rounded-2xl relative">
               <ShoppingBag size={20} />

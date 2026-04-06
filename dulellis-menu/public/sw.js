@@ -1,6 +1,6 @@
-const STATIC_CACHE = "dulellis-static-v1";
-const RUNTIME_CACHE = "dulellis-runtime-v1";
-const IMAGE_CACHE = "dulellis-images-v1";
+const STATIC_CACHE = "dulellis-static-v3";
+const RUNTIME_CACHE = "dulellis-runtime-v3";
+const IMAGE_CACHE = "dulellis-images-v3";
 const OFFLINE_URL = "/offline";
 const APP_SHELL = [
   "/",

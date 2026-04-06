@@ -2,18 +2,39 @@
 
 :root {
   color-scheme: light;
+  --app-bottom-nav-height: calc(5.6rem + constant(safe-area-inset-bottom));
+  --app-bottom-nav-height: calc(5.6rem + env(safe-area-inset-bottom));
+  --app-bottom-page-gap: 1.5rem;
+  --app-bottom-cta-clearance: 10rem;
 }
 
 html {
   background:
     radial-gradient(circle at top, rgba(251, 207, 232, 0.45), transparent 34%),
     linear-gradient(180deg, #fff7fa 0%, #ffffff 38%, #fffafc 100%);
+  scroll-padding-bottom: calc(var(--app-bottom-nav-height) + var(--app-bottom-page-gap));
 }
 
 body {
   min-height: 100vh;
   min-height: 100dvh;
   background: transparent;
+}
+
+.app-page {
+  padding-bottom: 0;
+}
+
+.app-page[data-has-cart="true"] {
+  padding-bottom: 0;
+}
+
+.app-bottom-spacer {
+  height: calc(var(--app-bottom-nav-height) + var(--app-bottom-page-gap));
+}
+
+.app-bottom-spacer[data-has-cart="true"] {
+  height: calc(var(--app-bottom-nav-height) + var(--app-bottom-cta-clearance));
 }
 
 @keyframes gentleBlink {
@@ -78,6 +99,10 @@ body {
   min-height: 4.8rem;
 }
 
+.app-floating-cta {
+  bottom: calc(var(--app-bottom-nav-height) + 0.75rem);
+}
+
 .admin-app-shell {
   min-height: 100vh;
   min-height: 100dvh;
@@ -100,10 +125,6 @@ body {
     overscroll-behavior-y: none;
   }
 
-  .app-page {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
   .app-topbar {
     padding-top: calc(2rem + env(safe-area-inset-top));
   }
@@ -115,7 +136,7 @@ body {
   }
 
   .app-floating-cta {
-    bottom: calc(env(safe-area-inset-bottom) + 6rem);
+    bottom: calc(var(--app-bottom-nav-height) + 0.75rem);
   }
 
   .app-sheet {
