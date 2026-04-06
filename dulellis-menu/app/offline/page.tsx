@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Sem conexao",
+  title: "Sem conexão",
 };
 
 export default function OfflinePage() {
@@ -18,11 +18,11 @@ export default function OfflinePage() {
             Modo offline
           </p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">
-            A vitrine ficou sem conexao
+            A vitrine ficou sem conexão
           </h1>
           <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
-            Quando a internet voltar, a Dulelis sincroniza de novo. Se voce ja abriu o app antes,
-            a ultima versao salva ainda pode aparecer no aparelho.
+            Quando a internet voltar, a Dulelis sincroniza de novo. Se você já abriu o app antes,
+            a última versão salva ainda pode aparecer no aparelho.
           </p>
           <div className="mt-8 space-y-3">
             <Link
@@ -33,7 +33,7 @@ export default function OfflinePage() {
               Tentar novamente
             </Link>
             <p className="text-xs font-bold text-slate-400">
-              Dica: instalar na tela inicial deixa a experiencia mais parecida com app.
+              Dica: instalar na tela inicial deixa a experiência mais parecida com app.
             </p>
           </div>
         </section>

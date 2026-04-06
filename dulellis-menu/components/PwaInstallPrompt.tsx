@@ -132,12 +132,12 @@ export function PwaInstallPrompt() {
               <p className="mt-1 text-sm font-black text-slate-800">
                 {installEvent
                   ? "Instale a Dulelis na tela inicial"
-                  : "Adicione a Dulelis a tela inicial do iPhone"}
+                  : "Adicione a Dulelis à tela inicial do iPhone"}
               </p>
               <p className="mt-1 text-xs font-bold leading-5 text-slate-500">
                 {installEvent
-                  ? "Abra em tela cheia, com icone proprio e acesso mais rapido como um app."
-                  : "Toque em Compartilhar e depois em Adicionar a Tela de Inicio para abrir como app."}
+                  ? "Abra em tela cheia, com ícone próprio e acesso mais rápido como um app."
+                  : "Toque em Compartilhar e depois em Adicionar à Tela de Início para abrir como app."}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {installEvent ? (
@@ -159,7 +159,7 @@ export function PwaInstallPrompt() {
               type="button"
               onClick={dismissCard}
               className="rounded-full bg-white p-2 text-slate-400 transition-colors hover:text-slate-600"
-              aria-label="Fechar aviso de instalacao"
+              aria-label="Fechar aviso de instalação"
             >
               <X size={16} />
             </button>
@@ -178,7 +178,7 @@ export function PwaInstallPrompt() {
                 Sem internet
               </p>
               <p className="mt-1 text-xs font-bold leading-5 text-slate-700">
-                A PWA tenta abrir a ultima vitrine salva no aparelho e continua funcionando melhor
+                A PWA tenta abrir a última vitrine salva no aparelho e continua funcionando melhor
                 depois de instalada.
               </p>
             </div>

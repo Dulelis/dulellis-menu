@@ -32,7 +32,7 @@ import {
 
 const LOJA_LAT = -26.8882331;
 const LOJA_LNG = -48.6518957;
-const LOJA_ENDERECO_RETIRADA = "Rua Manoel Felicio Adriano, 532";
+const LOJA_ENDERECO_RETIRADA = "Rua Manoel Felício Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
 const LOJA_CEP_RETIRADA = "88370-314";
@@ -53,14 +53,14 @@ const DIAS_SEMANA_CHAVES = ["domingo", "segunda", "terca", "quarta", "quinta", "
 const DIAS_SEMANA_LABELS: Record<(typeof DIAS_SEMANA_CHAVES)[number], string> = {
   domingo: "Domingo",
   segunda: "Segunda",
-  terca: "Terca",
+  terca: "Terça",
   quarta: "Quarta",
   quinta: "Quinta",
   sexta: "Sexta",
-  sabado: "Sabado",
+  sabado: "Sábado",
 };
 const FORMA_DINHEIRO = "Dinheiro";
-const FORMA_CARTAO_ENTREGA = "Cartao na entrega";
+const FORMA_CARTAO_ENTREGA = "Cartão na entrega";
 const FORMA_PIX_CARTAO = "Pix";
 const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_CARTAO_ENTREGA, FORMA_PIX_CARTAO];
 const TIPO_ENTREGA = "Entrega";
@@ -273,7 +273,7 @@ function salvarVitrineCache(cache: VitrineCache) {
   try {
     window.localStorage.setItem(VITRINE_CACHE_STORAGE_KEY, JSON.stringify(cache));
   } catch (error) {
-    console.warn("Nao foi possivel salvar o cache local da vitrine.", error);
+    console.warn("Não foi possível salvar o cache local da vitrine.", error);
   }
 }
 
@@ -305,7 +305,7 @@ function lerVitrineCache(): VitrineCache | null {
             },
     };
   } catch (error) {
-    console.warn("O cache local da vitrine ficou invalido e sera ignorado.", error);
+    console.warn("O cache local da vitrine ficou inválido e será ignorado.", error);
     try {
       window.localStorage.removeItem(VITRINE_CACHE_STORAGE_KEY);
     } catch {}
@@ -811,7 +811,7 @@ function ClientePageContent() {
         setPropagandas(propagandasCarregadas);
       }
       if (errHorario) {
-        console.warn("Falha ao carregar horario de funcionamento. Seguindo com padrao.", errHorario.message);
+        console.warn("Falha ao carregar horário de funcionamento. Seguindo com padrão.", errHorario.message);
         horarioNormalizado = {
           hora_abertura: "08:00",
           hora_fechamento: "18:00",
@@ -845,9 +845,9 @@ function ClientePageContent() {
       const cacheLocal = mostrarLoading ? lerVitrineCache() : null;
       if (cacheLocal) {
         aplicarVitrineCache(cacheLocal);
-        alert("Sem conexao. Exibindo a ultima vitrine salva no aparelho.");
+        alert("Sem conexão. Exibindo a última vitrine salva no aparelho.");
       } else if (mostrarLoading) {
-        alert(obterMensagemErro(e) || "Erro ao carregar cardapio. Verifique sua conexao.");
+        alert(obterMensagemErro(e) || "Erro ao carregar cardápio. Verifique sua conexão.");
       }
     } finally {
       if (mostrarLoading) {
@@ -1104,7 +1104,7 @@ function ClientePageContent() {
         .on("postgres_changes", { event: "*", schema: "public", table: "configuracoes_loja" }, agendarVitrine)
         .subscribe();
     } catch (error) {
-      console.warn("Realtime da vitrine indisponivel. Mantendo recarga automatica.", error);
+      console.warn("Realtime da vitrine indisponível. Mantendo recarga automática.", error);
     }
 
     const timer = window.setInterval(() => {
@@ -1963,7 +1963,7 @@ function ClientePageContent() {
     }
     if (!carrinho.length) return;
     if (formaPagamento === FORMA_DINHEIRO && trocoParaPreenchido && trocoParaValor === null) {
-      alert("Informe um valor valido para troco.");
+      alert("Informe um valor válido para troco.");
       return;
     }
     if (formaPagamento === FORMA_DINHEIRO && trocoParaValor !== null && trocoParaValor < totalGeral) {
@@ -2023,7 +2023,7 @@ function ClientePageContent() {
           throw new Error(dataCheckout.error || "Falha ao criar pagamento no Mercado Pago");
         }
         if (!dataCheckout.url) {
-          throw new Error("Link de pagamento indisponivel");
+          throw new Error("Link de pagamento indisponível");
         }
         if (janelaPagamento && !janelaPagamento.closed) {
           janelaPagamento.location.href = dataCheckout.url;
@@ -2116,9 +2116,9 @@ function ClientePageContent() {
       if (tipo === "percentual") return `${valor}% OFF`;
       if (tipo === "desconto_fixo") return `R$ ${valor.toFixed(2)} OFF`;
       if (tipo === "leve_mais_um") return `Compre ${Number(promo.qtd_minima || 1)} Leve ${Number(promo.qtd_bonus || 1)}`;
-      if (tipo === "aniversariante") return `${valor}% no aniversario`;
-      if (tipo === "frete_gratis") return "Frete Gratis";
-      return "Promocao";
+      if (tipo === "aniversariante") return `${valor}% no aniversário`;
+      if (tipo === "frete_gratis") return "Frete Grátis";
+      return "Promoção";
     },
     [promocoesAtivasHoje],
   );
@@ -2158,7 +2158,7 @@ function ClientePageContent() {
 
     const mensagensPromocoes = promocoesAtivasHoje.slice(0, 6).map((promo) => ({
       id: promo.id,
-      titulo: String(promo.titulo || "Promocao"),
+      titulo: String(promo.titulo || "Promoção"),
       descricao:
         String(promo.descricao || "").trim() || descricaoPromocaoVitrine(promo),
       imagem_url: "",
@@ -2282,7 +2282,7 @@ function ClientePageContent() {
         faixa,
         aberto: false,
         fechando: false,
-        mensagem: "Fechado hoje. Retornamos no proximo dia.",
+        mensagem: "Fechado hoje. Retornamos no próximo dia.",
       };
     }
 
@@ -2303,7 +2303,7 @@ function ClientePageContent() {
         faixa,
         aberto: false,
         fechando: false,
-        mensagem: "Fechado agora. Retornamos no proximo dia.",
+        mensagem: "Fechado agora. Retornamos no próximo dia.",
       };
     }
 
@@ -2483,7 +2483,7 @@ function ClientePageContent() {
               >
               <div className={`flex items-center gap-1.5 font-black uppercase tracking-wider ${fechandoAgora ? "text-base text-yellow-900" : "text-[11px] text-slate-700"}`}>
                 <Clock3 size={fechandoAgora ? 18 : 14} />
-                Horario: {statusHorario.faixa}
+                Horário: {statusHorario.faixa}
               </div>
               <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                 Dias: {diasFuncionamentoTexto}
@@ -2499,7 +2499,7 @@ function ClientePageContent() {
               )}
               {pedidosEncerradosHoje && (
                 <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-black uppercase tracking-wide text-red-700">
-                  Pedidos encerrados. Retornamos no proximo dia
+                  Pedidos encerrados. Retornamos no próximo dia
                 </p>
               )}
             </div>
@@ -2694,11 +2694,11 @@ function ClientePageContent() {
                           {prod.nome}
                         </h3>
                         <p className="text-[11px] leading-[1.25] text-slate-500 mt-1 line-clamp-2">
-                          {String(prod.descricao || "").trim() || "Confira essa delicia da Dulelis."}
+                          {String(prod.descricao || "").trim() || "Confira essa delícia da Dulelis."}
                         </p>
                         {Number(prod.quantidade ?? 0) === 1 && (
                           <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-500 mt-1">
-                            Ultima unidade
+                            Última unidade
                           </p>
                         )}
                         <div className="mt-1 flex items-center justify-between gap-2">
@@ -2769,7 +2769,7 @@ function ClientePageContent() {
             Dulelis Confeitaria - desde 2014
           </p>
           <p className="mt-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            A pausa perfeita para adocar seu dia.
+            A pausa perfeita para adoçar seu dia.
           </p>
         </div>
       </footer>
@@ -3081,7 +3081,7 @@ function ClientePageContent() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[65] flex items-end sm:items-center sm:justify-center">
           <div className="app-sheet bg-white w-full max-w-lg rounded-t-[3.5rem] sm:rounded-[3.5rem] p-7 max-h-[92vh] overflow-y-auto shadow-2xl">
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-2xl font-black italic text-slate-800">Acompanhar Pedido</h3>
+              <h3 className="text-2xl font-black italic text-slate-800">Acompanhar pedido</h3>
               <button
                 type="button"
                 onClick={() => setModalAcompanhamentoAberto(false)}
@@ -3152,8 +3152,8 @@ function ClientePageContent() {
                     className="text-left"
                     descricao={
                       pedidoAcompanhamento.status_chave === "saiu_entrega"
-                        ? "Seu pedido ja esta pronto. Use o endereco abaixo para retirar na loja."
-                        : "Seu pedido sera retirado na loja. O endereco e o Maps estao aqui para facilitar."
+                        ? "Seu pedido já está pronto. Use o endereço abaixo para retirar na loja."
+                        : "Seu pedido será retirado na loja. O endereço e o Maps estão aqui para facilitar."
                     }
                   />
                 ) : null}
@@ -3166,7 +3166,7 @@ function ClientePageContent() {
                 {acompanhamentoEhRetiradaNoBalcao ? (
                   <BlocoRetiradaLoja
                     className="text-left"
-                    descricao="Seu pedido foi finalizado para retirada. O endereco e o Maps estao aqui para facilitar."
+                    descricao="Seu pedido foi finalizado para retirada. O endereço e o Maps estão aqui para facilitar."
                   />
                 ) : null}
               </div>
@@ -3195,7 +3195,7 @@ function ClientePageContent() {
             {ultimoPedidoFoiRetirada ? (
               <BlocoRetiradaLoja
                 className="mt-6 text-left"
-                descricao="Seu pedido ficara disponivel neste endereço para retirada, sem taxa de entrega."
+                descricao="Seu pedido ficará disponível neste endereço para retirada, sem taxa de entrega."
               />
             ) : null}
             <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -3211,7 +3211,7 @@ function ClientePageContent() {
                 }}
                 className="w-full rounded-[2rem] bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
               >
-                Acompanhar Pedido
+                Acompanhar pedido
               </button>
               <button
                 type="button"
@@ -3262,7 +3262,7 @@ function ClientePageContent() {
                       Como receber
                     </p>
                     <p className="mt-1 text-sm font-bold text-slate-700">
-                      Escolha se vamos entregar ou se voce prefere retirar no balcão.
+                      Escolha se vamos entregar ou se você prefere retirar no balcão.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -3283,8 +3283,8 @@ function ClientePageContent() {
                   </div>
                   <p className="text-[12px] font-bold text-slate-500">
                     {retiradaNoBalcao
-                      ? "Seu pedido sera separado para retirada na loja e o frete ficara zerado."
-                      : "Escolha seu endereco salvo ou informe um novo endereco para esta entrega."}
+                      ? "Seu pedido será separado para retirada na loja e o frete ficará zerado."
+                      : "Escolha seu endereço salvo ou informe um novo endereço para esta entrega."}
                   </p>
                 </div>
                 <div className="relative">
@@ -3365,7 +3365,7 @@ function ClientePageContent() {
                             Entrega
                           </p>
                           <p className="mt-1 text-sm font-bold text-slate-700">
-                            Escolha usar o endereco salvo ou preencher outro para este pedido.
+                            Escolha usar o endereço salvo ou preencher outro para este pedido.
                           </p>
                           {resumoEnderecoSalvo ? (
                             <p className="mt-1 text-xs font-medium text-slate-500">{resumoEnderecoSalvo}</p>
@@ -3383,7 +3383,7 @@ function ClientePageContent() {
                                 : "border border-slate-200 bg-white text-slate-600"
                             }`}
                           >
-                            Endereco salvo
+                            Endereço salvo
                           </button>
                           <button
                             type="button"
@@ -3397,7 +3397,7 @@ function ClientePageContent() {
                                 : "border border-slate-200 bg-white text-slate-600"
                             }`}
                           >
-                            Novo endereco
+                            Novo endereço
                           </button>
                         </div>
                       </div>
@@ -3438,7 +3438,7 @@ function ClientePageContent() {
                       disabled={buscandoCep || normalizarNumero(cliente.cep).slice(0, 8).length !== 8}
                       className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
                     >
-                      Buscar endereco pelo CEP
+                      Buscar endereço pelo CEP
                     </button>
 
                     <button
@@ -3447,7 +3447,7 @@ function ClientePageContent() {
                       disabled={buscandoCep || !cliente.endereco.trim()}
                       className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
                     >
-                      Nao sei o CEP, localizar pelo endereco
+                      Não sei o CEP, localizar pelo endereço
                     </button>
 
                     <div className="grid grid-cols-4 gap-3">
@@ -3462,7 +3462,7 @@ function ClientePageContent() {
                           setCliente((prev) => ({ ...prev, endereco: e.target.value }));
                         }}
                       />
-                      <label htmlFor="numero" className="sr-only">Numero</label>
+                      <label htmlFor="numero" className="sr-only">Número</label>
                       <input
                         id="numero"
                         placeholder="Nº *"
@@ -3487,10 +3487,10 @@ function ClientePageContent() {
                       }}
                     />
 
-                    <label htmlFor="ponto_referencia" className="sr-only">Ponto de Referencia</label>
+                    <label htmlFor="ponto_referencia" className="sr-only">Ponto de Referência</label>
                     <input
                       id="ponto_referencia"
-                      placeholder="Ponto de Referencia *"
+                      placeholder="Ponto de Referência *"
                       value={cliente.ponto_referencia}
                       className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                       onChange={(e) => {
@@ -3520,15 +3520,15 @@ function ClientePageContent() {
                     </div>
                   </>
                 ) : (
-                  <BlocoRetiradaLoja descricao="Seu pedido sera separado na loja para retirada. Nao cobraremos taxa de entrega." />
+                  <BlocoRetiradaLoja descricao="Seu pedido será separado na loja para retirada. Não cobraremos taxa de entrega." />
                 )}
 
                 <label htmlFor="observacao_entrega" className="sr-only">
-                  {retiradaNoBalcao ? "Observacao do pedido" : "Observacao da entrega"}
+                  {retiradaNoBalcao ? "Observação do pedido" : "Observação da entrega"}
                 </label>
                 <textarea
                   id="observacao_entrega"
-                  placeholder={retiradaNoBalcao ? "Observacao do pedido" : "Observacao da entrega"}
+                  placeholder={retiradaNoBalcao ? "Observação do pedido" : "Observação da entrega"}
                   value={cliente.observacao}
                   className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold min-h-28 resize-none"
                   onChange={(e) => {
@@ -3564,14 +3564,14 @@ function ClientePageContent() {
                     <p className="mt-1 text-sm font-black text-slate-800">
                       {retiradaNoBalcao
                         ? LOJA_ENDERECO_RETIRADA_RESUMO
-                        : ([cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereco nao informado")}
+                        : ([cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereço não informado")}
                     </p>
                     <p className="mt-1 text-xs font-bold text-slate-500">
                       {retiradaNoBalcao
                         ? "Retire na loja e use o Maps se precisar da rota."
                         : cliente.ponto_referencia
-                          ? `Ponto de referencia: ${cliente.ponto_referencia}`
-                          : "Sem ponto de referencia"}
+                          ? `Ponto de referência: ${cliente.ponto_referencia}`
+                          : "Sem ponto de referência"}
                     </p>
                     {retiradaNoBalcao ? (
                       <a
@@ -3588,11 +3588,11 @@ function ClientePageContent() {
                   <div className="border-t border-slate-200 pt-3">
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Contato</p>
                     <p className="mt-1 text-sm font-black text-slate-800">{cliente.nome || "Cliente"}</p>
-                    <p className="text-xs font-bold text-slate-500">{cliente.whatsapp || "WhatsApp nao informado"}</p>
+                    <p className="text-xs font-bold text-slate-500">{cliente.whatsapp || "WhatsApp não informado"}</p>
                   </div>
                   {cliente.observacao ? (
                     <div className="border-t border-slate-200 pt-3">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Observacao</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Observação</p>
                       <p className="mt-1 text-xs font-bold text-slate-500">{cliente.observacao}</p>
                     </div>
                   ) : null}
@@ -3625,13 +3625,13 @@ function ClientePageContent() {
                     </div>
                     {descontoPromocoes > 0 && (
                       <div className="flex justify-between text-xs font-bold text-green-400">
-                        <span>Descontos e Promocoes</span>
+                        <span>Descontos e Promoções</span>
                         <span>- R$ {descontoPromocoes.toFixed(2)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-xs font-bold text-blue-400 border-b border-white/10 pb-3">
-                      <span>{retiradaNoBalcao ? "Retirada no Balcao" : "Taxa de Entrega"}</span>
-                      <span>{retiradaNoBalcao ? "Gratis" : `R$ ${taxaEntrega.toFixed(2)}`}</span>
+                      <span>{retiradaNoBalcao ? "Retirada no Balcão" : "Taxa de Entrega"}</span>
+                      <span>{retiradaNoBalcao ? "Grátis" : `R$ ${taxaEntrega.toFixed(2)}`}</span>
                     </div>
                     <div className="flex justify-between items-end pt-3">
                       <div>
@@ -3730,13 +3730,13 @@ function ClientePageContent() {
                     </div>
                     {descontoPromocoes > 0 && (
                       <div className="flex justify-between text-xs font-bold text-green-400">
-                        <span>Descontos e Promocoes</span>
+                        <span>Descontos e Promoções</span>
                         <span>- R$ {descontoPromocoes.toFixed(2)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-xs font-bold text-blue-400 border-b border-white/10 pb-3">
-                      <span>{retiradaNoBalcao ? "Retirada no Balcao" : "Taxa de Entrega"}</span>
-                      <span>{retiradaNoBalcao ? "Gratis" : `R$ ${taxaEntrega.toFixed(2)}`}</span>
+                      <span>{retiradaNoBalcao ? "Retirada no Balcão" : "Taxa de Entrega"}</span>
+                      <span>{retiradaNoBalcao ? "Grátis" : `R$ ${taxaEntrega.toFixed(2)}`}</span>
                     </div>
                     <div className="flex justify-between items-end pt-3">
                       <div>
@@ -3757,7 +3757,7 @@ function ClientePageContent() {
                   <p className="mt-1 text-sm font-black text-slate-800">
                     {retiradaNoBalcao
                       ? LOJA_ENDERECO_RETIRADA_RESUMO
-                      : ([cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereco nao informado")}
+                      : ([cliente.endereco, cliente.numero, cliente.bairro].filter(Boolean).join(", ") || "Endereço não informado")}
                   </p>
                   {retiradaNoBalcao ? (
                     <a
@@ -3816,11 +3816,11 @@ function ClientePageContent() {
                     <p className={`mt-3 text-[11px] font-bold ${trocoParaInvalido ? "text-rose-600" : "text-slate-500"}`}>
                       {trocoParaPreenchido
                         ? trocoParaValor === null
-                          ? "Informe um valor valido, por exemplo 50,00."
+                          ? "Informe um valor válido, por exemplo 50,00."
                           : trocoParaValor < totalGeral
                             ? `O troco precisa ser igual ou maior que ${formatarMoedaBR(totalGeral)}.`
                             : `Troco registrado para ${formatarMoedaBR(trocoParaValor)}.`
-                        : "Deixe em branco se nao precisar de troco."}
+                        : "Deixe em branco se não precisar de troco."}
                     </p>
                   ) : null}
                 </div>

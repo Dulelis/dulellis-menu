@@ -67,15 +67,15 @@ const GEOLOCATION_OPTIONS = {
 
 function obterMensagemErroGeolocalizacao(error?: GeolocationPositionError | null, bloqueada = false) {
   if (bloqueada || error?.code === 1) {
-    return "A localizacao deste site esta bloqueada no aparelho. Libere nas permissoes do navegador e tente finalizar com localizacao novamente.";
+    return "A localização deste site está bloqueada no aparelho. Libere nas permissões do navegador e tente finalizar com localização novamente.";
   }
   if (error?.code === 2) {
-    return "Nao foi possivel localizar o aparelho agora. Tente novamente em um local com sinal melhor.";
+    return "Não foi possível localizar o aparelho agora. Tente novamente em um local com sinal melhor.";
   }
   if (error?.code === 3) {
-    return "O aparelho demorou para responder a localizacao. Tente novamente.";
+    return "O aparelho demorou para responder à localização. Tente novamente.";
   }
-  return "Nao foi possivel acessar a localizacao deste aparelho.";
+  return "Não foi possível acessar a localização deste aparelho.";
 }
 
 export default function EntregaPageClient({ pedidoId }: Props) {
@@ -93,14 +93,14 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   const capturarLocalizacaoAtual = useCallback(async (options?: { silencioso?: boolean }) => {
     if (typeof window === "undefined" || typeof navigator === "undefined" || !navigator.geolocation) {
       if (!options?.silencioso) {
-        setAvisoRastreamento("Este aparelho nao disponibiliza localizacao para o site.");
+        setAvisoRastreamento("Este aparelho não disponibiliza localização para o site.");
       }
       return null;
     }
 
     if (!window.isSecureContext) {
       if (!options?.silencioso) {
-        setAvisoRastreamento("Abra este link em um site seguro com HTTPS para liberar a localizacao.");
+        setAvisoRastreamento("Abra este link em um site seguro com HTTPS para liberar a localização.");
       }
       return null;
     }
@@ -115,7 +115,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
           return null;
         }
       } catch (error) {
-        console.error("Falha ao consultar permissao de geolocalizacao.", error);
+        console.error("Falha ao consultar permissão de geolocalização.", error);
       }
     }
 
@@ -128,7 +128,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
           resolve(position.coords);
         },
         (error) => {
-          console.error("Falha ao capturar a localizacao atual.", error);
+          console.error("Falha ao capturar a localização atual.", error);
           if (!options?.silencioso) {
             setAvisoRastreamento(obterMensagemErroGeolocalizacao(error, error.code === 1));
           }
@@ -149,7 +149,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         const res = await fetch(`/api/public/delivery?pedido=${pedidoId}`, { cache: "no-store" });
         const json = (await res.json().catch(() => ({}))) as ApiResponse;
         if (!res.ok || json.ok === false || !json.data?.pedido) {
-          throw new Error(json.error || "Nao foi possivel carregar os dados da entrega.");
+          throw new Error(json.error || "Não foi possível carregar os dados da entrega.");
         }
         if (!ativo) return;
         setPedido(json.data.pedido);
@@ -168,7 +168,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       void carregar();
     } else {
       setCarregando(false);
-      setErro("Pedido invalido.");
+      setErro("Pedido inválido.");
     }
 
     return () => {
@@ -190,7 +190,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
 
   async function aceitarEntrega() {
     if (codigoTelefone.replace(/\D/g, "").length !== 4) {
-      setErro("Digite os 4 ultimos numeros do telefone do entregador.");
+      setErro("Digite os 4 últimos números do telefone do entregador.");
       return;
     }
 
@@ -217,7 +217,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         };
       };
       if (!res.ok || json.ok === false || !json.data?.entrega) {
-        throw new Error(json.error || "Nao foi possivel aceitar a entrega.");
+        throw new Error(json.error || "Não foi possível aceitar a entrega.");
       }
       setEntrega(json.data.entrega);
       setEntregadorId(Number(json.data.entrega.entregador_id || 0));
@@ -244,7 +244,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
       const finalizarSemLocalizacao =
         !coordenadas &&
         typeof window !== "undefined" &&
-        window.confirm("Nao foi possivel capturar a localizacao agora. Deseja finalizar a entrega mesmo assim?");
+        window.confirm("Não foi possível capturar a localização agora. Deseja finalizar a entrega mesmo assim?");
 
       if (!coordenadas && !finalizarSemLocalizacao) {
         setSalvando(false);
@@ -270,14 +270,14 @@ export default function EntregaPageClient({ pedidoId }: Props) {
         data?: { entrega?: Entrega | null };
       };
       if (!res.ok || json.ok === false || !json.data?.entrega) {
-        throw new Error(json.error || "Nao foi possivel finalizar a entrega.");
+        throw new Error(json.error || "Não foi possível finalizar a entrega.");
       }
       setEntrega(json.data.entrega);
       setAvisoRastreamento("");
       setSucesso(
         coordenadas
-          ? "Entrega finalizada com localizacao registrada."
-          : "Entrega finalizada sem localizacao registrada.",
+          ? "Entrega finalizada com localização registrada."
+          : "Entrega finalizada sem localização registrada.",
       );
     } catch (error) {
       setErro(error instanceof Error ? error.message : "Falha ao finalizar entrega.");
@@ -311,7 +311,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
           <div className="mt-6 space-y-5">
             {entregaFinalizada ? (
               <div className="rounded-[1.75rem] border border-emerald-200 bg-emerald-50 p-6 text-center">
-                <p className="text-xl font-black uppercase tracking-[0.2em] text-emerald-700">entrega concluida</p>
+                <p className="text-xl font-black uppercase tracking-[0.2em] text-emerald-700">entrega concluída</p>
               </div>
             ) : null}
 
@@ -331,10 +331,10 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                 <div className="mt-3 flex items-start gap-2 text-sm font-medium text-slate-700">
                   <MapPin size={16} className="mt-0.5 shrink-0 text-orange-500" />
                   <div>
-                    <p>{enderecoCompleto || "Endereco nao informado"}</p>
-                    <p>{localCompleto || "Local nao informado"}</p>
-                    <p>CEP: {pedido.cep || "Nao informado"}</p>
-                    <p>Ponto: {pedido.ponto_referencia || "Nao informado"}</p>
+                    <p>{enderecoCompleto || "Endereço não informado"}</p>
+                    <p>{localCompleto || "Local não informado"}</p>
+                    <p>CEP: {pedido.cep || "Não informado"}</p>
+                    <p>Ponto: {pedido.ponto_referencia || "Não informado"}</p>
                   </div>
                 </div>
                 {pedido.maps_url ? (
@@ -356,15 +356,15 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                 <p className="text-[11px] font-black uppercase tracking-[0.25em] text-orange-600">Entregador</p>
                 <p className="mt-1 text-sm font-bold text-slate-600">
                   {entregaAceita
-                    ? "Entrega ja assumida. Finalize quando concluir."
-                    : "Informe o codigo de 4 digitos do telefone do motoboy para assumir a entrega."}
+                    ? "Entrega já assumida. Finalize quando concluir."
+                    : "Informe o código de 4 dígitos do telefone do motoboy para assumir a entrega."}
                 </p>
 
                 {!entregaAceita ? (
                   <input
                     inputMode="numeric"
                     maxLength={4}
-                    placeholder="Codigo do motoboy"
+                    placeholder="Código do motoboy"
                     className="mt-3 w-full rounded-2xl border border-orange-200 bg-white px-4 py-4 font-black tracking-[0.35em] text-slate-700 outline-none"
                     value={codigoTelefone}
                     onChange={(event) => setCodigoTelefone(event.target.value.replace(/\D/g, "").slice(0, 4))}
@@ -374,11 +374,11 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                 {entregadorAtual ? (
                   <div className="mt-4 rounded-2xl border border-white/70 bg-white/90 p-4 text-sm font-medium text-slate-700">
                     <p className="font-black text-slate-900">{entregadorAtual.nome || "Entregador"}</p>
-                    <p>{entregadorAtual.whatsapp || "WhatsApp nao informado"}</p>
+                    <p>{entregadorAtual.whatsapp || "WhatsApp não informado"}</p>
                     <p>
                       {[entregadorAtual.modelo_moto, entregadorAtual.cor_moto, entregadorAtual.placa_moto]
                         .filter(Boolean)
-                        .join(" - ") || "Moto nao informada"}
+                        .join(" - ") || "Moto não informada"}
                     </p>
                   </div>
                 ) : null}
@@ -392,7 +392,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                 {entrega?.aceito_em ? (
                   <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
                     Entrega registrada em {new Date(String(entrega.aceito_em)).toLocaleString("pt-BR")}
-                    {entrega?.acerto_status === "acertado" ? " e ja consta como acertada." : "."}
+                    {entrega?.acerto_status === "acertado" ? " e já consta como acertada." : "."}
                   </div>
                 ) : null}
 
@@ -441,7 +441,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
                     className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {salvando ? <Loader2 className="animate-spin" size={16} /> : <PackageCheck size={16} />}
-                    Finalizar com localizacao
+                    Finalizar com localização
                   </button>
                 ) : null}
 

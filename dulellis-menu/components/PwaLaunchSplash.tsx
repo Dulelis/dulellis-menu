@@ -91,10 +91,10 @@ export function PwaLaunchSplash({ loading }: { loading: boolean }) {
           App Dulelis
         </p>
         <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-900">
-          Abrindo seu cardapio
+          Abrindo seu cardápio
         </h2>
         <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
-          Bolos, doces e salgados com visual de app para pedir mais rapido no celular.
+          Bolos, doces e salgados com visual de app para pedir mais rápido no celular.
         </p>
         <div className="mt-7 flex items-center justify-center gap-3 rounded-[1.6rem] bg-[#fff7fa] px-4 py-3">
           <Loader2 className="animate-spin text-pink-500" size={18} />

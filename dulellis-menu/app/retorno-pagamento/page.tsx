@@ -3,7 +3,7 @@ import RetornoActions from "./RetornoActions";
 import { getServiceSupabase } from "@/lib/server-supabase";
 
 const WHATSAPP_LOJA = "5547988347100";
-const LOJA_ENDERECO_RETIRADA = "Rua Manoel Felicio Adriano, 532";
+const LOJA_ENDERECO_RETIRADA = "Rua Manoel Felício Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
 const LOJA_CEP_RETIRADA = "88370-314";
@@ -30,8 +30,8 @@ function getStatusInfo(status: string) {
 
   if (["pending", "in_process", "aguardando", "waiting"].includes(normalizado)) {
     return {
-      titulo: "Pagamento em analise",
-      descricao: "Seu pagamento esta em processamento.",
+      titulo: "Pagamento em análise",
+      descricao: "Seu pagamento está em processamento.",
       cor: "text-amber-600",
       card: "bg-amber-50 border-amber-200",
       Icone: Clock3,
@@ -40,8 +40,8 @@ function getStatusInfo(status: string) {
 
   if (["rejected", "cancelled", "canceled", "failed", "negado"].includes(normalizado)) {
     return {
-      titulo: "Pagamento nao aprovado",
-      descricao: "Tente novamente com outro metodo de pagamento.",
+      titulo: "Pagamento não aprovado",
+      descricao: "Tente novamente com outro método de pagamento.",
       cor: "text-rose-600",
       card: "bg-rose-50 border-rose-200",
       Icone: XCircle,
@@ -50,7 +50,7 @@ function getStatusInfo(status: string) {
 
   return {
     titulo: "Retorno do pagamento",
-    descricao: "Recebemos o retorno da transacao.",
+    descricao: "Recebemos o retorno da transação.",
     cor: "text-slate-700",
     card: "bg-slate-50 border-slate-200",
     Icone: CreditCard,
@@ -325,14 +325,14 @@ function montarMensagemWhatsappPadraoPedido(
     const itensFormatados =
       pedido.itens.length > 0
         ? pedido.itens.map((i) => `- ${i.qtd}x ${i.nome}`).join("\n")
-        : "- Itens nao informados";
+        : "- Itens não informados";
     const linhaRecebimento = pedido.retiradaNoBalcao
-      ? `Retirada no balcao: ${pedido.enderecoCompleto || LOJA_ENDERECO_RETIRADA_RESUMO}\n`
-      : `Endereco: ${pedido.enderecoCompleto || "Nao informado"}\n`;
+      ? `Retirada no balcão: ${pedido.enderecoCompleto || LOJA_ENDERECO_RETIRADA_RESUMO}\n`
+      : `Endereço: ${pedido.enderecoCompleto || "Não informado"}\n`;
     const linhaPontoReferencia =
       pedido.retiradaNoBalcao || !pedido.pontoReferencia
         ? ""
-        : `Ponto de referencia: ${pedido.pontoReferencia}\n`;
+        : `Ponto de referência: ${pedido.pontoReferencia}\n`;
 
     return (
       `Pedido Dulelis\n\n` +
@@ -342,19 +342,19 @@ function montarMensagemWhatsappPadraoPedido(
       `Pagamento: ${pedido.formaPagamento || "Pix"}\n\n` +
       `Itens:\n${itensFormatados}\n\n` +
       `Total: R$ ${pedido.total.toFixed(2)}\n` +
-      `Referencia do pedido: ${pedido.referencia}\n` +
-      (fallback.transactionId ? `Transacao: ${fallback.transactionId}\n` : "") +
-      `Status do pagamento: ${fallback.status || "indisponivel"}.\n` +
+      `Referência do pedido: ${pedido.referencia}\n` +
+      (fallback.transactionId ? `Transação: ${fallback.transactionId}\n` : "") +
+      `Status do pagamento: ${fallback.status || "indisponível"}.\n` +
       `Pode confirmar meu pedido, por favor?`
     );
   }
 
   return [
-    fallback.clienteNome ? `Ola, sou ${fallback.clienteNome.replace(/\+/g, " ").trim()}.` : "Ola!",
+    fallback.clienteNome ? `Olá, sou ${fallback.clienteNome.replace(/\+/g, " ").trim()}.` : "Olá!",
     `${fallback.tituloStatus}.`,
     fallback.status ? `Status do pagamento: ${fallback.status}.` : "",
-    fallback.transactionId ? `Transacao: ${fallback.transactionId}.` : "",
-    fallback.referencia ? `Referencia do pedido: ${fallback.referencia}.` : "",
+    fallback.transactionId ? `Transação: ${fallback.transactionId}.` : "",
+    fallback.referencia ? `Referência do pedido: ${fallback.referencia}.` : "",
     "Pode confirmar meu pedido, por favor?",
   ]
     .filter(Boolean)
@@ -401,7 +401,7 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
         {transactionId ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-5">
             <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">
-              Codigo da transacao
+              Código da transação
             </p>
             <p className="text-sm font-mono break-all text-slate-700">{transactionId}</p>
           </div>
@@ -417,15 +417,15 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
                 pedidoResumo.retiradaNoBalcao ? "text-emerald-700" : "text-slate-400"
               }`}
             >
-              {pedidoResumo.retiradaNoBalcao ? "Retirada no balcao" : "Recebimento"}
+              {pedidoResumo.retiradaNoBalcao ? "Retirada no balcão" : "Recebimento"}
             </p>
             <p className="mt-2 text-sm font-bold text-slate-800">
-              {pedidoResumo.enderecoCompleto || "Endereco nao informado"}
+              {pedidoResumo.enderecoCompleto || "Endereço não informado"}
             </p>
             {pedidoResumo.retiradaNoBalcao ? (
               <>
                 <p className="mt-2 text-xs font-medium text-slate-600">
-                  Seu pedido sera separado na loja para retirada.
+                  Seu pedido será separado na loja para retirada.
                 </p>
                 <a
                   href={LOJA_LINK_MAPS_RETIRADA}
@@ -439,7 +439,7 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
               </>
             ) : pedidoResumo.pontoReferencia ? (
               <p className="mt-2 text-xs font-medium text-slate-600">
-                Ponto de referencia: {pedidoResumo.pontoReferencia}
+                Ponto de referência: {pedidoResumo.pontoReferencia}
               </p>
             ) : null}
           </div>
