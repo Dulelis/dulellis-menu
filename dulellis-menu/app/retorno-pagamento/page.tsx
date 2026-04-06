@@ -3,10 +3,10 @@ import RetornoActions from "./RetornoActions";
 import { getServiceSupabase } from "@/lib/server-supabase";
 
 const WHATSAPP_LOJA = "5547988347100";
-const LOJA_ENDERECO_RETIRADA = "Rua Vandelino Lopes Fagundes";
+const LOJA_ENDERECO_RETIRADA = "Rua Manoel Felicio Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
-const LOJA_CEP_RETIRADA = "88370-390";
+const LOJA_CEP_RETIRADA = "88370-314";
 const LOJA_ENDERECO_RETIRADA_RESUMO = [
   LOJA_ENDERECO_RETIRADA,
   LOJA_BAIRRO_RETIRADA,

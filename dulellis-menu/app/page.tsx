@@ -30,12 +30,12 @@ import {
   X,
 } from "lucide-react";
 
-const LOJA_LAT = -26.8941;
-const LOJA_LNG = -48.6538;
-const LOJA_ENDERECO_RETIRADA = "Rua Vandelino Lopes Fagundes";
+const LOJA_LAT = -26.8882331;
+const LOJA_LNG = -48.6518957;
+const LOJA_ENDERECO_RETIRADA = "Rua Manoel Felicio Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
-const LOJA_CEP_RETIRADA = "88370-390";
+const LOJA_CEP_RETIRADA = "88370-314";
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
 const CIDADE_ATENDIDA = "Navegantes";
