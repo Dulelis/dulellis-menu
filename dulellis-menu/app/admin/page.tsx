@@ -17,6 +17,7 @@ import {
 const QZ_TRAY_SCRIPT_URL = 'https://unpkg.com/qz-tray@2.2.4/qz-tray.js';
 const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = 'dulellis.admin.order-alarm.enabled';
+const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
 
 type QzGlobal = {
   websocket?: {
@@ -96,6 +97,12 @@ function pedidoTemPixAprovadoAdmin(pedido: any) {
   const forma = String(pedido?.forma_pagamento || '').trim().toLowerCase();
   const statusPagamento = String(pedido?.status_pagamento || '').trim().toLowerCase();
   return forma === 'pix' && ['approved', 'paid', 'authorized', 'pago'].includes(statusPagamento);
+}
+
+function normalizarStatusPedidoAdmin(pedido: any) {
+  const status = String(pedido?.status_pedido || '').trim().toLowerCase();
+  if (status in STATUS_PEDIDO_LABELS) return status;
+  return 'aguardando_aceite';
 }
 
 function obterValorAcertoEntrega(entrega: any) {
@@ -218,6 +225,8 @@ function AdminPageContent() {
   const pedidosPixImpressosRef = useRef<Set<number>>(new Set());
   const pedidosConhecidosRef = useRef<Set<number>>(new Set());
   const audioContextAlarmeRef = useRef<AudioContext | null>(null);
+  const alarmePendenteRef = useRef(false);
+  const pedidosIniciaisMapeadosRef = useRef(false);
   const preferenciaAlarmeCarregadaRef = useRef(false);
   const ignorarPrimeiraPersistenciaAlarmeRef = useRef(true);
   const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
@@ -318,7 +327,12 @@ function AdminPageContent() {
 
     try {
       const contexto = await prepararAudioAlarme();
-      if (!contexto) return;
+      if (!contexto || contexto.state !== 'running') {
+        alarmePendenteRef.current = true;
+        return;
+      }
+
+      alarmePendenteRef.current = false;
 
       const tons = [880, 660, 880];
       const inicioBase = contexto.currentTime + 0.02;
@@ -342,9 +356,30 @@ function AdminPageContent() {
         oscilador.stop(fim + 0.02);
       });
     } catch (error) {
+      alarmePendenteRef.current = true;
       console.warn('Nao foi possivel tocar o alarme de novo pedido.', error);
     }
   }, [alarmePedidosAtivo, prepararAudioAlarme]);
+
+  const notificarNovoPedido = useCallback((pedido: any) => {
+    const pedidoId = Number(pedido?.id || 0);
+    if (pedidoId <= 0) return;
+    setAlertaNovoPedido(`Novo pedido #${pedidoId} aguardando aceite.`);
+    void tocarAlarmeNovoPedido();
+  }, [tocarAlarmeNovoPedido]);
+
+  const registrarPedidosMonitorados = useCallback((lista: any[], dispararAlarmeParaNovos: boolean) => {
+    for (const pedido of Array.isArray(lista) ? lista : []) {
+      const pedidoId = Number(pedido?.id || 0);
+      if (pedidoId <= 0 || pedidosConhecidosRef.current.has(pedidoId)) continue;
+
+      pedidosConhecidosRef.current.add(pedidoId);
+
+      if (dispararAlarmeParaNovos && normalizarStatusPedidoAdmin(pedido) === 'aguardando_aceite') {
+        notificarNovoPedido(pedido);
+      }
+    }
+  }, [notificarNovoPedido]);
 
   const alternarAlarmePedidos = useCallback(() => {
     setAlarmePedidosAtivo((anterior) => {
@@ -383,9 +418,13 @@ function AdminPageContent() {
       throw new Error(json.error || 'Falha ao carregar dados administrativos.');
     }
 
+    const pedidosCarregados = json.data?.pedidos || [];
+    registrarPedidosMonitorados(pedidosCarregados, pedidosIniciaisMapeadosRef.current);
+    pedidosIniciaisMapeadosRef.current = true;
+
     setEstoque(json.data?.estoque || []);
     setClientes(json.data?.clientes || []);
-    setPedidos(json.data?.pedidos || []);
+    setPedidos(pedidosCarregados);
     setTaxas(json.data?.taxas || []);
     setPromocoes(json.data?.promocoes || []);
     setPropagandas(json.data?.propagandas || []);
@@ -400,7 +439,24 @@ function AdminPageContent() {
         dias_semana: normalizarDiasSemana(json.data.horario.dias_semana),
       });
     }
-  }, []);
+  }, [registrarPedidosMonitorados]);
+
+  const monitorarPedidosNovos = useCallback(async () => {
+    if (!pedidosIniciaisMapeadosRef.current) return;
+
+    const res = await fetch('/api/admin/order-alerts', { cache: 'no-store' });
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+      pedidos?: any[];
+    };
+
+    if (!res.ok || json.ok === false) {
+      throw new Error(json.error || 'Falha ao monitorar novos pedidos.');
+    }
+
+    registrarPedidosMonitorados(json.pedidos || [], true);
+  }, [registrarPedidosMonitorados]);
 
   useEffect(() => {
     setActiveTab(normalizarAdminTab(searchParams.get('tab')));
@@ -447,7 +503,14 @@ function AdminPageContent() {
   useEffect(() => {
     const desbloquearAudio = () => {
       if (!alarmePedidosAtivo) return;
-      void prepararAudioAlarme();
+      void prepararAudioAlarme()
+        .then((contexto) => {
+          if (contexto?.state === 'running' && alarmePendenteRef.current) {
+            alarmePendenteRef.current = false;
+            void tocarAlarmeNovoPedido();
+          }
+        })
+        .catch(() => {});
     };
 
     window.addEventListener('pointerdown', desbloquearAudio, { passive: true });
@@ -456,7 +519,7 @@ function AdminPageContent() {
       window.removeEventListener('pointerdown', desbloquearAudio);
       window.removeEventListener('keydown', desbloquearAudio);
     };
-  }, [alarmePedidosAtivo, prepararAudioAlarme]);
+  }, [alarmePedidosAtivo, prepararAudioAlarme, tocarAlarmeNovoPedido]);
 
   useEffect(() => {
     const agendarRecarga = () => {
@@ -473,14 +536,7 @@ function AdminPageContent() {
       const pedidoId = Number(pedidoAtualizado?.id || 0);
 
       if (pedidoId > 0) {
-        const pedidoJaConhecido = pedidosConhecidosRef.current.has(pedidoId);
-        if (!pedidoJaConhecido) {
-          pedidosConhecidosRef.current.add(pedidoId);
-          if (normalizarStatusPedido(pedidoAtualizado) === 'aguardando_aceite') {
-            setAlertaNovoPedido(`Novo pedido #${pedidoId} aguardando aceite.`);
-            void tocarAlarmeNovoPedido();
-          }
-        }
+        registrarPedidosMonitorados([pedidoAtualizado], true);
 
         const assinatura = gerarAssinaturaPedido(pedidoAtualizado);
         const assinaturaAnterior = assinaturasPedidosRef.current.get(pedidoId);
@@ -531,14 +587,19 @@ function AdminPageContent() {
       void carregarDados();
     }, 30000);
 
+    const timerAlarme = window.setInterval(() => {
+      void monitorarPedidosNovos();
+    }, ADMIN_ALARME_PEDIDOS_POLLING_MS);
+
     return () => {
       window.clearInterval(timer);
+      window.clearInterval(timerAlarme);
       if (recarregarRealtimeRef.current) {
         window.clearTimeout(recarregarRealtimeRef.current);
       }
       void supabase.removeChannel(channel);
     };
-  }, [carregarDados, tocarAlarmeNovoPedido]);
+  }, [carregarDados, monitorarPedidosNovos, registrarPedidosMonitorados]);
 
   useEffect(() => {
     if (!QZ_PRINTER_NAME) return;
@@ -1163,11 +1224,7 @@ function AdminPageContent() {
         .includes('tipo de entrega: retirar no balcao'),
     [],
   );
-  const normalizarStatusPedido = (pedido: any) => {
-    const status = String(pedido?.status_pedido || '').trim().toLowerCase();
-    if (status in STATUS_PEDIDO_LABELS) return status;
-    return 'aguardando_aceite';
-  };
+  const normalizarStatusPedido = normalizarStatusPedidoAdmin;
   const gerarAssinaturaPedido = (pedido: any) =>
     [
       String(pedido?.forma_pagamento || '').trim().toLowerCase(),
