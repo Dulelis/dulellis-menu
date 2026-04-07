@@ -1897,6 +1897,37 @@ function AdminPageContent() {
     },
     [pedidoEhRetiradaNoBalcao],
   );
+  const obterResumoTrocoPedido = useCallback((pedido: any) => {
+    const trocoDiretoBruto = Number(pedido?.troco_para);
+    if (Number.isFinite(trocoDiretoBruto) && trocoDiretoBruto > 0) {
+      return { exibir: true, precisaTroco: true, valor: trocoDiretoBruto };
+    }
+
+    const observacao = String(pedido?.observacao || "");
+    const trocoMatch = observacao.match(/troco\s+para:\s*r\$\s*([\d.,]+)/i);
+    if (trocoMatch?.[1]) {
+      const trocoNormalizado = Number(
+        trocoMatch[1].replace(/\./g, "").replace(",", "."),
+      );
+      if (Number.isFinite(trocoNormalizado) && trocoNormalizado > 0) {
+        return { exibir: true, precisaTroco: true, valor: trocoNormalizado };
+      }
+    }
+
+    const formaPagamento = String(pedido?.forma_pagamento || "").trim().toLowerCase();
+    if (formaPagamento === "dinheiro") {
+      return { exibir: true, precisaTroco: false, valor: null };
+    }
+
+    return { exibir: false, precisaTroco: false, valor: null };
+  }, []);
+  const limparObservacaoTroco = useCallback((observacao: string) => {
+    return String(observacao || "")
+      .split(/\r?\n/)
+      .map((linha) => linha.trim())
+      .filter((linha) => linha && !/^troco\s+para:/i.test(linha))
+      .join("\n");
+  }, []);
   const completarPedidoComCliente = useCallback(
     (pedido: any) => {
       const whatsappPedido = normalizarNumero(String(pedido?.whatsapp || ""));
@@ -1972,7 +2003,10 @@ function AdminPageContent() {
       const { enderecoCompleto, bairro, cidade, cep } =
         montarEnderecoEntrega(pedidoCompleto);
       const linkAceiteEntrega = montarLinkAceiteEntrega(pedidoCompleto);
-      const observacao = String(pedidoCompleto?.observacao || "").trim();
+      const troco = obterResumoTrocoPedido(pedidoCompleto);
+      const observacao = limparObservacaoTroco(
+        String(pedidoCompleto?.observacao || "").trim(),
+      );
       const larguraLinha = 22;
 
       const quebrarLinha = (texto: string, largura = larguraLinha) => {
@@ -2010,6 +2044,12 @@ function AdminPageContent() {
         `PGTO: ${pagamento.titulo}`,
         `STATUS: ${pagamento.situacao}`,
         ...(pagamento.detalhe ? [pagamento.detalhe] : []),
+        ...(troco.exibir
+          ? [
+              `TROCO: ${troco.precisaTroco ? "SIM" : "NAO"}`,
+              ...(troco.valor !== null ? [`PARA: ${formatarValor(troco.valor)}`] : []),
+            ]
+          : []),
       ]
         .flatMap((linha) => quebrarLinha(linha))
         .join("\n");
@@ -2073,10 +2113,12 @@ function AdminPageContent() {
     },
     [
       completarPedidoComCliente,
+      limparObservacaoTroco,
       gerarQrCodeEscPos,
       montarEnderecoEntrega,
       montarLinkAceiteEntrega,
       obterResumoPagamento,
+      obterResumoTrocoPedido,
     ],
   );
   const prepararPopupImpressao = (
@@ -2132,7 +2174,10 @@ function AdminPageContent() {
       const { enderecoCompleto, bairro, cidade, cep } =
         montarEnderecoEntrega(pedidoCompleto);
       const linkAceiteEntrega = montarLinkAceiteEntrega(pedidoCompleto);
-      const observacao = String(pedidoCompleto?.observacao || "").trim();
+      const troco = obterResumoTrocoPedido(pedidoCompleto);
+      const observacao = limparObservacaoTroco(
+        String(pedidoCompleto?.observacao || "").trim(),
+      );
       const itens = parseItensPedido(pedidoCompleto);
       const itensHtml = itens.length
         ? itens
@@ -2146,6 +2191,9 @@ function AdminPageContent() {
         ? `https://quickchart.io/qr?size=160&margin=1&text=${encodeURIComponent(linkAceiteEntrega)}`
         : "";
       const qrCodeImageUrlSerializado = JSON.stringify(qrCodeImageUrl);
+      const trocoHtml = troco.exibir
+        ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Troco:</strong> ${troco.precisaTroco ? troco.valor !== null ? `Sim, para R$ ${troco.valor.toFixed(2)}` : "Sim" : "Nao precisa"}</div>`
+        : "";
 
       try {
         const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
@@ -2219,6 +2267,7 @@ function AdminPageContent() {
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Pagamento:</strong> ${pagamento.titulo}</div>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Status:</strong> ${pagamento.situacao}</div>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Detalhe:</strong> ${pagamento.detalhe}</div>
+            ${trocoHtml}
             <table>
               <tbody>${itensHtml.replace(/<td/g, '<td style="font-size:12px;padding:1.3mm 0;border-bottom:1px dashed #cbd5e1;vertical-align:top;font-weight:500;word-break:break-word;line-height:1.2;"')}</tbody>
             </table>
@@ -2263,10 +2312,12 @@ function AdminPageContent() {
     [
       completarPedidoComCliente,
       garantirQzPronto,
+      limparObservacaoTroco,
       montarCupomPedido,
       montarEnderecoEntrega,
       montarLinkAceiteEntrega,
       obterResumoPagamento,
+      obterResumoTrocoPedido,
     ],
   );
 
