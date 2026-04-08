@@ -114,7 +114,7 @@ export async function POST(request: Request) {
     }
 
     const syncResult = await sincronizarPedidoComPagamentoMercadoPago(payment, {
-      allowCreateOrderFromDraft: false,
+      allowCreateOrderFromDraft: true,
     });
 
     if (syncResult.error) {
