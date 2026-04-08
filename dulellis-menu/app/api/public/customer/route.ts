@@ -94,6 +94,79 @@ function whatsappEquivalente(a: string, b: string): boolean {
   return wa.slice(-10) === wb.slice(-10);
 }
 
+function schemaError(message: string): boolean {
+  const texto = String(message || "").toLowerCase();
+  return texto.includes("schema cache") || texto.includes("column");
+}
+
+const CLIENTE_SELECT_TENTATIVAS = [
+  "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,observacao,data_aniversario",
+  "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,data_aniversario",
+  "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,observacao,data_aniversario",
+  "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia",
+  "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,observacao",
+  "id,nome,whatsapp,cep,endereco,numero,bairro,cidade,data_aniversario",
+  "id,nome,whatsapp,cep,endereco,numero,bairro,cidade",
+  "id,nome,whatsapp,endereco",
+];
+
+async function buscarClientePorWhatsappFlexivel(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  whatsapp: string,
+) {
+  const zap = normalizarNumero(whatsapp);
+  let ultimoErro = "";
+
+  for (const selectCols of CLIENTE_SELECT_TENTATIVAS) {
+    const { data: exato, error: erroExato } = await supabase
+      .from("clientes")
+      .select(selectCols)
+      .eq("whatsapp", zap)
+      .maybeSingle();
+    if (erroExato) {
+      ultimoErro = erroExato.message;
+      if (!schemaError(erroExato.message)) {
+        break;
+      }
+      continue;
+    }
+
+    if (exato) {
+      return {
+        cliente: exato as unknown as Record<string, unknown>,
+        error: "",
+      };
+    }
+
+    const sufixo = zap.slice(-8);
+    const { data: candidatos, error: erroCandidatos } = await supabase
+      .from("clientes")
+      .select(selectCols)
+      .ilike("whatsapp", `%${sufixo}%`)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (erroCandidatos) {
+      ultimoErro = erroCandidatos.message;
+      if (!schemaError(erroCandidatos.message)) {
+        break;
+      }
+      continue;
+    }
+
+    const cliente =
+      ((candidatos || []) as unknown as Array<Record<string, unknown>>).find((c) =>
+        whatsappEquivalente(String(c.whatsapp || ""), zap),
+      ) || null;
+    if (cliente) {
+      return { cliente, error: "" };
+    }
+
+    return { cliente: null, error: "" };
+  }
+
+  return { cliente: null, error: ultimoErro };
+}
+
 export async function GET(request: Request) {
   const sessao = getCustomerSessionFromRequest(request as NextRequest);
   if (!sessao) {
@@ -124,31 +197,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "Sessao sem WhatsApp valido." }, { status: 400 });
   }
 
-  const { data: exato, error: erroExato } = await supabase
-    .from("clientes")
-    .select("id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,observacao,data_aniversario")
-    .eq("whatsapp", zap)
-    .maybeSingle();
-  if (erroExato) {
-    return NextResponse.json({ ok: false, error: erroExato.message }, { status: 500 });
-  }
-
-  let cliente = exato as Record<string, unknown> | null;
-  if (!cliente) {
-    const sufixo = zap.slice(-8);
-    const { data: candidatos, error: erroCandidatos } = await supabase
-      .from("clientes")
-      .select("id,nome,whatsapp,cep,endereco,numero,bairro,cidade,ponto_referencia,observacao,data_aniversario")
-      .ilike("whatsapp", `%${sufixo}%`)
-      .order("created_at", { ascending: false })
-      .limit(30);
-    if (erroCandidatos) {
-      return NextResponse.json({ ok: false, error: erroCandidatos.message }, { status: 500 });
-    }
-    cliente =
-      ((candidatos || []) as Array<Record<string, unknown>>).find((c) =>
-        whatsappEquivalente(String(c.whatsapp || ""), zap),
-      ) || null;
+  const { cliente, error } = await buscarClientePorWhatsappFlexivel(supabase, zap);
+  if (error) {
+    return NextResponse.json({ ok: false, error }, { status: 500 });
   }
 
   if (!cliente) {

@@ -200,7 +200,65 @@ function calcularDescontoPromocoes(
 }
 
 function schemaError(message: string) {
-  return message.includes("schema cache") || message.includes("column");
+  const texto = String(message || "").toLowerCase();
+  return texto.includes("schema cache") || texto.includes("column");
+}
+
+function limparEnderecoDePontoReferencia(endereco: string) {
+  return String(endereco || "")
+    .replace(/\s*-\s*ponto\s+de\s+referencia\s*:.*$/i, "")
+    .replace(/\s*ponto\s+de\s+referencia\s*:.*$/i, "")
+    .trim();
+}
+
+function montarEnderecoComReferencia(
+  endereco: string,
+  pontoReferencia: string,
+) {
+  const base = limparEnderecoDePontoReferencia(endereco);
+  const ponto = String(pontoReferencia || "").trim();
+  if (!ponto) return base;
+  return `${base} - Ponto de referencia: ${ponto}`.trim();
+}
+
+function buildCustomerUpsertPayloads(payloadCliente: OrderCustomerPayload) {
+  const payloadClienteComEnderecoReferencia = {
+    ...payloadCliente,
+    endereco: montarEnderecoComReferencia(
+      payloadCliente.endereco,
+      payloadCliente.ponto_referencia,
+    ),
+  };
+  const payloadClienteSemPontoReferencia = {
+    ...payloadClienteComEnderecoReferencia,
+  } as Record<string, unknown>;
+  delete payloadClienteSemPontoReferencia.ponto_referencia;
+
+  const payloadClienteSemObservacao = {
+    ...payloadClienteComEnderecoReferencia,
+  } as Record<string, unknown>;
+  delete payloadClienteSemObservacao.observacao;
+
+  const payloadClienteSemDataAniversario = {
+    ...payloadClienteComEnderecoReferencia,
+  } as Record<string, unknown>;
+  delete payloadClienteSemDataAniversario.data_aniversario;
+
+  const payloadClienteLegado = {
+    ...payloadClienteComEnderecoReferencia,
+  } as Record<string, unknown>;
+  delete payloadClienteLegado.ponto_referencia;
+  delete payloadClienteLegado.observacao;
+  delete payloadClienteLegado.data_aniversario;
+
+  return [
+    payloadCliente as unknown as Record<string, unknown>,
+    payloadClienteComEnderecoReferencia as unknown as Record<string, unknown>,
+    payloadClienteSemPontoReferencia,
+    payloadClienteSemObservacao,
+    payloadClienteSemDataAniversario,
+    payloadClienteLegado,
+  ];
 }
 
 function buildOrderPayloadBase(
@@ -523,21 +581,39 @@ export async function upsertOrderCustomer(
     throw new OrderDraftError(500, erroBusca.message);
   }
 
+  const payloadsTentativa = buildCustomerUpsertPayloads(payloadCliente);
+  let erroFinal = "";
+
   if (!clienteExistente) {
-    const { error } = await supabase.from("clientes").insert([payloadCliente]);
-    if (error) {
-      throw new OrderDraftError(500, error.message);
+    for (const payloadTentativa of payloadsTentativa) {
+      const { error } = await supabase.from("clientes").insert([payloadTentativa]);
+      if (!error) return;
+
+      erroFinal = error.message;
+      if (!schemaError(error.message)) {
+        break;
+      }
     }
-    return;
+    throw new OrderDraftError(
+      500,
+      erroFinal || "Falha ao salvar cliente.",
+    );
   }
 
-  const { error } = await supabase
-    .from("clientes")
-    .update(payloadCliente)
-    .eq("whatsapp", payloadCliente.whatsapp);
-  if (error) {
-    throw new OrderDraftError(500, error.message);
+  for (const payloadTentativa of payloadsTentativa) {
+    const { error } = await supabase
+      .from("clientes")
+      .update(payloadTentativa)
+      .eq("whatsapp", payloadCliente.whatsapp);
+    if (!error) return;
+
+    erroFinal = error.message;
+    if (!schemaError(error.message)) {
+      break;
+    }
   }
+
+  throw new OrderDraftError(500, erroFinal || "Falha ao salvar cliente.");
 }
 
 export async function insertOrderFromSnapshot(

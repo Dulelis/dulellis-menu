@@ -1,6 +1,6 @@
-const STATIC_CACHE = "dulellis-static-v3";
-const RUNTIME_CACHE = "dulellis-runtime-v3";
-const IMAGE_CACHE = "dulellis-images-v3";
+const STATIC_CACHE = "dulellis-static-v4";
+const RUNTIME_CACHE = "dulellis-runtime-v4";
+const IMAGE_CACHE = "dulellis-images-v4";
 const OFFLINE_URL = "/offline";
 const APP_SHELL = [
   "/",
@@ -63,7 +63,7 @@ self.addEventListener("fetch", (event) => {
       url.pathname === "/manifest.webmanifest" ||
       /\.(?:css|js|json|woff2?|ico|png|jpg|jpeg|svg|webp)$/i.test(url.pathname))
   ) {
-    event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE));
+    event.respondWith(networkFirst(request, RUNTIME_CACHE));
   }
 });
 
@@ -105,4 +105,19 @@ async function staleWhileRevalidate(request, cacheName) {
 
   const freshResponse = await networkResponse;
   return cachedResponse || freshResponse || Response.error();
+}
+
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+
+  try {
+    const response = await fetch(request);
+    if (response && (response.ok || response.type === "opaque")) {
+      cache.put(request, response.clone()).catch(() => undefined);
+    }
+    return response;
+  } catch {
+    const cachedResponse = await cache.match(request);
+    return cachedResponse || Response.error();
+  }
 }
