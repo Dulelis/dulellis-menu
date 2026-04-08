@@ -7,6 +7,7 @@ import {
 } from "@/lib/request-security";
 import { getCustomerSessionFromRequest } from "@/lib/customer-request";
 import {
+  insertOrderFromSnapshot,
   OrderDraftError,
   prepareOrderDraft,
   type PublicOrderBody,
@@ -112,11 +113,15 @@ export async function POST(request: Request) {
         sessionWhatsapp: String(sessao.whatsapp || ""),
       });
       await upsertOrderCustomer(supabase, draft.customerPayload);
+      pedidoId = await insertOrderFromSnapshot(supabase, draft.snapshot, {
+        statusPedido: "pagamento_pendente",
+        statusPagamento: "pending",
+        formaPagamento: "Pix",
+      });
       total = draft.total;
       referencia = draft.reference;
       clienteNome = draft.customerPayload.nome;
       whatsapp = draft.customerPayload.whatsapp;
-      pedidoId = 0;
       itensMetadata = draft.items.map((item) => ({
         nome: item.nome,
         qtd: item.qtd,
