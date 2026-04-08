@@ -2049,7 +2049,9 @@ function ClientePageContent() {
       setTrocoPara("");
       setReferenciaPagamento("");
 
-      abrirModalPedidoFinalizado();
+      if (!ehPixCartao) {
+        abrirModalPedidoFinalizado();
+      }
       void carregarDadosIniciais(false);
     } catch (error) {
       if (janelaPagamento && !janelaPagamento.closed) {

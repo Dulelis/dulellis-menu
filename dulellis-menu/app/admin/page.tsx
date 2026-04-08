@@ -1850,12 +1850,28 @@ function AdminPageContent() {
       const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(pedido);
 
       if (forma.toLowerCase() === "pix") {
-        if (["approved", "aprovado", "paid"].includes(statusPagamento)) {
+        if (["approved", "aprovado", "paid", "authorized", "pago"].includes(statusPagamento)) {
           return {
             titulo: "Pix",
             situacao: "Pago",
             detalhe: referencia ? `Ref. ${referencia}` : "Pagamento confirmado",
             classe: "bg-emerald-50 text-emerald-700 border-emerald-200",
+          };
+        }
+        if (["rejected", "cancelled", "canceled", "failed", "negado"].includes(statusPagamento)) {
+          return {
+            titulo: "Pix",
+            situacao: "Nao pago",
+            detalhe: referencia ? `Ref. ${referencia}` : "Pagamento nao aprovado",
+            classe: "bg-rose-50 text-rose-700 border-rose-200",
+          };
+        }
+        if (["pending", "in_process", "in_mediation", "aguardando", "waiting"].includes(statusPagamento)) {
+          return {
+            titulo: "Pix",
+            situacao: "Aguardando",
+            detalhe: referencia ? `Ref. ${referencia}` : "Aguardando pagamento",
+            classe: "bg-amber-50 text-amber-700 border-amber-200",
           };
         }
         return {

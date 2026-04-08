@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
-import { getServiceSupabase } from "@/lib/server-supabase";
+import { sincronizarPedidoComPagamentoMercadoPago } from "@/lib/mercadopago-payment";
 
 type MercadoPagoWebhookBody = {
   type?: string;
@@ -113,74 +113,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: payment?.message || "erro mp" }, { status: mpRes.status });
     }
 
-    const referencia = String(payment?.external_reference || "");
-    const status = String(payment?.status || "");
-    const total = Number(payment?.transaction_amount || 0);
-    const metadata = (payment?.metadata || {}) as { whatsapp?: string; pedido_id?: number | string };
-    const whatsapp = String(metadata.whatsapp || "");
-    const pedidoIdMetadata = Number(metadata.pedido_id || 0);
+    const syncResult = await sincronizarPedidoComPagamentoMercadoPago(payment);
 
-    const supabase = getServiceSupabase();
-    if (!supabase) {
-      return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
+    if (syncResult.error) {
+      return NextResponse.json({ ok: false, error: syncResult.error }, { status: 500 });
     }
 
-    const statusNormalizado = status.trim().toLowerCase();
-    const pagamentoAprovado = ["approved", "paid", "authorized", "pago"].includes(statusNormalizado);
-
-    const payloadStatus = {
-      status_pagamento: status,
-      pagamento_id: paymentId,
-      pagamento_atualizado_em: new Date().toISOString(),
-      ...(pagamentoAprovado
-        ? {
-            forma_pagamento: "Pix",
-            status_pedido: "recebido",
-          }
-        : {}),
-    };
-
-    let atualizado = false;
-
-    if (pedidoIdMetadata > 0) {
-      const { data, error } = await supabase
-        .from("pedidos")
-        .update(payloadStatus)
-        .eq("id", pedidoIdMetadata)
-        .select("id");
-      if (!error && (data?.length || 0) > 0) atualizado = true;
-    }
-
-    if (referencia) {
-      const { data, error } = await supabase
-        .from("pedidos")
-        .update(payloadStatus)
-        .eq("pagamento_referencia", referencia)
-        .select("id");
-      if (!error && (data?.length || 0) > 0) atualizado = true;
-    }
-
-    if (!atualizado && whatsapp && total > 0) {
-      const { data: candidatos, error: erroBusca } = await supabase
-        .from("pedidos")
-        .select("id, total, whatsapp, created_at")
-        .eq("whatsapp", whatsapp)
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      if (!erroBusca) {
-        const match = (candidatos || []).find(
-          (pedido: { id?: number | string; total?: number | string | null }) =>
-            Math.abs(Number(pedido.total || 0) - total) < 0.01,
-        );
-        if (match?.id) {
-          const { error: erroUpdate } = await supabase.from("pedidos").update(payloadStatus).eq("id", match.id);
-          if (!erroUpdate) atualizado = true;
-        }
-      }
-    }
-
-    return NextResponse.json({ ok: true, atualizado, paymentId, status });
+    return NextResponse.json({
+      ok: true,
+      atualizado: syncResult.updated,
+      paymentId: syncResult.paymentId || paymentId,
+      status: syncResult.status,
+      referencia: syncResult.reference,
+      pedidoId: syncResult.pedidoId,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "erro interno";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

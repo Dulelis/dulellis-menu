@@ -85,6 +85,11 @@ export async function POST(request: Request) {
     retornoSuccessUrl.searchParams.set("ref", referencia);
     retornoFailureUrl.searchParams.set("ref", referencia);
     retornoPendingUrl.searchParams.set("ref", referencia);
+    if (pedidoId > 0) {
+      retornoSuccessUrl.searchParams.set("pedido_id", String(pedidoId));
+      retornoFailureUrl.searchParams.set("pedido_id", String(pedidoId));
+      retornoPendingUrl.searchParams.set("pedido_id", String(pedidoId));
+    }
     if (clienteNome) {
       retornoSuccessUrl.searchParams.set("cliente_nome", clienteNome);
       retornoFailureUrl.searchParams.set("cliente_nome", clienteNome);

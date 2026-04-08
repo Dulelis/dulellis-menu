@@ -1,5 +1,11 @@
 import { CheckCircle2, Clock3, CreditCard, MapPin, XCircle } from "lucide-react";
 import RetornoActions from "./RetornoActions";
+import {
+  pagamentoMercadoPagoAprovado,
+  pagamentoMercadoPagoPendente,
+  pagamentoMercadoPagoRecusado,
+  sincronizarPagamentoMercadoPago,
+} from "@/lib/mercadopago-payment";
 import { getServiceSupabase } from "@/lib/server-supabase";
 
 const WHATSAPP_LOJA = "5547988347100";
@@ -16,9 +22,7 @@ const LOJA_ENDERECO_RETIRADA_RESUMO = [
 const LOJA_LINK_MAPS_RETIRADA = "https://maps.app.goo.gl/Vu3gjbNE1GDicuhR7";
 
 function getStatusInfo(status: string) {
-  const normalizado = status.trim().toLowerCase();
-
-  if (["paid", "approved", "pago", "authorized"].includes(normalizado)) {
+  if (pagamentoMercadoPagoAprovado(status)) {
     return {
       titulo: "Pagamento confirmado",
       descricao: "Recebemos seu pagamento com sucesso.",
@@ -28,7 +32,7 @@ function getStatusInfo(status: string) {
     };
   }
 
-  if (["pending", "in_process", "aguardando", "waiting"].includes(normalizado)) {
+  if (pagamentoMercadoPagoPendente(status)) {
     return {
       titulo: "Pagamento em análise",
       descricao: "Seu pagamento está em processamento.",
@@ -38,7 +42,7 @@ function getStatusInfo(status: string) {
     };
   }
 
-  if (["rejected", "cancelled", "canceled", "failed", "negado"].includes(normalizado)) {
+  if (pagamentoMercadoPagoRecusado(status)) {
     return {
       titulo: "Pagamento não aprovado",
       descricao: "Tente novamente com outro método de pagamento.",
@@ -363,22 +367,33 @@ function montarMensagemWhatsappPadraoPedido(
 
 type RetornoPagamentoPageProps = {
   searchParams: Promise<{
+    payment_id?: string;
+    collection_id?: string;
     transaction_id?: string;
     status?: string;
+    collection_status?: string;
     ref?: string;
+    external_reference?: string;
     cliente_nome?: string;
   }>;
 };
 
 export default async function RetornoPagamentoPage({ searchParams }: RetornoPagamentoPageProps) {
   const params = await searchParams;
-  const transactionId = params.transaction_id ?? "";
-  const status = params.status ?? "";
-  const referencia = params.ref ?? "";
+  const transactionIdBruto = params.payment_id ?? params.collection_id ?? params.transaction_id ?? "";
+  const statusBruto = params.status ?? params.collection_status ?? "";
+  const referenciaBruta = params.ref ?? params.external_reference ?? "";
   const clienteNome = String(params.cliente_nome || "").trim();
-  const info = getStatusInfo(status);
-  const aprovado = ["paid", "approved", "pago", "authorized"].includes(status.trim().toLowerCase());
-  const statusNormalizado = status.trim();
+  const syncResult = await sincronizarPagamentoMercadoPago({
+    paymentId: transactionIdBruto,
+    reference: referenciaBruta,
+    fallbackStatus: statusBruto,
+  });
+  const transactionId = syncResult.paymentId || transactionIdBruto;
+  const referencia = syncResult.reference || referenciaBruta;
+  const statusNormalizado = String(syncResult.status || statusBruto).trim();
+  const info = getStatusInfo(statusNormalizado);
+  const aprovado = pagamentoMercadoPagoAprovado(statusNormalizado);
   const pedidoResumo = await buscarResumoPedidoPorReferencia(referencia);
   const mensagemWhatsapp = montarMensagemWhatsappPadraoPedido(pedidoResumo, {
     clienteNome,
@@ -447,6 +462,8 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
         <RetornoActions
           whatsappLink={whatsappLink}
           refCode={referencia}
+          paymentId={transactionId}
+          initialStatus={statusNormalizado}
           autoRedirect={aprovado && !pedidoResumo?.retiradaNoBalcao}
           retiradaNoBalcao={Boolean(pedidoResumo?.retiradaNoBalcao)}
         />
