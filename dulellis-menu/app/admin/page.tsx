@@ -50,6 +50,7 @@ import {
 const QZ_TRAY_SCRIPT_URL = "https://unpkg.com/qz-tray@2.2.4/qz-tray.js";
 const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
+const ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY = "dulellis.admin.order-alarm.sound";
 const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
 const ADMIN_ALARME_PEDIDOS_REPETICAO_MS = 10000;
 const STATUSS_PAGAMENTO_APROVADOS_ADMIN = [
@@ -149,6 +150,163 @@ const ADMIN_TABS = [
   "relatorios",
 ] as const;
 type AdminTab = (typeof ADMIN_TABS)[number];
+type AlarmeSomId = "classico" | "campainha" | "suave" | "urgente";
+type AlarmeSomPreset = {
+  label: string;
+  vibracao: number[];
+  passos: Array<{
+    atraso: number;
+    duracao: number;
+    frequencia: number;
+    tipo: OscillatorType;
+    volume: number;
+  }>;
+};
+
+const ALARME_SONS_PEDIDOS: Record<AlarmeSomId, AlarmeSomPreset> = {
+  classico: {
+    label: "Classico",
+    vibracao: [220, 120, 220, 120, 320],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.17,
+        frequencia: 988,
+        tipo: "square",
+        volume: 0.32,
+      },
+      {
+        atraso: 0.24,
+        duracao: 0.17,
+        frequencia: 740,
+        tipo: "square",
+        volume: 0.32,
+      },
+      {
+        atraso: 0.48,
+        duracao: 0.17,
+        frequencia: 988,
+        tipo: "square",
+        volume: 0.32,
+      },
+      {
+        atraso: 0.72,
+        duracao: 0.17,
+        frequencia: 740,
+        tipo: "square",
+        volume: 0.32,
+      },
+      {
+        atraso: 0.96,
+        duracao: 0.2,
+        frequencia: 1046,
+        tipo: "square",
+        volume: 0.34,
+      },
+    ],
+  },
+  campainha: {
+    label: "Campainha",
+    vibracao: [160, 70, 160],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.18,
+        frequencia: 784,
+        tipo: "sine",
+        volume: 0.26,
+      },
+      {
+        atraso: 0.17,
+        duracao: 0.22,
+        frequencia: 1174,
+        tipo: "sine",
+        volume: 0.24,
+      },
+      {
+        atraso: 0.37,
+        duracao: 0.28,
+        frequencia: 1568,
+        tipo: "sine",
+        volume: 0.2,
+      },
+    ],
+  },
+  suave: {
+    label: "Suave",
+    vibracao: [120],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.14,
+        frequencia: 659,
+        tipo: "triangle",
+        volume: 0.18,
+      },
+      {
+        atraso: 0.18,
+        duracao: 0.14,
+        frequencia: 784,
+        tipo: "triangle",
+        volume: 0.2,
+      },
+      {
+        atraso: 0.36,
+        duracao: 0.2,
+        frequencia: 880,
+        tipo: "triangle",
+        volume: 0.22,
+      },
+    ],
+  },
+  urgente: {
+    label: "Urgente",
+    vibracao: [110, 60, 110, 60, 110, 60, 240],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.1,
+        frequencia: 880,
+        tipo: "sawtooth",
+        volume: 0.26,
+      },
+      {
+        atraso: 0.14,
+        duracao: 0.1,
+        frequencia: 988,
+        tipo: "sawtooth",
+        volume: 0.28,
+      },
+      {
+        atraso: 0.28,
+        duracao: 0.1,
+        frequencia: 1046,
+        tipo: "sawtooth",
+        volume: 0.3,
+      },
+      {
+        atraso: 0.42,
+        duracao: 0.1,
+        frequencia: 1174,
+        tipo: "sawtooth",
+        volume: 0.32,
+      },
+      {
+        atraso: 0.56,
+        duracao: 0.18,
+        frequencia: 1318,
+        tipo: "sawtooth",
+        volume: 0.34,
+      },
+    ],
+  },
+};
+
+function normalizarAlarmeSomId(valor: string | null): AlarmeSomId {
+  return valor && Object.prototype.hasOwnProperty.call(ALARME_SONS_PEDIDOS, valor)
+    ? (valor as AlarmeSomId)
+    : "classico";
+}
 
 function normalizarAdminTab(valor: string | null): AdminTab {
   return ADMIN_TABS.includes(valor as AdminTab)
@@ -297,6 +455,8 @@ function AdminPageContent() {
     number | null
   >(null);
   const [alarmePedidosAtivo, setAlarmePedidosAtivo] = useState(true);
+  const [alarmeSomSelecionado, setAlarmeSomSelecionado] =
+    useState<AlarmeSomId>("classico");
   const [alarmeSonoroLiberado, setAlarmeSonoroLiberado] = useState(false);
   const [alertaNovoPedido, setAlertaNovoPedido] = useState("");
   const [alertaEntregaAceita, setAlertaEntregaAceita] = useState("");
@@ -393,7 +553,9 @@ function AdminPageContent() {
   const alarmePendenteRef = useRef(false);
   const pedidosIniciaisMapeadosRef = useRef(false);
   const preferenciaAlarmeCarregadaRef = useRef(false);
+  const preferenciaSomAlarmeCarregadaRef = useRef(false);
   const ignorarPrimeiraPersistenciaAlarmeRef = useRef(true);
+  const ignorarPrimeiraPersistenciaSomAlarmeRef = useRef(true);
   const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
     categoria,
     itens: estoque.filter(
@@ -565,11 +727,13 @@ function AdminPageContent() {
     if (!alarmePedidosAtivo) return;
 
     try {
+      const preset = ALARME_SONS_PEDIDOS[alarmeSomSelecionado];
+
       if (
         typeof navigator !== "undefined" &&
         typeof navigator.vibrate === "function"
       ) {
-        navigator.vibrate([220, 120, 220, 120, 320]);
+        navigator.vibrate(preset.vibracao);
       }
 
       const contexto = await prepararAudioAlarme();
@@ -582,20 +746,19 @@ function AdminPageContent() {
       alarmePendenteRef.current = false;
       setAlarmeSonoroLiberado(true);
 
-      const tons = [988, 740, 988, 740, 1046];
       const inicioBase = contexto.currentTime + 0.02;
 
-      tons.forEach((frequencia, indice) => {
+      preset.passos.forEach((passo) => {
         const oscilador = contexto.createOscillator();
         const ganho = contexto.createGain();
-        const inicio = inicioBase + indice * 0.24;
-        const fim = inicio + 0.17;
+        const inicio = inicioBase + passo.atraso;
+        const fim = inicio + passo.duracao;
 
-        oscilador.type = "square";
-        oscilador.frequency.setValueAtTime(frequencia, inicio);
+        oscilador.type = passo.tipo;
+        oscilador.frequency.setValueAtTime(passo.frequencia, inicio);
 
         ganho.gain.setValueAtTime(0.0001, inicio);
-        ganho.gain.exponentialRampToValueAtTime(0.32, inicio + 0.01);
+        ganho.gain.exponentialRampToValueAtTime(passo.volume, inicio + 0.01);
         ganho.gain.exponentialRampToValueAtTime(0.0001, fim);
 
         oscilador.connect(ganho);
@@ -607,7 +770,7 @@ function AdminPageContent() {
       alarmePendenteRef.current = true;
       console.warn("Não foi possível tocar o alarme de novo pedido.", error);
     }
-  }, [alarmePedidosAtivo, prepararAudioAlarme]);
+  }, [alarmePedidosAtivo, alarmeSomSelecionado, prepararAudioAlarme]);
 
   const notificarNovoPedido = useCallback(
     (pedido: any) => {
@@ -743,8 +906,14 @@ function AdminPageContent() {
       if (salvo !== null) {
         setAlarmePedidosAtivo(salvo !== "false");
       }
+
+      const somSalvo = window.localStorage.getItem(
+        ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY,
+      );
+      setAlarmeSomSelecionado(normalizarAlarmeSomId(somSalvo));
     } catch {}
     preferenciaAlarmeCarregadaRef.current = true;
+    preferenciaSomAlarmeCarregadaRef.current = true;
   }, []);
 
   useEffect(() => {
@@ -760,6 +929,20 @@ function AdminPageContent() {
       );
     } catch {}
   }, [alarmePedidosAtivo]);
+
+  useEffect(() => {
+    if (!preferenciaSomAlarmeCarregadaRef.current) return;
+    if (ignorarPrimeiraPersistenciaSomAlarmeRef.current) {
+      ignorarPrimeiraPersistenciaSomAlarmeRef.current = false;
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY,
+        alarmeSomSelecionado,
+      );
+    } catch {}
+  }, [alarmeSomSelecionado]);
 
   useEffect(() => {
     void carregarDados();
@@ -4494,6 +4677,27 @@ function AdminPageContent() {
                 Testar alarme
               </button>
             ) : null}
+
+            <div className="relative w-full sm:w-auto">
+              <select
+                value={alarmeSomSelecionado}
+                onChange={(e) =>
+                  setAlarmeSomSelecionado(normalizarAlarmeSomId(e.target.value))
+                }
+                aria-label="Toque do alarme de pedidos"
+                className="w-full appearance-none rounded-2xl border border-slate-200 bg-white py-3 pl-4 pr-11 text-sm font-bold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-pink-500 sm:min-w-[210px]"
+              >
+                {Object.entries(ALARME_SONS_PEDIDOS).map(([value, preset]) => (
+                  <option key={value} value={value}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={18}
+                className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+            </div>
 
             <button
               type="button"
