@@ -388,6 +388,7 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
     paymentId: transactionIdBruto,
     reference: referenciaBruta,
     fallbackStatus: statusBruto,
+    allowCreateOrderFromDraft: true,
   });
   const transactionId = syncResult.paymentId || transactionIdBruto;
   const referencia = syncResult.reference || referenciaBruta;
@@ -397,6 +398,7 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const pedidoResumo = await buscarResumoPedidoPorReferencia(referencia);
   const pedidoIdInicial = Number(syncResult.pedidoId || 0);
   const sincronizacaoPendente = aprovado && !pedidoResumo && pedidoIdInicial <= 0;
+  const autoRedirectLiberado = aprovado && !sincronizacaoPendente;
   const mensagemWhatsapp = montarMensagemWhatsappPadraoPedido(pedidoResumo, {
     clienteNome,
     tituloStatus: info.titulo,
@@ -485,7 +487,7 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
           paymentId={transactionId}
           initialStatus={statusNormalizado}
           initialPedidoId={pedidoIdInicial}
-          autoRedirect={aprovado}
+          autoRedirect={autoRedirectLiberado}
           redirectUrl={redirectUrl}
           retiradaNoBalcao={Boolean(pedidoResumo?.retiradaNoBalcao)}
         />

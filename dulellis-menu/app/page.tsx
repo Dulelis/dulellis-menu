@@ -79,6 +79,7 @@ const TIPOS_ENTREGA = [TIPO_ENTREGA, TIPO_RETIRADA_BALCAO] as const;
 const VITRINE_MODAL_SLIDE_MS = 6000;
 const AUTH_DRAFT_STORAGE_KEY = "dulellis.auth.draft";
 const VITRINE_CACHE_STORAGE_KEY = "dulellis.vitrine.cache.v1";
+const MERCADOPAGO_REDIRECT_DRAFT_STORAGE_KEY = "dulellis.mercadopago.redirect.v1";
 
 type Cliente = {
   nome: string;
@@ -246,6 +247,16 @@ type VitrineCache = {
 
 type MobileAppTab = "home" | "highlights" | "menu" | "order";
 type TipoEntrega = (typeof TIPOS_ENTREGA)[number];
+type MercadoPagoRedirectDraft = {
+  version: 1;
+  savedAt: string;
+  carrinho: ItemCarrinho[];
+  cliente: Cliente;
+  taxaEntrega: number;
+  tipoEntrega: TipoEntrega;
+  formaPagamento: string;
+  referenciaPagamento: string;
+};
 
 const CLIENTE_INICIAL: Cliente = {
   nome: "",
@@ -301,6 +312,59 @@ function BlocoRetiradaLoja({ className = "", descricao }: BlocoRetiradaLojaProps
       </a>
     </div>
   );
+}
+
+function salvarRascunhoCheckoutMercadoPago(draft: MercadoPagoRedirectDraft) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(
+      MERCADOPAGO_REDIRECT_DRAFT_STORAGE_KEY,
+      JSON.stringify(draft),
+    );
+  } catch (error) {
+    console.warn("Nao foi possivel salvar o rascunho do checkout Mercado Pago.", error);
+  }
+}
+
+function lerRascunhoCheckoutMercadoPago(): MercadoPagoRedirectDraft | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(MERCADOPAGO_REDIRECT_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<MercadoPagoRedirectDraft>;
+    if (!Array.isArray(parsed.carrinho)) return null;
+
+    return {
+      version: 1,
+      savedAt: String(parsed.savedAt || ""),
+      carrinho: parsed.carrinho as ItemCarrinho[],
+      cliente:
+        parsed.cliente && typeof parsed.cliente === "object"
+          ? ({ ...CLIENTE_INICIAL, ...parsed.cliente } as Cliente)
+          : { ...CLIENTE_INICIAL },
+      taxaEntrega: Math.max(0, Number(parsed.taxaEntrega || 0)),
+      tipoEntrega: parsed.tipoEntrega === TIPO_RETIRADA_BALCAO ? TIPO_RETIRADA_BALCAO : TIPO_ENTREGA,
+      formaPagamento: String(parsed.formaPagamento || ""),
+      referenciaPagamento: String(parsed.referenciaPagamento || ""),
+    };
+  } catch (error) {
+    console.warn("O rascunho do checkout Mercado Pago ficou invalido e sera ignorado.", error);
+    try {
+      window.sessionStorage.removeItem(MERCADOPAGO_REDIRECT_DRAFT_STORAGE_KEY);
+    } catch {}
+    return null;
+  }
+}
+
+function limparRascunhoCheckoutMercadoPago() {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.removeItem(MERCADOPAGO_REDIRECT_DRAFT_STORAGE_KEY);
+  } catch {}
 }
 
 function salvarVitrineCache(cache: VitrineCache) {
@@ -1348,6 +1412,47 @@ function ClientePageContent() {
     }));
   }, []);
 
+  const resetarFluxoCheckout = useCallback((baseCliente?: Cliente | null) => {
+    if (baseCliente) {
+      aplicarEnderecoSalvo(baseCliente);
+    }
+    setAbaCarrinho(false);
+    setPasso(1);
+    setModoEnderecoEntrega("saved");
+    setClienteEncontrado(false);
+    setDistanciaKm(null);
+    setTaxaEntrega(0);
+    setMsgTaxa("Aguardando endereço...");
+    setTipoEntrega(TIPO_ENTREGA);
+    setFormaPagamento("");
+    setTrocoPara("");
+    setReferenciaPagamento("");
+  }, [aplicarEnderecoSalvo]);
+
+  const restaurarRascunhoMercadoPago = useCallback((draft: MercadoPagoRedirectDraft) => {
+    cadastroManualRef.current = true;
+    setCarrinho(draft.carrinho);
+    setCliente(draft.cliente);
+    setTipoEntrega(draft.tipoEntrega);
+    setTaxaEntrega(draft.tipoEntrega === TIPO_RETIRADA_BALCAO ? 0 : draft.taxaEntrega);
+    setDistanciaKm(null);
+    setMsgTaxa(
+      draft.tipoEntrega === TIPO_RETIRADA_BALCAO
+        ? "Retirada no balcão"
+        : draft.taxaEntrega > 0
+          ? `Entrega: R$ ${draft.taxaEntrega.toFixed(2)} (ultima tentativa)`
+          : "Aguardando endereço...",
+    );
+    setModoEnderecoEntrega(clienteTemEnderecoSalvo(draft.cliente) ? "saved" : "new");
+    setFormaPagamento(draft.formaPagamento);
+    setTrocoPara("");
+    setReferenciaPagamento(draft.referenciaPagamento);
+    setUltimoPedidoFoiRetirada(draft.tipoEntrega === TIPO_RETIRADA_BALCAO);
+    setPodeAcompanharPedido(false);
+    setAbaCarrinho(draft.carrinho.length > 0);
+    setPasso(draft.carrinho.length > 0 ? 3 : 1);
+  }, []);
+
   const prepararNovoEndereco = useCallback(() => {
     cadastroManualRef.current = true;
     setCliente((prev) => ({
@@ -1660,6 +1765,7 @@ function ClientePageContent() {
   useEffect(() => {
     const statusPixDaUrl = normalizarStatusPagamento(searchParams.get("pix_status") || "");
     if (!statusPixDaUrl) return;
+    const rascunhoMercadoPago = lerRascunhoCheckoutMercadoPago();
 
     setRetornoPixInfo({
       status: statusPixDaUrl,
@@ -1669,6 +1775,14 @@ function ClientePageContent() {
     setPodeAcompanharPedido(pagamentoPixAprovado(statusPixDaUrl));
     setModalPedidoFinalizadoAberto(true);
 
+    if (pagamentoPixAprovado(statusPixDaUrl)) {
+      limparRascunhoCheckoutMercadoPago();
+      setCarrinho([]);
+      resetarFluxoCheckout();
+    } else if (rascunhoMercadoPago) {
+      restaurarRascunhoMercadoPago(rascunhoMercadoPago);
+    }
+
     const url = new URL(window.location.href);
     url.searchParams.delete("pix_return");
     url.searchParams.delete("pix_status");
@@ -1676,7 +1790,7 @@ function ClientePageContent() {
     url.searchParams.delete("pix_payment_id");
     url.searchParams.delete("pix_retirada");
     window.history.replaceState({}, "", url.toString());
-  }, [searchParams]);
+  }, [resetarFluxoCheckout, restaurarRascunhoMercadoPago, searchParams]);
 
   const setItemEstoqueProcessando = useCallback((id: number, processando: boolean) => {
     setEstoqueEmAtualizacao((prev) => ({ ...prev, [id]: processando }));
@@ -2094,11 +2208,7 @@ function ClientePageContent() {
     }
 
     setLoading(true);
-    let janelaPagamento: Window | null = null;
     const usaMercadoPago = formaPagamentoUsaMercadoPago(formaPagamento);
-    if (usaMercadoPago && typeof window !== "undefined") {
-      janelaPagamento = window.open("about:blank", "_blank");
-    }
     try {
       const payloadCliente = await salvarOuAtualizarCliente(cliente);
       const enderecoAtualizado = normalizarClienteParaEntrega(payloadCliente);
@@ -2122,6 +2232,7 @@ function ClientePageContent() {
         });
         const dataCheckout = (await resCheckout.json().catch(() => ({}))) as {
           url?: string;
+          referencia?: string;
           error?: string;
         };
         if (!resCheckout.ok) {
@@ -2130,11 +2241,21 @@ function ClientePageContent() {
         if (!dataCheckout.url) {
           throw new Error("Link de pagamento indisponível");
         }
-        if (janelaPagamento && !janelaPagamento.closed) {
-          janelaPagamento.location.href = dataCheckout.url;
-        } else if (typeof window !== "undefined") {
-          window.location.href = dataCheckout.url;
+        salvarRascunhoCheckoutMercadoPago({
+          version: 1,
+          savedAt: new Date().toISOString(),
+          carrinho,
+          cliente: enderecoAtualizado,
+          taxaEntrega: retiradaNoBalcao ? 0 : taxaEntrega,
+          tipoEntrega,
+          formaPagamento,
+          referenciaPagamento: String(dataCheckout.referencia || referenciaPagamento || ""),
+        });
+        setUltimoPedidoFoiRetirada(retiradaNoBalcao);
+        if (typeof window !== "undefined") {
+          window.location.assign(dataCheckout.url);
         }
+        return;
       } else {
         const resPedido = await fetch("/api/public/order", {
           method: "POST",
@@ -2166,38 +2287,22 @@ function ClientePageContent() {
         }
       }
 
-      setPodeAcompanharPedido(!usaMercadoPago);
+      limparRascunhoCheckoutMercadoPago();
+      setPodeAcompanharPedido(true);
       setUltimoPedidoFoiRetirada(retiradaNoBalcao);
 
       setCarrinho([]);
-      setAbaCarrinho(false);
-      setPasso(1);
-      aplicarEnderecoSalvo(enderecoAtualizado);
-      setModoEnderecoEntrega("saved");
-      setClienteEncontrado(false);
-      setDistanciaKm(null);
-      setTaxaEntrega(0);
-      setMsgTaxa("Aguardando endereço...");
-      setTipoEntrega(TIPO_ENTREGA);
-      setFormaPagamento("");
-      setTrocoPara("");
-      setReferenciaPagamento("");
-
-      if (!usaMercadoPago) {
-        abrirModalPedidoFinalizado();
-      }
+      resetarFluxoCheckout(enderecoAtualizado);
+      abrirModalPedidoFinalizado();
       void carregarDadosIniciais(false);
     } catch (error) {
-      if (janelaPagamento && !janelaPagamento.closed) {
-        janelaPagamento.close();
-      }
       const mensagem = obterMensagemErro(error) || "Erro ao finalizar pedido.";
       console.error("Erro ao finalizar pedido:", error);
       alert(mensagem);
     } finally {
       setLoading(false);
     }
-  }, [abrirModalPedidoFinalizado, aplicarEnderecoSalvo, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, tipoEntrega, totalGeral, trocoParaPreenchido, trocoParaValor]);
+  }, [abrirModalPedidoFinalizado, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, resetarFluxoCheckout, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, tipoEntrega, totalGeral, trocoParaPreenchido, trocoParaValor]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -2498,6 +2603,11 @@ function ClientePageContent() {
     return diasSelecionados.map((dia) => DIAS_SEMANA_LABELS[dia]).join(", ");
   }, [horarioFuncionamento.dias_semana]);
   const interacoesBloqueadas = pedidosEncerradosHoje;
+  const botaoFinalizarLabel = interacoesBloqueadas
+    ? "Loja Fechada"
+    : formaPagamentoUsaMercadoPago(formaPagamento)
+      ? "Ir para o Mercado Pago"
+      : "Finalizar Pedido";
   const abaAppAtiva = abaCarrinho || modalAuthAberto || modalAcompanhamentoAberto ? "order" : mobileAppTab;
 
   const rolarParaSecao = useCallback((ref: React.RefObject<HTMLElement | HTMLDivElement | null>, aba: MobileAppTab) => {
@@ -3970,6 +4080,11 @@ function ClientePageContent() {
                         : "Deixe em branco se não precisar de troco."}
                     </p>
                   ) : null}
+                  {formaPagamento && formaPagamentoUsaMercadoPago(formaPagamento) ? (
+                    <p className="mt-3 text-[11px] font-bold text-slate-500">
+                      Voce sera redirecionado ao Mercado Pago para concluir o pagamento com seguranca.
+                    </p>
+                  ) : null}
                 </div>
 
                 <button
@@ -3981,9 +4096,9 @@ function ClientePageContent() {
                   {loading ? (
                     <>
                       <Loader2 size={22} className="animate-spin" />
-                      Finalizando...
+                      {formaPagamentoUsaMercadoPago(formaPagamento) ? "Redirecionando..." : "Finalizando..."}
                     </>
-                  ) : interacoesBloqueadas ? "Loja Fechada" : "Finalizar Pedido"}
+                  ) : botaoFinalizarLabel}
                 </button>
                 <button
                   type="button"

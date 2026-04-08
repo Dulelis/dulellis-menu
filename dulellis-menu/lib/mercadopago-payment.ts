@@ -62,6 +62,11 @@ export type MercadoPagoSyncResult = {
   error?: string;
 };
 
+type MercadoPagoSyncOptions = {
+  reference?: string;
+  allowCreateOrderFromDraft?: boolean;
+};
+
 function normalizarStatus(status: string) {
   return String(status || "").trim().toLowerCase();
 }
@@ -334,7 +339,7 @@ async function localizarPedidoExistente(args: {
 
 export async function sincronizarPedidoComPagamentoMercadoPago(
   payment: MercadoPagoPayment,
-  options?: { reference?: string },
+  options?: MercadoPagoSyncOptions,
 ) {
   const paymentId = String(payment.id || "").trim();
   const reference = String(
@@ -402,7 +407,10 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
       .update(payloadStatus)
       .eq("id", pedidoEncontrado.id);
     updated = !error;
-  } else if (pagamentoMercadoPagoAprovado(status)) {
+  } else if (
+    pagamentoMercadoPagoAprovado(status) &&
+    options?.allowCreateOrderFromDraft !== false
+  ) {
     const draftSnapshot = normalizeOrderDraftSnapshot(metadata.pedido_draft, {
       reference,
     });
@@ -457,6 +465,7 @@ export async function sincronizarPagamentoMercadoPago(args: {
   paymentId?: string;
   reference?: string;
   fallbackStatus?: string;
+  allowCreateOrderFromDraft?: boolean;
 }): Promise<MercadoPagoSyncResult> {
   const paymentId = String(args.paymentId || "").trim();
   const reference = String(args.reference || "").trim();
@@ -482,6 +491,7 @@ export async function sincronizarPagamentoMercadoPago(args: {
     paymentResult.payment,
     {
       reference,
+      allowCreateOrderFromDraft: args.allowCreateOrderFromDraft,
     },
   );
 

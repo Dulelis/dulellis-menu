@@ -47,7 +47,7 @@ export default function RetornoActions({
 }: RetornoActionsProps) {
   const router = useRouter();
   const storageKey = useMemo(
-    () => `retorno-whatsapp-opened:${refCode || "sem-ref"}`,
+    () => `retorno-auto-redirect:${refCode || "sem-ref"}`,
     [refCode],
   );
   const statusInicialNormalizado = useMemo(
@@ -70,11 +70,11 @@ export default function RetornoActions({
     window.sessionStorage.setItem(storageKey, "1");
 
     const timer = window.setTimeout(() => {
-      window.location.href = redirectUrl || whatsappLink;
-    }, 350);
+      window.location.href = redirectUrl || "/";
+    }, 500);
 
     return () => window.clearTimeout(timer);
-  }, [autoRedirect, redirectUrl, storageKey, whatsappLink]);
+  }, [autoRedirect, redirectUrl, storageKey]);
 
   useEffect(() => {
     if (!deveConsultarPagamento) return;
@@ -103,10 +103,21 @@ export default function RetornoActions({
         const pedidoIdAtual = Number(json.data?.pedido_id || 0);
         if (cancelado || !statusAtual) return;
 
+        const statusAprovado = STATUSS_APROVADOS.includes(statusAtual);
+        const statusFinalNaoAprovado =
+          STATUSS_FINAIS.includes(statusAtual) && !statusAprovado;
+        const statusMudouParaNaoAprovado =
+          Boolean(statusInicialNormalizado) &&
+          statusAtual !== statusInicialNormalizado &&
+          !statusAprovado;
+        const primeiroStatusNaoAprovado =
+          !statusInicialNormalizado && !statusAprovado;
+
         if (
           pedidoIdAtual > 0 ||
-          statusAtual !== statusInicialNormalizado ||
-          STATUSS_FINAIS.includes(statusAtual)
+          statusFinalNaoAprovado ||
+          statusMudouParaNaoAprovado ||
+          primeiroStatusNaoAprovado
         ) {
           router.refresh();
           return;
@@ -137,24 +148,40 @@ export default function RetornoActions({
           Atualizando automaticamente o status do pagamento e sincronizando seu pedido.
         </p>
       ) : null}
+      {autoRedirect ? (
+        <>
+          <Link
+            href={redirectUrl || "/"}
+            className="block w-full text-center bg-pink-600 text-white py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
+          >
+            Continuar agora
+          </Link>
+          <p className="text-[11px] text-slate-600 mt-3 mb-3">
+            Seu pedido ja pago esta voltando para a fila da loja para aceite e impressao.
+          </p>
+        </>
+      ) : (
+        <>
+          <Link
+            href={redirectUrl || "/"}
+            className="block w-full text-center bg-pink-600 text-white py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
+          >
+            Voltar para o cardapio
+          </Link>
+          <p className="text-[11px] text-slate-600 mt-3 mb-3">
+            Voce recebera atualizacoes: pedido confirmado, em producao e{" "}
+            {retiradaNoBalcao ? "pronto para retirada." : "saiu para entrega."}
+          </p>
+        </>
+      )}
       <a
         href={whatsappLink}
         target="_blank"
         rel="noopener noreferrer"
-        className="block w-full text-center bg-pink-600 text-white py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
-      >
-        Confirmar no WhatsApp
-      </a>
-      <p className="text-[11px] text-slate-600 mt-3 mb-3">
-        Voce recebera atualizacoes: pedido confirmado, em producao e{" "}
-        {retiradaNoBalcao ? "pronto para retirada." : "saiu para entrega."}
-      </p>
-      <Link
-        href="/"
         className="block w-full text-center bg-white border border-slate-200 text-slate-700 py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
       >
-        Voltar para o cardapio
-      </Link>
+        Falar com a loja
+      </a>
     </>
   );
 }

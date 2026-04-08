@@ -113,7 +113,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: payment?.message || "erro mp" }, { status: mpRes.status });
     }
 
-    const syncResult = await sincronizarPedidoComPagamentoMercadoPago(payment);
+    const syncResult = await sincronizarPedidoComPagamentoMercadoPago(payment, {
+      allowCreateOrderFromDraft: false,
+    });
 
     if (syncResult.error) {
       return NextResponse.json({ ok: false, error: syncResult.error }, { status: 500 });

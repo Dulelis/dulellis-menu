@@ -7,7 +7,6 @@ import {
 } from "@/lib/request-security";
 import { getCustomerSessionFromRequest } from "@/lib/customer-request";
 import {
-  insertOrderFromSnapshot,
   OrderDraftError,
   prepareOrderDraft,
   type PublicOrderBody,
@@ -118,7 +117,7 @@ export async function POST(request: Request) {
     let referencia = String(body.referencia || `dulelis-${Date.now()}`);
     let clienteNome = String(body.cliente_nome || "").trim();
     let whatsapp = String(body.whatsapp || "").trim();
-    let pedidoId = Number(body.pedido_id || 0);
+    const pedidoId = Number(body.pedido_id || 0);
     let itensMetadata: Array<{ nome: string; qtd: number; preco: number }> =
       [];
     let pedidoDraftMetadata: unknown = null;
@@ -156,11 +155,6 @@ export async function POST(request: Request) {
         sessionWhatsapp: String(sessao.whatsapp || ""),
       });
       await upsertOrderCustomer(supabase, draft.customerPayload);
-      pedidoId = await insertOrderFromSnapshot(supabase, draft.snapshot, {
-        statusPedido: "pagamento_pendente",
-        statusPagamento: "pending",
-        formaPagamento: formaPagamentoCheckout,
-      });
       total = draft.total;
       referencia = draft.reference;
       clienteNome = draft.customerPayload.nome;
