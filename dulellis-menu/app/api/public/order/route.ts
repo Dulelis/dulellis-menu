@@ -15,12 +15,17 @@ import {
 } from "@/lib/order-draft";
 import type { NextRequest } from "next/server";
 
-function formaPagamentoEhPix(formaPagamento?: string) {
-  return String(formaPagamento || "")
+function normalizarTexto(value: string) {
+  return String(value || "")
     .trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase() === "pix";
+    .toLowerCase();
+}
+
+function formaPagamentoUsaMercadoPago(formaPagamento?: string) {
+  const formaNormalizada = normalizarTexto(formaPagamento || "");
+  return formaNormalizada === "pix" || formaNormalizada === "cartao mercado pago";
 }
 
 export async function POST(request: NextRequest) {
@@ -61,12 +66,12 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as PublicOrderBody;
-  if (formaPagamentoEhPix(body.forma_pagamento)) {
+  if (formaPagamentoUsaMercadoPago(body.forma_pagamento)) {
     return NextResponse.json(
       {
         ok: false,
         error:
-          "Pedidos Pix sao criados somente apos a confirmacao do pagamento.",
+          "Pedidos pagos no Mercado Pago sao criados somente apos a confirmacao do pagamento.",
       },
       { status: 400 },
     );

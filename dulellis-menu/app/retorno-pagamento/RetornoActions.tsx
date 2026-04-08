@@ -134,7 +134,7 @@ export default function RetornoActions({
     <>
       {deveConsultarPagamento ? (
         <p className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-bold text-amber-700">
-          Atualizando automaticamente o status do Pix e sincronizando seu pedido.
+          Atualizando automaticamente o status do pagamento e sincronizando seu pedido.
         </p>
       ) : null}
       <a

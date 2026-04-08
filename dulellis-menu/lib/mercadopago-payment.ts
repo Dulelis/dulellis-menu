@@ -29,6 +29,7 @@ type MercadoPagoPaymentMetadata = {
   pedido_id?: number | string;
   pedido_draft?: unknown;
   cliente_nome?: string;
+  forma_pagamento?: string;
 };
 
 export type MercadoPagoPayment = {
@@ -63,6 +64,21 @@ export type MercadoPagoSyncResult = {
 
 function normalizarStatus(status: string) {
   return String(status || "").trim().toLowerCase();
+}
+
+function normalizarTexto(value: string) {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function normalizarFormaPagamentoMercadoPago(value?: string) {
+  const forma = normalizarTexto(value || "");
+  if (forma === "cartao mercado pago") return "Cartão Mercado Pago";
+  if (forma === "pix") return "Pix";
+  return "";
 }
 
 function extrairDataOrdenacao(payment: MercadoPagoPayment) {
@@ -329,6 +345,9 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
   const metadata = (payment.metadata || {}) as MercadoPagoPaymentMetadata;
   const whatsapp = String(metadata.whatsapp || "").trim();
   const pedidoIdMetadata = Number(metadata.pedido_id || 0);
+  const formaPagamento = normalizarFormaPagamentoMercadoPago(
+    metadata.forma_pagamento,
+  );
 
   const supabase = getServiceSupabase();
   if (!supabase) {
@@ -349,9 +368,9 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
     pagamento_id: paymentId || null,
     pagamento_atualizado_em: new Date().toISOString(),
     ...(reference ? { pagamento_referencia: reference } : {}),
-    ...(pagamentoMercadoPagoAprovado(status)
+    ...(pagamentoMercadoPagoAprovado(status) && formaPagamento
       ? {
-          forma_pagamento: "Pix",
+          forma_pagamento: formaPagamento,
         }
       : {}),
   };
@@ -396,7 +415,10 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
           statusPagamento: status || null,
           pagamentoId: paymentId || null,
           pagamentoAtualizadoEm: new Date().toISOString(),
-          formaPagamento: "Pix",
+          formaPagamento:
+            formaPagamento ||
+            String(draftSnapshot.forma_pagamento || "").trim() ||
+            "Pix",
         });
         updated = true;
       } catch (error) {
@@ -405,7 +427,7 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
             ? error.message
             : error instanceof Error
               ? error.message
-              : "Falha ao criar pedido do Pix aprovado.";
+              : "Falha ao criar pedido do pagamento aprovado.";
         return {
           updated: false,
           pedidoId: null,

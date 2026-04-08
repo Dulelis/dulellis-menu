@@ -61,8 +61,15 @@ const DIAS_SEMANA_LABELS: Record<(typeof DIAS_SEMANA_CHAVES)[number], string> = 
 };
 const FORMA_DINHEIRO = "Dinheiro";
 const FORMA_CARTAO_ENTREGA = "Cartão na entrega";
-const FORMA_PIX_CARTAO = "Pix";
-const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_CARTAO_ENTREGA, FORMA_PIX_CARTAO];
+const FORMA_PIX = "Pix";
+const FORMA_CARTAO_MERCADO_PAGO = "Cartão Mercado Pago";
+const FORMAS_PAGAMENTO = [
+  FORMA_DINHEIRO,
+  FORMA_CARTAO_ENTREGA,
+  FORMA_PIX,
+  FORMA_CARTAO_MERCADO_PAGO,
+];
+const FORMAS_PAGAMENTO_MERCADO_PAGO = [FORMA_PIX, FORMA_CARTAO_MERCADO_PAGO];
 const STATUSS_PAGAMENTO_APROVADOS = ["approved", "paid", "authorized", "pago"];
 const STATUSS_PAGAMENTO_PENDENTES = ["pending", "in_process", "in_mediation", "aguardando", "waiting"];
 const STATUSS_PAGAMENTO_RECUSADOS = ["rejected", "cancelled", "canceled", "failed", "negado", "refunded", "charged_back"];
@@ -210,6 +217,11 @@ function pagamentoPixPendente(status?: string) {
 
 function pagamentoPixRecusado(status?: string) {
   return STATUSS_PAGAMENTO_RECUSADOS.includes(normalizarStatusPagamento(status));
+}
+
+function formaPagamentoUsaMercadoPago(forma?: string) {
+  const formaAtual = String(forma || "");
+  return FORMAS_PAGAMENTO_MERCADO_PAGO.some((item) => item === formaAtual);
 }
 
 type AuthDraft = {
@@ -2008,8 +2020,8 @@ function ClientePageContent() {
       return {
         titulo: "Pagamento aprovado!",
         descricao: ultimoPedidoFoiRetirada
-          ? "Seu Pix foi confirmado e o pedido voltou para a fila da loja para separação e impressão do cupom."
-          : "Seu Pix foi confirmado e o pedido voltou para a fila da loja para confirmação e impressão do cupom.",
+          ? "Seu pagamento foi confirmado e o pedido voltou para a fila da loja para separação e impressão do cupom."
+          : "Seu pagamento foi confirmado e o pedido voltou para a fila da loja para confirmação e impressão do cupom.",
         destaque: "Status atualizado com sucesso. Você já pode acompanhar o pedido por aqui.",
         destaqueClasse: "text-green-600",
         iconeClasse: "bg-green-100 text-green-600",
@@ -2021,7 +2033,7 @@ function ClientePageContent() {
     if (pagamentoPixPendente(retornoPixInfo.status)) {
       return {
         titulo: "Pagamento em análise",
-        descricao: "Ainda estamos aguardando a confirmação do Pix. Assim que ele aprovar, o pedido entra no fluxo normal da loja.",
+        descricao: "Ainda estamos aguardando a confirmação do pagamento. Assim que ele aprovar, o pedido entra no fluxo normal da loja.",
         destaque: "Você pode acompanhar o resultado aqui na vitrine.",
         destaqueClasse: "text-amber-600",
         iconeClasse: "bg-amber-100 text-amber-600",
@@ -2033,7 +2045,7 @@ function ClientePageContent() {
     if (pagamentoPixRecusado(retornoPixInfo.status)) {
       return {
         titulo: "Pagamento não aprovado",
-        descricao: "O Pix não foi concluído. Se quiser, você pode voltar ao cardápio e tentar novamente.",
+        descricao: "O pagamento não foi concluído. Se quiser, você pode voltar ao cardápio e tentar novamente.",
         destaque: "Nenhum pedido será confirmado até o pagamento ser aprovado.",
         destaqueClasse: "text-rose-600",
         iconeClasse: "bg-rose-100 text-rose-600",
@@ -2056,7 +2068,7 @@ function ClientePageContent() {
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
 
-    if (forma === FORMA_PIX_CARTAO) {
+    if (formaPagamentoUsaMercadoPago(forma)) {
       const referencia =
         referenciaPagamento ||
         (typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -2083,8 +2095,8 @@ function ClientePageContent() {
 
     setLoading(true);
     let janelaPagamento: Window | null = null;
-    const ehPixCartao = formaPagamento === FORMA_PIX_CARTAO;
-    if (formaPagamento === FORMA_PIX_CARTAO && typeof window !== "undefined") {
+    const usaMercadoPago = formaPagamentoUsaMercadoPago(formaPagamento);
+    if (usaMercadoPago && typeof window !== "undefined") {
       janelaPagamento = window.open("about:blank", "_blank");
     }
     try {
@@ -2095,7 +2107,7 @@ function ClientePageContent() {
         setUltimaTaxaEntregaSalva(taxaEntrega);
       }
       setModoEnderecoEntrega("saved");
-      if (ehPixCartao) {
+      if (usaMercadoPago) {
         const resCheckout = await fetch("/api/mercadopago/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2154,7 +2166,7 @@ function ClientePageContent() {
         }
       }
 
-      setPodeAcompanharPedido(!ehPixCartao);
+      setPodeAcompanharPedido(!usaMercadoPago);
       setUltimoPedidoFoiRetirada(retiradaNoBalcao);
 
       setCarrinho([]);
@@ -2171,7 +2183,7 @@ function ClientePageContent() {
       setTrocoPara("");
       setReferenciaPagamento("");
 
-      if (!ehPixCartao) {
+      if (!usaMercadoPago) {
         abrirModalPedidoFinalizado();
       }
       void carregarDadosIniciais(false);
@@ -3935,13 +3947,13 @@ function ClientePageContent() {
                       />
                     </div>
                   </div>
-                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {FORMAS_PAGAMENTO.filter((forma) => forma !== FORMA_DINHEIRO).map((forma) => (
                       <button
                         key={forma}
                         type="button"
                         onClick={() => void selecionarFormaPagamento(forma)}
-                        className={`p-3 rounded-2xl text-xs font-black uppercase tracking-wide border-2 transition-all ${formaPagamento === forma ? "bg-pink-600 border-pink-600 text-white" : "bg-slate-50 border-slate-100 text-slate-500"}`}
+                        className={`flex min-h-[52px] items-center justify-center rounded-2xl border-2 p-3 text-center text-[11px] font-black uppercase leading-tight tracking-wide transition-all ${formaPagamento === forma ? "bg-pink-600 border-pink-600 text-white" : "bg-slate-50 border-slate-100 text-slate-500"}`}
                       >
                         {forma}
                       </button>

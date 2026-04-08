@@ -27,12 +27,51 @@ type CheckoutBody = PublicOrderBody & {
   }>;
 };
 
+const FORMA_PIX = "Pix";
+const FORMA_CARTAO_MERCADO_PAGO = "Cartão Mercado Pago";
+
+function normalizarTexto(value: string) {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function normalizarFormaPagamentoCheckout(value?: string) {
+  return normalizarTexto(value || "") === "cartao mercado pago"
+    ? FORMA_CARTAO_MERCADO_PAGO
+    : FORMA_PIX;
+}
+
+function obterMetodosPagamentoCheckout(formaPagamento: string) {
+  if (normalizarTexto(formaPagamento) === "cartao mercado pago") {
+    return {
+      excluded_payment_types: [
+        { id: "bank_transfer" },
+        { id: "ticket" },
+        { id: "atm" },
+      ],
+    };
+  }
+
+  return {
+    excluded_payment_types: [
+      { id: "credit_card" },
+      { id: "debit_card" },
+      { id: "ticket" },
+      { id: "atm" },
+      { id: "prepaid_card" },
+    ],
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const sessao = getCustomerSessionFromRequest(request);
     if (!sessao) {
       return NextResponse.json(
-        { error: "Login obrigatorio para iniciar o Pix." },
+        { error: "Login obrigatorio para iniciar o pagamento." },
         { status: 401 },
       );
     }
@@ -66,6 +105,7 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json().catch(() => ({}))) as CheckoutBody;
+    let formaPagamentoCheckout = normalizarFormaPagamentoCheckout(body.forma_pagamento);
     const supabase = getServiceSupabase();
     if (!supabase) {
       return NextResponse.json(
@@ -86,7 +126,7 @@ export async function POST(request: Request) {
     if (Number.isInteger(pedidoId) && pedidoId > 0) {
       const { data: pedido, error: erroPedido } = await supabase
         .from("pedidos")
-        .select("id,total,cliente_nome,whatsapp,pagamento_referencia,itens")
+        .select("id,total,cliente_nome,whatsapp,pagamento_referencia,itens,forma_pagamento")
         .eq("id", pedidoId)
         .maybeSingle();
       if (erroPedido || !pedido) {
@@ -99,6 +139,9 @@ export async function POST(request: Request) {
       referencia = String(pedido.pagamento_referencia || referencia);
       clienteNome = String(pedido.cliente_nome || clienteNome);
       whatsapp = String(pedido.whatsapp || whatsapp);
+      formaPagamentoCheckout = normalizarFormaPagamentoCheckout(
+        String(pedido.forma_pagamento || formaPagamentoCheckout),
+      );
       itensMetadata = Array.isArray(pedido.itens)
         ? pedido.itens.map((item: Record<string, unknown>) => ({
             nome: String(item.nome || "Item"),
@@ -116,7 +159,7 @@ export async function POST(request: Request) {
       pedidoId = await insertOrderFromSnapshot(supabase, draft.snapshot, {
         statusPedido: "pagamento_pendente",
         statusPagamento: "pending",
-        formaPagamento: "Pix",
+        formaPagamento: formaPagamentoCheckout,
       });
       total = draft.total;
       referencia = draft.reference;
@@ -180,21 +223,14 @@ export async function POST(request: Request) {
         pedido_id: pedidoId || null,
         itens: itensMetadata,
         pedido_draft: pedidoDraftMetadata,
+        forma_pagamento: formaPagamentoCheckout,
       },
       back_urls: {
         success: retornoSuccessUrl.toString(),
         failure: retornoFailureUrl.toString(),
         pending: retornoPendingUrl.toString(),
       },
-      payment_methods: {
-        excluded_payment_types: [
-          { id: "credit_card" },
-          { id: "debit_card" },
-          { id: "ticket" },
-          { id: "atm" },
-          { id: "prepaid_card" },
-        ],
-      },
+      payment_methods: obterMetodosPagamentoCheckout(formaPagamentoCheckout),
     };
     if (baseEhPublico) {
       payload.auto_return = "approved";

@@ -228,7 +228,7 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
 
   const whatsapp = String(pedido.whatsapp || "").trim();
   const clienteNome = String(pedido.cliente_nome || "").trim();
-  const formaPagamento = String(pedido.forma_pagamento || "Pix").trim();
+  const formaPagamento = String(pedido.forma_pagamento || "Mercado Pago").trim();
   const itens = parseItensPedido(pedido.itens);
   const total = Number(pedido.total || 0);
   const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(String(pedido.observacao || ""));
@@ -343,7 +343,7 @@ function montarMensagemWhatsappPadraoPedido(
       `Cliente: ${pedido.clienteNome || fallback.clienteNome || "Cliente"}\n` +
       linhaRecebimento +
       linhaPontoReferencia +
-      `Pagamento: ${pedido.formaPagamento || "Pix"}\n\n` +
+      `Pagamento: ${pedido.formaPagamento || "Mercado Pago"}\n\n` +
       `Itens:\n${itensFormatados}\n\n` +
       `Total: R$ ${pedido.total.toFixed(2)}\n` +
       `Referência do pedido: ${pedido.referencia}\n` +

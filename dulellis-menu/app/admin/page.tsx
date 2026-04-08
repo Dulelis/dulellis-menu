@@ -187,8 +187,10 @@ function formatarMoedaAdmin(valor: unknown) {
 function pedidoEhPixAdmin(pedido: any) {
   const forma = String(pedido?.forma_pagamento || "")
     .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  return forma === "pix";
+  return forma === "pix" || forma === "cartao mercado pago";
 }
 
 function pedidoTemFluxoPagamentoOnlineAdmin(pedido: any) {
@@ -1884,10 +1886,19 @@ function AdminPageContent() {
       const referencia = String(pedido?.pagamento_referencia || "").trim();
       const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(pedido);
 
-      if (forma.toLowerCase() === "pix") {
+      const formaNormalizada = forma
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      if (formaNormalizada === "pix" || formaNormalizada === "cartao mercado pago") {
+        const tituloPagamentoOnline =
+          formaNormalizada === "cartao mercado pago"
+            ? "Cartão Mercado Pago"
+            : "Pix";
         if (["approved", "aprovado", "paid", "authorized", "pago"].includes(statusPagamento)) {
           return {
-            titulo: "Pix",
+            titulo: tituloPagamentoOnline,
             situacao: "Pago",
             detalhe: referencia ? `Ref. ${referencia}` : "Pagamento confirmado",
             classe: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -1895,7 +1906,7 @@ function AdminPageContent() {
         }
         if (["rejected", "cancelled", "canceled", "failed", "negado"].includes(statusPagamento)) {
           return {
-            titulo: "Pix",
+            titulo: tituloPagamentoOnline,
             situacao: "Nao pago",
             detalhe: referencia ? `Ref. ${referencia}` : "Pagamento nao aprovado",
             classe: "bg-rose-50 text-rose-700 border-rose-200",
@@ -1903,14 +1914,14 @@ function AdminPageContent() {
         }
         if (["pending", "in_process", "in_mediation", "aguardando", "waiting"].includes(statusPagamento)) {
           return {
-            titulo: "Pix",
+            titulo: tituloPagamentoOnline,
             situacao: "Aguardando",
             detalhe: referencia ? `Ref. ${referencia}` : "Aguardando pagamento",
             classe: "bg-amber-50 text-amber-700 border-amber-200",
           };
         }
         return {
-          titulo: "Pix",
+          titulo: tituloPagamentoOnline,
           situacao: "A receber",
           detalhe: referencia ? `Ref. ${referencia}` : "Aguardando pagamento",
           classe: "bg-amber-50 text-amber-700 border-amber-200",
