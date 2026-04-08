@@ -10,6 +10,7 @@ type RetornoActionsProps = {
   paymentId?: string;
   initialStatus?: string;
   autoRedirect: boolean;
+  redirectUrl?: string;
   retiradaNoBalcao?: boolean;
 };
 
@@ -38,6 +39,7 @@ export default function RetornoActions({
   paymentId = "",
   initialStatus = "",
   autoRedirect,
+  redirectUrl = "",
   retiradaNoBalcao = false,
 }: RetornoActionsProps) {
   const router = useRouter();
@@ -61,11 +63,11 @@ export default function RetornoActions({
     window.sessionStorage.setItem(storageKey, "1");
 
     const timer = window.setTimeout(() => {
-      window.location.href = whatsappLink;
+      window.location.href = redirectUrl || whatsappLink;
     }, 350);
 
     return () => window.clearTimeout(timer);
-  }, [autoRedirect, storageKey, whatsappLink]);
+  }, [autoRedirect, redirectUrl, storageKey, whatsappLink]);
 
   useEffect(() => {
     if (!deveConsultarPagamento) return;

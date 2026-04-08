@@ -63,6 +63,9 @@ const FORMA_DINHEIRO = "Dinheiro";
 const FORMA_CARTAO_ENTREGA = "Cartão na entrega";
 const FORMA_PIX_CARTAO = "Pix";
 const FORMAS_PAGAMENTO = [FORMA_DINHEIRO, FORMA_CARTAO_ENTREGA, FORMA_PIX_CARTAO];
+const STATUSS_PAGAMENTO_APROVADOS = ["approved", "paid", "authorized", "pago"];
+const STATUSS_PAGAMENTO_PENDENTES = ["pending", "in_process", "in_mediation", "aguardando", "waiting"];
+const STATUSS_PAGAMENTO_RECUSADOS = ["rejected", "cancelled", "canceled", "failed", "negado", "refunded", "charged_back"];
 const TIPO_ENTREGA = "Entrega";
 const TIPO_RETIRADA_BALCAO = "Retirar no balcão";
 const TIPOS_ENTREGA = [TIPO_ENTREGA, TIPO_RETIRADA_BALCAO] as const;
@@ -172,6 +175,11 @@ type PedidoAcompanhamento = {
   retiradaNoBalcao?: boolean;
 };
 
+type RetornoPixInfo = {
+  status: string;
+  referencia: string;
+};
+
 type SessaoCliente = {
   id: number;
   nome: string;
@@ -187,6 +195,22 @@ type SessaoCliente = {
   data_aniversario: string;
   ultima_taxa_entrega?: number | null;
 };
+
+function normalizarStatusPagamento(status?: string) {
+  return String(status || "").trim().toLowerCase();
+}
+
+function pagamentoPixAprovado(status?: string) {
+  return STATUSS_PAGAMENTO_APROVADOS.includes(normalizarStatusPagamento(status));
+}
+
+function pagamentoPixPendente(status?: string) {
+  return STATUSS_PAGAMENTO_PENDENTES.includes(normalizarStatusPagamento(status));
+}
+
+function pagamentoPixRecusado(status?: string) {
+  return STATUSS_PAGAMENTO_RECUSADOS.includes(normalizarStatusPagamento(status));
+}
 
 type AuthDraft = {
   modalAberto: boolean;
@@ -599,6 +623,7 @@ function ClientePageContent() {
   const [vitrineAutoplayPausado, setVitrineAutoplayPausado] = useState(false);
   const [modalAcompanhamentoAberto, setModalAcompanhamentoAberto] = useState(false);
   const [modalPedidoFinalizadoAberto, setModalPedidoFinalizadoAberto] = useState(false);
+  const [retornoPixInfo, setRetornoPixInfo] = useState<RetornoPixInfo | null>(null);
   const [ultimoPedidoFoiRetirada, setUltimoPedidoFoiRetirada] = useState(false);
   const [whatsappAcompanhamento, setWhatsappAcompanhamento] = useState("");
   const [carregandoAcompanhamento, setCarregandoAcompanhamento] = useState(false);
@@ -1620,6 +1645,27 @@ function ClientePageContent() {
     window.history.replaceState({}, "", url.toString());
   }, [searchParams]);
 
+  useEffect(() => {
+    const statusPixDaUrl = normalizarStatusPagamento(searchParams.get("pix_status") || "");
+    if (!statusPixDaUrl) return;
+
+    setRetornoPixInfo({
+      status: statusPixDaUrl,
+      referencia: String(searchParams.get("pix_ref") || "").trim(),
+    });
+    setUltimoPedidoFoiRetirada(searchParams.get("pix_retirada") === "1");
+    setPodeAcompanharPedido(pagamentoPixAprovado(statusPixDaUrl));
+    setModalPedidoFinalizadoAberto(true);
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("pix_return");
+    url.searchParams.delete("pix_status");
+    url.searchParams.delete("pix_ref");
+    url.searchParams.delete("pix_payment_id");
+    url.searchParams.delete("pix_retirada");
+    window.history.replaceState({}, "", url.toString());
+  }, [searchParams]);
+
   const setItemEstoqueProcessando = useCallback((id: number, processando: boolean) => {
     setEstoqueEmAtualizacao((prev) => ({ ...prev, [id]: processando }));
   }, []);
@@ -1943,6 +1989,70 @@ function ClientePageContent() {
     return whatsappAcompanhamentoAtual === whatsappClienteAtual;
   }, [pedidoAcompanhamento?.retiradaNoBalcao, whatsappAcompanhamento, cliente.whatsapp, ultimoPedidoFoiRetirada]);
 
+  const infoModalPedidoFinalizado = useMemo(() => {
+    if (!retornoPixInfo) {
+      return {
+        titulo: "Pedido finalizado com sucesso!",
+        descricao: ultimoPedidoFoiRetirada
+          ? "Agradecemos pelo seu pedido. Vamos separar tudo com carinho para a sua retirada na loja."
+          : "Agradecemos pelo seu pedido. Estamos preparando tudo com carinho para você.",
+        destaque: "Acompanhe seu pedido aqui na vitrine sempre que quiser.",
+        destaqueClasse: "text-pink-500",
+        iconeClasse: "bg-green-100 text-green-600",
+        Icone: CheckCircle2,
+        mostrarAcompanhar: true,
+      };
+    }
+
+    if (pagamentoPixAprovado(retornoPixInfo.status)) {
+      return {
+        titulo: "Pagamento aprovado!",
+        descricao: ultimoPedidoFoiRetirada
+          ? "Seu Pix foi confirmado e o pedido voltou para a fila da loja para separação e impressão do cupom."
+          : "Seu Pix foi confirmado e o pedido voltou para a fila da loja para confirmação e impressão do cupom.",
+        destaque: "Status atualizado com sucesso. Você já pode acompanhar o pedido por aqui.",
+        destaqueClasse: "text-green-600",
+        iconeClasse: "bg-green-100 text-green-600",
+        Icone: CheckCircle2,
+        mostrarAcompanhar: true,
+      };
+    }
+
+    if (pagamentoPixPendente(retornoPixInfo.status)) {
+      return {
+        titulo: "Pagamento em análise",
+        descricao: "Ainda estamos aguardando a confirmação do Pix. Assim que ele aprovar, o pedido entra no fluxo normal da loja.",
+        destaque: "Você pode acompanhar o resultado aqui na vitrine.",
+        destaqueClasse: "text-amber-600",
+        iconeClasse: "bg-amber-100 text-amber-600",
+        Icone: Clock3,
+        mostrarAcompanhar: false,
+      };
+    }
+
+    if (pagamentoPixRecusado(retornoPixInfo.status)) {
+      return {
+        titulo: "Pagamento não aprovado",
+        descricao: "O Pix não foi concluído. Se quiser, você pode voltar ao cardápio e tentar novamente.",
+        destaque: "Nenhum pedido será confirmado até o pagamento ser aprovado.",
+        destaqueClasse: "text-rose-600",
+        iconeClasse: "bg-rose-100 text-rose-600",
+        Icone: AlertTriangle,
+        mostrarAcompanhar: false,
+      };
+    }
+
+    return {
+      titulo: "Retorno do pagamento",
+      descricao: "Recebemos o resultado do seu pagamento e atualizamos o pedido por aqui.",
+      destaque: "Confira o status e continue acompanhando na vitrine.",
+      destaqueClasse: "text-slate-500",
+      iconeClasse: "bg-slate-100 text-slate-600",
+      Icone: Clock3,
+      mostrarAcompanhar: false,
+    };
+  }, [retornoPixInfo, ultimoPedidoFoiRetirada]);
+
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
 
@@ -1985,40 +2095,23 @@ function ClientePageContent() {
         setUltimaTaxaEntregaSalva(taxaEntrega);
       }
       setModoEnderecoEntrega("saved");
-      const pagamentoTexto = formaPagamento;
-      const resPedido = await fetch("/api/public/order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cliente: payloadCliente,
-          itens: carrinho.map((i) => ({ id: i.id, qtd: i.qtd })),
-          forma_pagamento: pagamentoTexto,
-          taxa_entrega: retiradaNoBalcao ? 0 : taxaEntrega,
-          referencia: referenciaPagamento || undefined,
-          tipo_entrega: tipoEntrega,
-          troco_para: formaPagamento === FORMA_DINHEIRO && trocoParaValor !== null ? trocoParaValor : undefined,
-        }),
-      });
-      const jsonPedido = (await resPedido.json().catch(() => ({}))) as {
-        ok?: boolean;
-        data?: { pedido_id?: number; total?: number; referencia?: string };
-        error?: string;
-      };
-      if (!resPedido.ok || jsonPedido.ok === false || !jsonPedido.data?.pedido_id) {
-        throw new Error(jsonPedido.error || "Falha ao registrar pedido.");
-      }
-      const pedidoId = Number(jsonPedido.data.pedido_id);
-      const referenciaFinal = String(jsonPedido.data.referencia || referenciaPagamento || "");
       if (ehPixCartao) {
         const resCheckout = await fetch("/api/mercadopago/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pedido_id: pedidoId,
-            referencia: referenciaFinal,
+            cliente: payloadCliente,
+            itens: carrinho.map((i) => ({ id: i.id, qtd: i.qtd })),
+            forma_pagamento: formaPagamento,
+            taxa_entrega: retiradaNoBalcao ? 0 : taxaEntrega,
+            referencia: referenciaPagamento || undefined,
+            tipo_entrega: tipoEntrega,
           }),
         });
-        const dataCheckout = (await resCheckout.json().catch(() => ({}))) as { url?: string; error?: string };
+        const dataCheckout = (await resCheckout.json().catch(() => ({}))) as {
+          url?: string;
+          error?: string;
+        };
         if (!resCheckout.ok) {
           throw new Error(dataCheckout.error || "Falha ao criar pagamento no Mercado Pago");
         }
@@ -2030,9 +2123,38 @@ function ClientePageContent() {
         } else if (typeof window !== "undefined") {
           window.location.href = dataCheckout.url;
         }
+      } else {
+        const resPedido = await fetch("/api/public/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cliente: payloadCliente,
+            itens: carrinho.map((i) => ({ id: i.id, qtd: i.qtd })),
+            forma_pagamento: formaPagamento,
+            taxa_entrega: retiradaNoBalcao ? 0 : taxaEntrega,
+            referencia: referenciaPagamento || undefined,
+            tipo_entrega: tipoEntrega,
+            troco_para:
+              formaPagamento === FORMA_DINHEIRO && trocoParaValor !== null
+                ? trocoParaValor
+                : undefined,
+          }),
+        });
+        const jsonPedido = (await resPedido.json().catch(() => ({}))) as {
+          ok?: boolean;
+          data?: { pedido_id?: number; total?: number; referencia?: string };
+          error?: string;
+        };
+        if (
+          !resPedido.ok ||
+          jsonPedido.ok === false ||
+          !jsonPedido.data?.pedido_id
+        ) {
+          throw new Error(jsonPedido.error || "Falha ao registrar pedido.");
+        }
       }
 
-      setPodeAcompanharPedido(true);
+      setPodeAcompanharPedido(!ehPixCartao);
       setUltimoPedidoFoiRetirada(retiradaNoBalcao);
 
       setCarrinho([]);
@@ -3180,44 +3302,55 @@ function ClientePageContent() {
       {modalPedidoFinalizadoAberto && (
         <div className="fixed inset-0 z-[66] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
           <div className="w-full max-w-xl rounded-[3rem] bg-white p-8 text-center shadow-2xl sm:p-10">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-green-600">
-              <CheckCircle2 size={40} />
+            <div className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${infoModalPedidoFinalizado.iconeClasse}`}>
+              <infoModalPedidoFinalizado.Icone size={40} />
             </div>
             <h3 className="mt-6 text-3xl font-black italic text-slate-800 sm:text-4xl">
-              Pedido finalizado com sucesso!
+              {infoModalPedidoFinalizado.titulo}
             </h3>
             <p className="mt-4 text-base font-bold leading-relaxed text-slate-600 sm:text-lg">
-              {ultimoPedidoFoiRetirada
-                ? "Agradecemos pelo seu pedido. Vamos separar tudo com carinho para a sua retirada na loja."
-                : "Agradecemos pelo seu pedido. Estamos preparando tudo com carinho para você."}
+              {infoModalPedidoFinalizado.descricao}
             </p>
-            <p className="mt-2 text-sm font-black uppercase tracking-widest text-pink-500 sm:text-base">
-              Acompanhe seu pedido aqui na vitrine sempre que quiser.
+            <p className={`mt-2 text-sm font-black uppercase tracking-widest sm:text-base ${infoModalPedidoFinalizado.destaqueClasse}`}>
+              {infoModalPedidoFinalizado.destaque}
             </p>
-            {ultimoPedidoFoiRetirada ? (
+            {retornoPixInfo?.referencia ? (
+              <p className="mt-3 text-[11px] font-mono text-slate-500 break-all">
+                Ref: {retornoPixInfo.referencia}
+              </p>
+            ) : null}
+            {ultimoPedidoFoiRetirada && !pagamentoPixRecusado(retornoPixInfo?.status) ? (
               <BlocoRetiradaLoja
                 className="mt-6 text-left"
                 descricao="Seu pedido ficará disponível neste endereço para retirada, sem taxa de entrega."
               />
             ) : null}
             <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {infoModalPedidoFinalizado.mostrarAcompanhar ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const whatsappPedido = normalizarNumero(
+                      String(sessaoCliente?.whatsapp || cliente.whatsapp || ""),
+                    );
+                    setRetornoPixInfo(null);
+                    setModalPedidoFinalizadoAberto(false);
+                    setPedidoAcompanhamento(null);
+                    setWhatsappAcompanhamento(whatsappPedido);
+                    setModalAcompanhamentoAberto(true);
+                    void consultarAcompanhamentoPedido(whatsappPedido);
+                  }}
+                  className="w-full rounded-[2rem] bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
+                >
+                  Acompanhar pedido
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => {
-                  const whatsappPedido = normalizarNumero(cliente.whatsapp);
+                  setRetornoPixInfo(null);
                   setModalPedidoFinalizadoAberto(false);
-                  setPedidoAcompanhamento(null);
-                  setWhatsappAcompanhamento(whatsappPedido);
-                  setModalAcompanhamentoAberto(true);
-                  void consultarAcompanhamentoPedido(whatsappPedido);
                 }}
-                className="w-full rounded-[2rem] bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
-              >
-                Acompanhar pedido
-              </button>
-              <button
-                type="button"
-                onClick={() => setModalPedidoFinalizadoAberto(false)}
                 className="w-full rounded-[2rem] bg-slate-100 px-5 py-4 text-sm font-black uppercase tracking-widest text-slate-500 transition-colors hover:bg-slate-200"
               >
                 Fechar

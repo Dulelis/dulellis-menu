@@ -1,4 +1,10 @@
 import { getServiceSupabase } from "@/lib/server-supabase";
+import {
+  insertOrderFromSnapshot,
+  normalizeOrderDraftSnapshot,
+  OrderDraftError,
+  upsertOrderCustomer,
+} from "@/lib/order-draft";
 
 const STATUSS_PAGAMENTO_APROVADOS = ["approved", "paid", "authorized", "pago"];
 const STATUSS_PAGAMENTO_PENDENTES = [
@@ -21,6 +27,8 @@ const STATUSS_PAGAMENTO_RECUSADOS = [
 type MercadoPagoPaymentMetadata = {
   whatsapp?: string;
   pedido_id?: number | string;
+  pedido_draft?: unknown;
+  cliente_nome?: string;
 };
 
 export type MercadoPagoPayment = {
@@ -71,7 +79,10 @@ function ordenarPagamentosMaisRecentes(
 ) {
   const dataLeft = Date.parse(extrairDataOrdenacao(left));
   const dataRight = Date.parse(extrairDataOrdenacao(right));
-  return (Number.isFinite(dataRight) ? dataRight : 0) - (Number.isFinite(dataLeft) ? dataLeft : 0);
+  return (
+    (Number.isFinite(dataRight) ? dataRight : 0) -
+    (Number.isFinite(dataLeft) ? dataLeft : 0)
+  );
 }
 
 function escolherPagamentoMaisConfiavel(payments: MercadoPagoPayment[]) {
@@ -94,15 +105,25 @@ async function fetchMercadoPagoJson(path: string, accessToken: string) {
   return { ok: response.ok, status: response.status, data };
 }
 
-async function buscarPagamentoPorId(accessToken: string, paymentId: string): Promise<BuscarPagamentoResult> {
+async function buscarPagamentoPorId(
+  accessToken: string,
+  paymentId: string,
+): Promise<BuscarPagamentoResult> {
   const id = String(paymentId || "").trim();
   if (!id) return { payment: null };
 
-  const result = await fetchMercadoPagoJson(`/v1/payments/${encodeURIComponent(id)}`, accessToken);
+  const result = await fetchMercadoPagoJson(
+    `/v1/payments/${encodeURIComponent(id)}`,
+    accessToken,
+  );
   if (!result.ok) {
     return {
       payment: null,
-      error: String(result.data?.message || result.data?.error || "Falha ao consultar pagamento."),
+      error: String(
+        result.data?.message ||
+          result.data?.error ||
+          "Falha ao consultar pagamento.",
+      ),
     };
   }
 
@@ -123,11 +144,18 @@ async function buscarPagamentoPorReferencia(
     limit: "10",
   });
 
-  const result = await fetchMercadoPagoJson(`/v1/payments/search?${query.toString()}`, accessToken);
+  const result = await fetchMercadoPagoJson(
+    `/v1/payments/search?${query.toString()}`,
+    accessToken,
+  );
   if (!result.ok) {
     return {
       payment: null,
-      error: String(result.data?.message || result.data?.error || "Falha ao localizar pagamento."),
+      error: String(
+        result.data?.message ||
+          result.data?.error ||
+          "Falha ao localizar pagamento.",
+      ),
     };
   }
 
@@ -184,12 +212,103 @@ export async function buscarPagamentoMercadoPago(args: {
   return { payment: null };
 }
 
+async function buscarPrimeiroPedido(
+  queryBuilder: PromiseLike<{
+    data: Array<{ id?: number | string; status_pedido?: string | null }> | null;
+    error: { message?: string } | null;
+  }>,
+) {
+  const { data, error } = await queryBuilder;
+  if (error || !data || data.length === 0) return null;
+  const resolvedId = Number(data[0]?.id || 0);
+  if (resolvedId <= 0) return null;
+  return {
+    id: resolvedId,
+    statusPedido: String(data[0]?.status_pedido || "").trim().toLowerCase(),
+  };
+}
+
+async function localizarPedidoExistente(args: {
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>;
+  paymentId: string;
+  pedidoIdMetadata: number;
+  reference: string;
+  whatsapp: string;
+  total: number;
+}) {
+  const { supabase, paymentId, pedidoIdMetadata, reference, whatsapp, total } =
+    args;
+
+  if (paymentId) {
+    const porPagamento = await buscarPrimeiroPedido(
+      supabase
+        .from("pedidos")
+        .select("id,status_pedido")
+        .eq("pagamento_id", paymentId)
+        .order("created_at", { ascending: false })
+        .limit(1),
+    );
+    if (porPagamento) return porPagamento;
+  }
+
+  if (pedidoIdMetadata > 0) {
+    const porId = await buscarPrimeiroPedido(
+      supabase.from("pedidos").select("id,status_pedido").eq("id", pedidoIdMetadata).limit(1),
+    );
+    if (porId) return porId;
+  }
+
+  if (reference) {
+    const porReferencia = await buscarPrimeiroPedido(
+      supabase
+        .from("pedidos")
+        .select("id,status_pedido")
+        .eq("pagamento_referencia", reference)
+        .order("created_at", { ascending: false })
+        .limit(1),
+    );
+    if (porReferencia) return porReferencia;
+  }
+
+  if (whatsapp && total > 0) {
+    const { data: candidatos, error: erroBusca } = await supabase
+      .from("pedidos")
+      .select("id,total,whatsapp,created_at,status_pedido")
+      .eq("whatsapp", whatsapp)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (!erroBusca) {
+      const match = (candidatos || []).find(
+        (pedido: {
+          id?: number | string;
+          total?: number | string | null;
+          status_pedido?: string | null;
+        }) => Math.abs(Number(pedido.total || 0) - total) < 0.01,
+      );
+
+      if (match?.id) {
+        return {
+          id: Number(match.id),
+          statusPedido: String(match.status_pedido || "")
+            .trim()
+            .toLowerCase(),
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
 export async function sincronizarPedidoComPagamentoMercadoPago(
   payment: MercadoPagoPayment,
   options?: { reference?: string },
 ) {
   const paymentId = String(payment.id || "").trim();
-  const reference = String(payment.external_reference || options?.reference || "").trim();
+  const reference = String(
+    payment.external_reference || options?.reference || "",
+  ).trim();
   const status = String(payment.status || "").trim();
   const total = Number(payment.transaction_amount || 0);
   const metadata = (payment.metadata || {}) as MercadoPagoPaymentMetadata;
@@ -210,7 +329,7 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
     };
   }
 
-  const payloadStatus: Record<string, unknown> = {
+  const payloadStatusBase: Record<string, unknown> = {
     status_pagamento: status || null,
     pagamento_id: paymentId || null,
     pagamento_atualizado_em: new Date().toISOString(),
@@ -218,7 +337,6 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
     ...(pagamentoMercadoPagoAprovado(status)
       ? {
           forma_pagamento: "Pix",
-          status_pedido: "recebido",
         }
       : {}),
   };
@@ -226,59 +344,63 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
   let updated = false;
   let pedidoId: number | null = null;
 
-  const atualizarPedido = async (
-    queryBuilder: PromiseLike<{
-      data: Array<{ id?: number | string }> | null;
-      error: { message?: string } | null;
-    }>,
-  ) => {
-    const { data, error } = await queryBuilder;
-    if (error || !data || data.length === 0) return false;
-    const resolvedId = Number(data[0]?.id || 0);
-    if (resolvedId > 0) pedidoId = resolvedId;
-    return true;
-  };
+  const pedidoEncontrado = await localizarPedidoExistente({
+    supabase,
+    paymentId,
+    pedidoIdMetadata,
+    reference,
+    whatsapp,
+    total,
+  });
 
-  if (paymentId) {
-    updated = await atualizarPedido(
-      supabase.from("pedidos").update(payloadStatus).eq("pagamento_id", paymentId).select("id"),
-    );
-  }
+  if (pedidoEncontrado) {
+    pedidoId = pedidoEncontrado.id;
+    const payloadStatus: Record<string, unknown> = {
+      ...payloadStatusBase,
+      ...(pagamentoMercadoPagoAprovado(status) &&
+      ["", "pagamento_pendente"].includes(pedidoEncontrado.statusPedido)
+        ? { status_pedido: "aguardando_aceite" }
+        : {}),
+    };
 
-  if (!updated && pedidoIdMetadata > 0) {
-    updated = await atualizarPedido(
-      supabase.from("pedidos").update(payloadStatus).eq("id", pedidoIdMetadata).select("id"),
-    );
-  }
-
-  if (!updated && reference) {
-    updated = await atualizarPedido(
-      supabase
-        .from("pedidos")
-        .update(payloadStatus)
-        .eq("pagamento_referencia", reference)
-        .select("id"),
-    );
-  }
-
-  if (!updated && whatsapp && total > 0) {
-    const { data: candidatos, error: erroBusca } = await supabase
+    const { error } = await supabase
       .from("pedidos")
-      .select("id,total,whatsapp,created_at")
-      .eq("whatsapp", whatsapp)
-      .order("created_at", { ascending: false })
-      .limit(10);
+      .update(payloadStatus)
+      .eq("id", pedidoEncontrado.id);
+    updated = !error;
+  } else if (pagamentoMercadoPagoAprovado(status)) {
+    const draftSnapshot = normalizeOrderDraftSnapshot(metadata.pedido_draft, {
+      reference,
+    });
 
-    if (!erroBusca) {
-      const match = (candidatos || []).find(
-        (pedido: { id?: number | string; total?: number | string | null }) =>
-          Math.abs(Number(pedido.total || 0) - total) < 0.01,
-      );
-
-      if (match?.id) {
-        updated = await atualizarPedido(
-          supabase.from("pedidos").update(payloadStatus).eq("id", match.id).select("id"),
-        );
+    if (draftSnapshot) {
+      try {
+        await upsertOrderCustomer(supabase, draftSnapshot.cliente);
+        pedidoId = await insertOrderFromSnapshot(supabase, draftSnapshot, {
+          statusPedido: "aguardando_aceite",
+          statusPagamento: status || null,
+          pagamentoId: paymentId || null,
+          pagamentoAtualizadoEm: new Date().toISOString(),
+          formaPagamento: "Pix",
+        });
+        updated = true;
+      } catch (error) {
+        const message =
+          error instanceof OrderDraftError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Falha ao criar pedido do Pix aprovado.";
+        return {
+          updated: false,
+          pedidoId: null,
+          paymentId,
+          reference,
+          status,
+          statusDetail: String(payment.status_detail || "").trim(),
+          total,
+          error: message,
+        };
       }
     }
   }
@@ -319,9 +441,12 @@ export async function sincronizarPagamentoMercadoPago(args: {
     };
   }
 
-  const syncResult = await sincronizarPedidoComPagamentoMercadoPago(paymentResult.payment, {
-    reference,
-  });
+  const syncResult = await sincronizarPedidoComPagamentoMercadoPago(
+    paymentResult.payment,
+    {
+      reference,
+    },
+  );
 
   return {
     ok: !syncResult.error,

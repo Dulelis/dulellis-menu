@@ -1,19 +1,41 @@
 import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
-import { enforceSameOriginForWrite, getClientIp } from "@/lib/request-security";
+import {
+  enforceSameOriginForWrite,
+  getClientIp,
+} from "@/lib/request-security";
+import { getCustomerSessionFromRequest } from "@/lib/customer-request";
+import {
+  OrderDraftError,
+  prepareOrderDraft,
+  type PublicOrderBody,
+  upsertOrderCustomer,
+} from "@/lib/order-draft";
 
-type CheckoutBody = {
+type CheckoutBody = PublicOrderBody & {
   total?: number;
   cliente_nome?: string;
   whatsapp?: string;
-  referencia?: string;
   pedido_id?: number;
-  itens?: Array<{ nome?: string; qtd?: number; preco?: number }>;
+  itens?: Array<{
+    id?: number;
+    qtd?: number;
+    nome?: string;
+    preco?: number;
+  }>;
 };
 
 export async function POST(request: Request) {
   try {
+    const sessao = getCustomerSessionFromRequest(request);
+    if (!sessao) {
+      return NextResponse.json(
+        { error: "Login obrigatorio para iniciar o Pix." },
+        { status: 401 },
+      );
+    }
+
     const originError = enforceSameOriginForWrite(request);
     if (originError) return originError;
 
@@ -26,7 +48,10 @@ export async function POST(request: Request) {
     });
     if (!rate.allowed) {
       return NextResponse.json(
-        { error: "Muitas tentativas de checkout. Tente novamente em alguns minutos." },
+        {
+          error:
+            "Muitas tentativas de checkout. Tente novamente em alguns minutos.",
+        },
         { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } },
       );
     }
@@ -39,30 +64,65 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as CheckoutBody;
+    const body = (await request.json().catch(() => ({}))) as CheckoutBody;
+    const supabase = getServiceSupabase();
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "SUPABASE_SERVICE_ROLE_KEY ausente." },
+        { status: 500 },
+      );
+    }
+
     let total = Number(body.total || 0);
     let referencia = String(body.referencia || `dulelis-${Date.now()}`);
     let clienteNome = String(body.cliente_nome || "").trim();
-    let whatsapp = String(body.whatsapp || "");
+    let whatsapp = String(body.whatsapp || "").trim();
+    let pedidoId = Number(body.pedido_id || 0);
+    let itensMetadata: Array<{ nome: string; qtd: number; preco: number }> =
+      [];
+    let pedidoDraftMetadata: unknown = null;
 
-    const pedidoId = Number(body.pedido_id || 0);
     if (Number.isInteger(pedidoId) && pedidoId > 0) {
-      const supabase = getServiceSupabase();
-      if (!supabase) {
-        return NextResponse.json({ error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
-      }
       const { data: pedido, error: erroPedido } = await supabase
         .from("pedidos")
-        .select("id,total,cliente_nome,whatsapp,pagamento_referencia")
+        .select("id,total,cliente_nome,whatsapp,pagamento_referencia,itens")
         .eq("id", pedidoId)
         .maybeSingle();
       if (erroPedido || !pedido) {
-        return NextResponse.json({ error: erroPedido?.message || "Pedido nao encontrado." }, { status: 404 });
+        return NextResponse.json(
+          { error: erroPedido?.message || "Pedido nao encontrado." },
+          { status: 404 },
+        );
       }
       total = Number(pedido.total || 0);
       referencia = String(pedido.pagamento_referencia || referencia);
       clienteNome = String(pedido.cliente_nome || clienteNome);
       whatsapp = String(pedido.whatsapp || whatsapp);
+      itensMetadata = Array.isArray(pedido.itens)
+        ? pedido.itens.map((item: Record<string, unknown>) => ({
+            nome: String(item.nome || "Item"),
+            qtd: Math.max(1, Number(item.qtd || 1)),
+            preco: Math.max(0, Number(item.preco || 0)),
+          }))
+        : [];
+    } else {
+      const draft = await prepareOrderDraft({
+        supabase,
+        body,
+        sessionWhatsapp: String(sessao.whatsapp || ""),
+      });
+      await upsertOrderCustomer(supabase, draft.customerPayload);
+      total = draft.total;
+      referencia = draft.reference;
+      clienteNome = draft.customerPayload.nome;
+      whatsapp = draft.customerPayload.whatsapp;
+      pedidoId = 0;
+      itensMetadata = draft.items.map((item) => ({
+        nome: item.nome,
+        qtd: item.qtd,
+        preco: item.preco,
+      }));
+      pedidoDraftMetadata = draft.snapshot;
     }
 
     if (!Number.isFinite(total) || total <= 0) {
@@ -74,10 +134,12 @@ export async function POST(request: Request) {
     const baseUrlRaw = originHeader || siteEnv || "http://localhost:3000";
     const baseUrlNormalizada = baseUrlRaw.replace(/\/+$/, "");
     const baseUrl =
-      /^http:\/\//i.test(baseUrlNormalizada) && !/localhost|127\.0\.0\.1/i.test(baseUrlNormalizada)
+      /^http:\/\//i.test(baseUrlNormalizada) &&
+      !/localhost|127\.0\.0\.1/i.test(baseUrlNormalizada)
         ? baseUrlNormalizada.replace(/^http:\/\//i, "https://")
         : baseUrlNormalizada;
-    const baseEhPublico = /^https:\/\//i.test(baseUrl) && !/localhost|127\.0\.0\.1/i.test(baseUrl);
+    const baseEhPublico =
+      /^https:\/\//i.test(baseUrl) && !/localhost|127\.0\.0\.1/i.test(baseUrl);
 
     const retornoSuccessUrl = new URL(`${baseUrl}/retorno-pagamento`);
     const retornoFailureUrl = new URL(`${baseUrl}/retorno-pagamento`);
@@ -95,6 +157,7 @@ export async function POST(request: Request) {
       retornoFailureUrl.searchParams.set("cliente_nome", clienteNome);
       retornoPendingUrl.searchParams.set("cliente_nome", clienteNome);
     }
+
     const payload: Record<string, unknown> = {
       items: [
         {
@@ -110,7 +173,8 @@ export async function POST(request: Request) {
         cliente_nome: clienteNome,
         whatsapp,
         pedido_id: pedidoId || null,
-        itens: body.itens || [],
+        itens: itensMetadata,
+        pedido_draft: pedidoDraftMetadata,
       },
       back_urls: {
         success: retornoSuccessUrl.toString(),
@@ -129,41 +193,57 @@ export async function POST(request: Request) {
     };
     if (baseEhPublico) {
       payload.auto_return = "approved";
-      const webhookSecret = String(process.env.MERCADOPAGO_WEBHOOK_SECRET || "").trim();
-      const webhookToken = String(process.env.MERCADOPAGO_WEBHOOK_TOKEN || "").trim();
+      const webhookSecret = String(
+        process.env.MERCADOPAGO_WEBHOOK_SECRET || "",
+      ).trim();
+      const webhookToken = String(
+        process.env.MERCADOPAGO_WEBHOOK_TOKEN || "",
+      ).trim();
       payload.notification_url =
         !webhookSecret && webhookToken
           ? `${baseUrl}/api/mercadopago/webhook?token=${encodeURIComponent(webhookToken)}`
           : `${baseUrl}/api/mercadopago/webhook`;
     }
 
-    const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
+    const mpRes = await fetch(
+      "https://api.mercadopago.com/checkout/preferences",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    });
+    );
 
-    const data = await mpRes.json();
+    const data = await mpRes.json().catch(() => ({}));
     if (!mpRes.ok) {
       return NextResponse.json(
-        { error: data?.message || "Erro ao criar preferencia no Mercado Pago." },
+        {
+          error: data?.message || "Erro ao criar preferencia no Mercado Pago.",
+        },
         { status: mpRes.status },
       );
     }
 
     const url = data?.init_point || data?.sandbox_init_point;
     if (!url) {
-      return NextResponse.json({ error: "URL de pagamento nao retornada." }, { status: 502 });
+      return NextResponse.json(
+        { error: "URL de pagamento nao retornada." },
+        { status: 502 },
+      );
     }
 
-    return NextResponse.json({ url, referencia });
+    return NextResponse.json({ url, referencia, total });
   } catch (error) {
+    if (error instanceof OrderDraftError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     const message =
-      error instanceof Error ? error.message : "Erro inesperado ao criar link de pagamento.";
+      error instanceof Error
+        ? error.message
+        : "Erro inesperado ao criar link de pagamento.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

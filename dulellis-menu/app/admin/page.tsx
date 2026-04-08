@@ -52,6 +52,17 @@ const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
 const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
 const ADMIN_ALARME_PEDIDOS_REPETICAO_MS = 10000;
+const STATUSS_PAGAMENTO_APROVADOS_ADMIN = [
+  "approved",
+  "paid",
+  "authorized",
+  "pago",
+] as const;
+const STATUSS_PEDIDO_FLUXO_OPERACIONAL_ADMIN = [
+  "recebido",
+  "em_preparo",
+  "saiu_entrega",
+] as const;
 
 type QzGlobal = {
   websocket?: {
@@ -65,6 +76,11 @@ type QzGlobal = {
     config: unknown,
     data: Array<{ type: string; format: string; data: string }>,
   ) => Promise<void>;
+};
+
+type ImpressaoPedidoAceitoOptions = {
+  popupExistente?: Window | null;
+  visualizar?: boolean;
 };
 
 const DIAS_SEMANA = [
@@ -94,6 +110,7 @@ function categoriaParaId(categoria: string) {
     .replace(/\s+/g, "-");
 }
 const STATUS_PEDIDO_LABELS: Record<string, string> = {
+  pagamento_pendente: "Aguardando pagamento",
   aguardando_aceite: "Aguardando aceite",
   recebido: "Recebido",
   em_preparo: "Em preparo",
@@ -101,6 +118,7 @@ const STATUS_PEDIDO_LABELS: Record<string, string> = {
 };
 
 const STATUS_PEDIDO_CORES: Record<string, string> = {
+  pagamento_pendente: "bg-amber-50 text-amber-700 border-amber-200",
   aguardando_aceite: "bg-violet-50 text-violet-700 border-violet-200",
   recebido: "bg-emerald-50 text-emerald-700 border-emerald-200",
   em_preparo: "bg-amber-50 text-amber-700 border-amber-200",
@@ -111,6 +129,7 @@ const STATUS_PEDIDO_FLUXO: Record<
   string,
   { label: string; proximo: string } | null
 > = {
+  pagamento_pendente: null,
   aguardando_aceite: { label: "Aceitar e imprimir", proximo: "recebido" },
   recebido: { label: "Colocar em preparo", proximo: "em_preparo" },
   em_preparo: { label: "Saiu para entrega", proximo: "saiu_entrega" },
@@ -165,16 +184,49 @@ function formatarMoedaAdmin(valor: unknown) {
   return `R$ ${Number(valor || 0).toFixed(2)}`;
 }
 
-function pedidoTemPixAprovadoAdmin(pedido: any) {
+function pedidoEhPixAdmin(pedido: any) {
   const forma = String(pedido?.forma_pagamento || "")
     .trim()
     .toLowerCase();
+  return forma === "pix";
+}
+
+function pedidoTemFluxoPagamentoOnlineAdmin(pedido: any) {
+  return (
+    pedidoEhPixAdmin(pedido) ||
+    Boolean(String(pedido?.status_pagamento || "").trim()) ||
+    Boolean(String(pedido?.pagamento_id || "").trim())
+  );
+}
+
+function pedidoTemPixAprovadoAdmin(pedido: any) {
   const statusPagamento = String(pedido?.status_pagamento || "")
     .trim()
     .toLowerCase();
+  return pedidoTemFluxoPagamentoOnlineAdmin(pedido) &&
+    STATUSS_PAGAMENTO_APROVADOS_ADMIN.includes(
+      statusPagamento as (typeof STATUSS_PAGAMENTO_APROVADOS_ADMIN)[number],
+    );
+}
+
+function pedidoContaNoFluxoOperacionalAdmin(pedido: any) {
+  const status = normalizarStatusPedidoAdmin(pedido);
+  if (status === "pagamento_pendente") return false;
+  if (
+    pedidoTemFluxoPagamentoOnlineAdmin(pedido) &&
+    !pedidoTemPixAprovadoAdmin(pedido)
+  ) {
+    return STATUSS_PEDIDO_FLUXO_OPERACIONAL_ADMIN.includes(
+      status as (typeof STATUSS_PEDIDO_FLUXO_OPERACIONAL_ADMIN)[number],
+    );
+  }
+  return true;
+}
+
+function pedidoProntoParaConfirmacaoAdmin(pedido: any) {
+  if (normalizarStatusPedidoAdmin(pedido) !== "aguardando_aceite") return false;
   return (
-    forma === "pix" &&
-    ["approved", "paid", "authorized", "pago"].includes(statusPagamento)
+    !pedidoTemFluxoPagamentoOnlineAdmin(pedido) || pedidoTemPixAprovadoAdmin(pedido)
   );
 }
 
@@ -328,12 +380,12 @@ function AdminPageContent() {
   const entregadoresRef = useRef<any[]>([]);
   const qzConectandoRef = useRef<Promise<void> | null>(null);
   const imprimirPedidoAceitoRef = useRef<
-    (pedido: any, popupExistente?: Window | null) => Promise<void>
+    (pedido: any, options?: ImpressaoPedidoAceitoOptions) => Promise<void>
   >(async () => {});
   const assinaturasPedidosRef = useRef<Map<number, string>>(new Map());
-  const pedidosPixImpressosRef = useRef<Set<number>>(new Set());
   const pedidosConhecidosRef = useRef<Set<number>>(new Set());
   const pedidosComAlarmeAtivoRef = useRef<Set<number>>(new Set());
+  const pedidosProntosParaConfirmacaoRef = useRef<Set<number>>(new Set());
   const audioContextAlarmeRef = useRef<AudioContext | null>(null);
   const audioContextAlarmeAquecidoRef = useRef(false);
   const alarmePendenteRef = useRef(false);
@@ -578,7 +630,7 @@ function AdminPageContent() {
 
         if (
           dispararAlarmeParaNovos &&
-          normalizarStatusPedidoAdmin(pedido) === "aguardando_aceite"
+          pedidoProntoParaConfirmacaoAdmin(pedido)
         ) {
           notificarNovoPedido(pedido);
         }
@@ -762,10 +814,7 @@ function AdminPageContent() {
   useEffect(() => {
     const pedidosAguardandoAceite = new Set(
       pedidos
-        .filter(
-          (pedido) =>
-            normalizarStatusPedidoAdmin(pedido) === "aguardando_aceite",
-        )
+        .filter((pedido) => pedidoProntoParaConfirmacaoAdmin(pedido))
         .map((pedido) => Number(pedido?.id || 0))
         .filter((id) => id > 0),
     );
@@ -801,26 +850,12 @@ function AdminPageContent() {
     const lidarMudancaPedido = (payload: any) => {
       const pedidoAtualizado = payload?.new;
       const pedidoId = Number(pedidoAtualizado?.id || 0);
+      const tipoEvento = String(payload?.eventType || "")
+        .trim()
+        .toUpperCase();
 
-      if (pedidoId > 0) {
+      if (pedidoId > 0 && tipoEvento !== "INSERT") {
         registrarPedidosMonitorados([pedidoAtualizado], true);
-
-        const assinatura = gerarAssinaturaPedido(pedidoAtualizado);
-        const assinaturaAnterior = assinaturasPedidosRef.current.get(pedidoId);
-        assinaturasPedidosRef.current.set(pedidoId, assinatura);
-
-        if (
-          assinaturaAnterior &&
-          assinaturaAnterior !== assinatura &&
-          pedidoTemPixAprovadoAdmin(pedidoAtualizado) &&
-          !pedidosPixImpressosRef.current.has(pedidoId)
-        ) {
-          pedidosPixImpressosRef.current.add(pedidoId);
-          void imprimirPedidoAceitoRef.current({
-            ...pedidoAtualizado,
-            status_pedido: "recebido",
-          });
-        }
       }
 
       agendarRecarga();
@@ -2167,9 +2202,15 @@ function AdminPageContent() {
     popup.document.close();
   };
   const imprimirPedidoAceito = useCallback(
-    async (pedido: any, popupExistente?: Window | null) => {
+    async (pedido: any, options?: ImpressaoPedidoAceitoOptions) => {
+      const visualizar = Boolean(options?.visualizar);
       const popup =
-        popupExistente || window.open("", "_blank", "width=420,height=760");
+        options?.popupExistente ||
+        window.open(
+          "",
+          "_blank",
+          visualizar ? "width=520,height=820" : "width=420,height=760",
+        );
       prepararPopupImpressao(popup, Number(pedido?.id || 0));
       const pedidoCompleto = completarPedidoComCliente(pedido);
       const pagamento = obterResumoPagamento(pedidoCompleto);
@@ -2211,39 +2252,41 @@ function AdminPageContent() {
         ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Troco:</strong> ${troco.precisaTroco ? troco.valor !== null ? `Sim, para R$ ${troco.valor.toFixed(2)}` : "Sim" : "Nao precisa"}</div>`
         : "";
 
-      try {
-        const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
-        if (!QZ_PRINTER_NAME) {
-          throw new Error("NEXT_PUBLIC_QZ_PRINTER nao configurado.");
-        }
-        await garantirQzPronto();
-        if (qzGlobal?.websocket && qzGlobal?.configs && qzGlobal?.print) {
-          const websocket = qzGlobal.websocket;
-          const configs = qzGlobal.configs;
-          const print = qzGlobal.print;
-          if (websocket.connect && configs.create && websocket.isActive) {
-            if (!websocket.isActive())
-              throw new Error("QZ Tray nao conectado.");
-            const config = configs.create(QZ_PRINTER_NAME);
-            await print(config, [
-              {
-                type: "raw",
-                format: "command",
-                data: montarCupomPedido(pedido),
-              },
-            ]);
-            if (popup && !popup.closed) popup.close();
-            return;
+      if (!visualizar) {
+        try {
+          const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
+          if (!QZ_PRINTER_NAME) {
+            throw new Error("NEXT_PUBLIC_QZ_PRINTER nao configurado.");
           }
-        }
-        throw new Error("QZ Tray indisponivel no navegador.");
-      } catch (error) {
-        console.error(
-          "Falha ao imprimir via QZ Tray no admin. Usando popup:",
-          error,
-        );
-        if (popup && !popup.closed) {
-          popup.focus();
+          await garantirQzPronto();
+          if (qzGlobal?.websocket && qzGlobal?.configs && qzGlobal?.print) {
+            const websocket = qzGlobal.websocket;
+            const configs = qzGlobal.configs;
+            const print = qzGlobal.print;
+            if (websocket.connect && configs.create && websocket.isActive) {
+              if (!websocket.isActive())
+                throw new Error("QZ Tray nao conectado.");
+              const config = configs.create(QZ_PRINTER_NAME);
+              await print(config, [
+                {
+                  type: "raw",
+                  format: "command",
+                  data: montarCupomPedido(pedido),
+                },
+              ]);
+              if (popup && !popup.closed) popup.close();
+              return;
+            }
+          }
+          throw new Error("QZ Tray indisponivel no navegador.");
+        } catch (error) {
+          console.error(
+            "Falha ao imprimir via QZ Tray no admin. Usando popup:",
+            error,
+          );
+          if (popup && !popup.closed) {
+            popup.focus();
+          }
         }
       }
 
@@ -2252,6 +2295,56 @@ function AdminPageContent() {
         return;
       }
 
+      const barraVisualizacaoHtml = visualizar
+        ? `
+          <div class="preview-toolbar">
+            <div>
+              <div class="preview-title">Visualizar impressao</div>
+              <div class="preview-subtitle">Pedido #${pedidoCompleto?.id ?? ""}</div>
+            </div>
+            <div class="preview-actions">
+              <button type="button" onclick="window.print()">Imprimir</button>
+              <button type="button" class="secondary" onclick="window.close()">Fechar</button>
+            </div>
+          </div>
+          <div class="preview-shell">
+            <div class="preview-frame">
+        `
+        : "";
+      const fechamentoVisualizacaoHtml = visualizar
+        ? `
+            </div>
+          </div>
+        `
+        : "";
+      const scriptInicializacao = visualizar
+        ? `
+            window.addEventListener('load', () => {
+              const qrCodeImageUrl = ${qrCodeImageUrlSerializado};
+              const qrImage = document.getElementById('maps-qrcode');
+              if (qrCodeImageUrl && qrImage instanceof HTMLImageElement) {
+                qrImage.src = qrCodeImageUrl;
+              }
+            });
+          `
+        : `
+            window.onload = () => {
+              const qrCodeImageUrl = ${qrCodeImageUrlSerializado};
+              const imprimir = () => {
+                window.onafterprint = () => window.close();
+                window.print();
+              };
+              const qrImage = document.getElementById('maps-qrcode');
+              if (qrCodeImageUrl && qrImage instanceof HTMLImageElement) {
+                qrImage.onload = imprimir;
+                qrImage.onerror = imprimir;
+                qrImage.src = qrCodeImageUrl;
+                return;
+              }
+              imprimir();
+            };
+          `;
+
       popup.document.open();
       popup.document.write(`
       <!doctype html>
@@ -2259,16 +2352,66 @@ function AdminPageContent() {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Pedido #${pedido?.id ?? ""}</title>
+          <title>${visualizar ? "Visualizar impressao" : "Pedido"} #${pedido?.id ?? ""}</title>
           <style>
             @page { size: 80mm auto; margin: 2mm; }
             html, body { margin: 0; padding: 0; background: #fff; }
             body { font-family: Arial, sans-serif; color: #111; }
+            body.preview-mode { background: #e2e8f0; }
+            .preview-toolbar {
+              position: sticky;
+              top: 0;
+              z-index: 10;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 12px;
+              padding: 14px 18px;
+              background: #0f172a;
+              color: #f8fafc;
+            }
+            .preview-title { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+            .preview-subtitle { margin-top: 4px; font-size: 14px; font-weight: 700; }
+            .preview-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+            .preview-actions button {
+              border: none;
+              border-radius: 999px;
+              padding: 10px 16px;
+              background: #f8fafc;
+              color: #0f172a;
+              font-size: 12px;
+              font-weight: 700;
+              cursor: pointer;
+            }
+            .preview-actions button.secondary {
+              background: rgba(248, 250, 252, 0.14);
+              color: #f8fafc;
+            }
+            .preview-shell { padding: 18px; }
+            .preview-frame {
+              width: fit-content;
+              margin: 0 auto;
+              border-radius: 24px;
+              background: #fff;
+              box-shadow: 0 24px 60px rgba(15, 23, 42, 0.15);
+              padding: 12px;
+            }
             .cupom { width: 76mm; padding: 2mm 1.5mm 3mm; }
             table { width: 100%; border-collapse: collapse; margin-top: 2mm; table-layout: fixed; }
+            @media print {
+              html, body { background: #fff !important; }
+              .preview-toolbar { display: none !important; }
+              .preview-shell { padding: 0 !important; }
+              .preview-frame {
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+              }
+            }
           </style>
         </head>
-        <body>
+        <body class="${visualizar ? "preview-mode" : ""}">
+          ${barraVisualizacaoHtml}
           <div class="cupom" style="width:76mm;padding:2mm 1.5mm 3mm;">
             <h1 style="margin:0 0 2mm;font-size:16px;text-align:center;line-height:1.1;font-weight:700;">Dulelis - Pedido #${pedidoCompleto?.id ?? ""}</h1>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Data:</strong> ${pedidoCompleto?.created_at ? new Date(pedidoCompleto.created_at).toLocaleString("pt-BR") : "Não informada"}</div>
@@ -2303,27 +2446,17 @@ function AdminPageContent() {
                 : ""
             }
           </div>
+          ${fechamentoVisualizacaoHtml}
           <script>
-            window.onload = () => {
-              const qrCodeImageUrl = ${qrCodeImageUrlSerializado};
-              const imprimir = () => {
-                window.onafterprint = () => window.close();
-                window.print();
-              };
-              const qrImage = document.getElementById('maps-qrcode');
-              if (qrCodeImageUrl && qrImage instanceof HTMLImageElement) {
-                qrImage.onload = imprimir;
-                qrImage.onerror = imprimir;
-                qrImage.src = qrCodeImageUrl;
-                return;
-              }
-              imprimir();
-            };
+            ${scriptInicializacao}
           </script>
         </body>
       </html>
     `);
       popup.document.close();
+      if (visualizar && !popup.closed) {
+        popup.focus();
+      }
     },
     [
       completarPedidoComCliente,
@@ -2376,7 +2509,7 @@ function AdminPageContent() {
         void carregarDados();
         await imprimirPedidoAceito(
           { ...pedidoAtual, status_pedido: proximoStatus },
-          popupImpressao,
+          { popupExistente: popupImpressao },
         );
       }
       await carregarDados();
@@ -2404,6 +2537,7 @@ function AdminPageContent() {
 
   useEffect(() => {
     const proximoMapa = new Map<number, string>();
+    const proximosProntos = new Set<number>();
 
     for (const pedido of pedidos) {
       const id = Number(pedido?.id || 0);
@@ -2411,22 +2545,28 @@ function AdminPageContent() {
 
       const assinatura = gerarAssinaturaPedido(pedido);
       const assinaturaAnterior = assinaturasPedidosRef.current.get(id);
+      const estavaPronto = pedidosProntosParaConfirmacaoRef.current.has(id);
+      const estaPronto = pedidoProntoParaConfirmacaoAdmin(pedido);
 
       if (
         assinaturaAnterior &&
         assinaturaAnterior !== assinatura &&
-        pedidoTemPixAprovadoAdmin(pedido) &&
-        !pedidosPixImpressosRef.current.has(id)
+        estaPronto &&
+        !estavaPronto &&
+        !pedidosComAlarmeAtivoRef.current.has(id)
       ) {
-        pedidosPixImpressosRef.current.add(id);
-        void imprimirPedidoAceito({ ...pedido, status_pedido: "recebido" });
+        notificarNovoPedido(pedido);
       }
 
       proximoMapa.set(id, assinatura);
+      if (estaPronto) {
+        proximosProntos.add(id);
+      }
     }
 
     assinaturasPedidosRef.current = proximoMapa;
-  }, [imprimirPedidoAceito, pedidos]);
+    pedidosProntosParaConfirmacaoRef.current = proximosProntos;
+  }, [notificarNovoPedido, pedidos]);
 
   const imprimirCadastroCliente = (cliente: any) => {
     const valor = (v: unknown) => String(v ?? "").trim();
@@ -2508,6 +2648,7 @@ function AdminPageContent() {
     if (!p.created_at) return false;
     const dataPedido = new Date(p.created_at);
     return (
+      pedidoContaNoFluxoOperacionalAdmin(p) &&
       dataPedido.getMonth() === mesRelatorio &&
       dataPedido.getFullYear() === anoRelatorio
     );
@@ -2527,7 +2668,11 @@ function AdminPageContent() {
   const pedidosDoDia = pedidos.filter((p) => {
     if (!p.created_at) return false;
     const dataPedido = new Date(p.created_at);
-    return dataPedido >= inicioDia && dataPedido < fimDia;
+    return (
+      pedidoContaNoFluxoOperacionalAdmin(p) &&
+      dataPedido >= inicioDia &&
+      dataPedido < fimDia
+    );
   });
   const faturamentoDia = pedidosDoDia.reduce(
     (acc, p) => acc + (Number(p.total) || 0),
@@ -2539,7 +2684,10 @@ function AdminPageContent() {
   inicioSemana.setDate(inicioSemana.getDate() - diaSemana);
   const pedidosDaSemana = pedidos.filter((p) => {
     if (!p.created_at) return false;
-    return new Date(p.created_at) >= inicioSemana;
+    return (
+      pedidoContaNoFluxoOperacionalAdmin(p) &&
+      new Date(p.created_at) >= inicioSemana
+    );
   });
   const faturamentoSemana = pedidosDaSemana.reduce(
     (acc, p) => acc + (Number(p.total) || 0),
@@ -5376,15 +5524,28 @@ function AdminPageContent() {
                               Excluir
                             </button>
                             {entrega?.pedido ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void imprimirPedidoAceito(entrega.pedido)
-                                }
-                                className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors text-xs font-black uppercase"
-                              >
-                                Reimprimir cupom
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void imprimirPedidoAceito(entrega.pedido, {
+                                      visualizar: true,
+                                    })
+                                  }
+                                  className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition-colors text-xs font-black uppercase hover:bg-slate-100"
+                                >
+                                  Visualizar impressao
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void imprimirPedidoAceito(entrega.pedido)
+                                  }
+                                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors text-xs font-black uppercase"
+                                >
+                                  Reimprimir cupom
+                                </button>
+                              </>
                             ) : null}
                             {linkRastreamento ? (
                               <a
@@ -5913,7 +6074,18 @@ function AdminPageContent() {
                             onChange={() => alternarSelecaoVenda(pedido.id)}
                           />
                         </div>
-                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void imprimirPedidoAceito(pedido, {
+                                visualizar: true,
+                              })
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
+                          >
+                            Visualizar impressao
+                          </button>
                           <button
                             type="button"
                             onClick={() => void imprimirPedidoAceito(pedido)}

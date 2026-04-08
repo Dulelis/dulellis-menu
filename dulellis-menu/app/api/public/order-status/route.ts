@@ -42,6 +42,9 @@ function whatsappEquivalente(a: string, b: string): boolean {
 
 function statusResumo(pedido: PedidoStatus) {
   const statusPedido = String(pedido.status_pedido || "").trim().toLowerCase();
+  if (["pagamento_pendente", "aguardando_pagamento"].includes(statusPedido)) {
+    return { chave: "pendente", texto: "Aguardando pagamento" };
+  }
   if (["aguardando_aceite", "novo", "pendente_aceite"].includes(statusPedido)) {
     return { chave: "aguardando_aceite", texto: "Aguardando aceite da loja" };
   }

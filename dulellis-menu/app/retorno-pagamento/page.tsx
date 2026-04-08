@@ -403,6 +403,14 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
     referencia,
   });
   const whatsappLink = `https://wa.me/${WHATSAPP_LOJA}?text=${encodeURIComponent(mensagemWhatsapp)}`;
+  const retornoHomeParams = new URLSearchParams({
+    pix_return: "1",
+    pix_status: statusNormalizado || "",
+    ...(referencia ? { pix_ref: referencia } : {}),
+    ...(transactionId ? { pix_payment_id: transactionId } : {}),
+    ...(pedidoResumo?.retiradaNoBalcao ? { pix_retirada: "1" } : {}),
+  });
+  const redirectUrl = `/?${retornoHomeParams.toString()}`;
 
   return (
     <main className="min-h-screen bg-[#FDFCFD] text-slate-900 flex items-center justify-center p-6">
@@ -464,7 +472,8 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
           refCode={referencia}
           paymentId={transactionId}
           initialStatus={statusNormalizado}
-          autoRedirect={aprovado && !pedidoResumo?.retiradaNoBalcao}
+          autoRedirect={aprovado}
+          redirectUrl={redirectUrl}
           retiradaNoBalcao={Boolean(pedidoResumo?.retiradaNoBalcao)}
         />
       </section>
