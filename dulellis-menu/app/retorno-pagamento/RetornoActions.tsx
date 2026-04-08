@@ -9,12 +9,14 @@ type RetornoActionsProps = {
   refCode: string;
   paymentId?: string;
   initialStatus?: string;
+  initialPedidoId?: number;
   autoRedirect: boolean;
   redirectUrl?: string;
   retiradaNoBalcao?: boolean;
 };
 
 const STATUSS_PENDENTES = ["pending", "in_process", "in_mediation", "aguardando", "waiting"];
+const STATUSS_APROVADOS = ["approved", "paid", "authorized", "pago"];
 const STATUSS_FINAIS = [
   "approved",
   "paid",
@@ -38,6 +40,7 @@ export default function RetornoActions({
   refCode,
   paymentId = "",
   initialStatus = "",
+  initialPedidoId = 0,
   autoRedirect,
   redirectUrl = "",
   retiradaNoBalcao = false,
@@ -53,7 +56,11 @@ export default function RetornoActions({
   );
   const deveConsultarPagamento =
     Boolean(refCode || paymentId) &&
-    (!statusInicialNormalizado || STATUSS_PENDENTES.includes(statusInicialNormalizado));
+    (
+      !statusInicialNormalizado ||
+      STATUSS_PENDENTES.includes(statusInicialNormalizado) ||
+      (STATUSS_APROVADOS.includes(statusInicialNormalizado) && initialPedidoId <= 0)
+    );
 
   useEffect(() => {
     if (!autoRedirect) return;
@@ -84,16 +91,20 @@ export default function RetornoActions({
         const url = new URL("/api/mercadopago/status", window.location.origin);
         if (refCode) url.searchParams.set("ref", refCode);
         if (paymentId) url.searchParams.set("payment_id", paymentId);
-        if (statusInicialNormalizado) url.searchParams.set("status", statusInicialNormalizado);
+        if (statusInicialNormalizado) {
+          url.searchParams.set("status", statusInicialNormalizado);
+        }
 
         const response = await fetch(url.toString(), { cache: "no-store" });
         const json = (await response.json().catch(() => ({}))) as {
-          data?: { status?: string };
+          data?: { status?: string; pedido_id?: number | string | null };
         };
         const statusAtual = normalizarStatus(json.data?.status);
+        const pedidoIdAtual = Number(json.data?.pedido_id || 0);
         if (cancelado || !statusAtual) return;
 
         if (
+          pedidoIdAtual > 0 ||
           statusAtual !== statusInicialNormalizado ||
           STATUSS_FINAIS.includes(statusAtual)
         ) {
@@ -102,7 +113,7 @@ export default function RetornoActions({
         }
       } catch {}
 
-      if (!cancelado && tentativas < 20) {
+      if (!cancelado && tentativas < 30) {
         timerId = window.setTimeout(() => {
           void consultar();
         }, 2000);
@@ -123,7 +134,7 @@ export default function RetornoActions({
     <>
       {deveConsultarPagamento ? (
         <p className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-bold text-amber-700">
-          Atualizando automaticamente o status do Pix para agilizar a confirmação do pedido.
+          Atualizando automaticamente o status do Pix e sincronizando seu pedido.
         </p>
       ) : null}
       <a
@@ -135,14 +146,14 @@ export default function RetornoActions({
         Confirmar no WhatsApp
       </a>
       <p className="text-[11px] text-slate-600 mt-3 mb-3">
-        Você receberá atualizações: pedido confirmado, em produção e{" "}
+        Voce recebera atualizacoes: pedido confirmado, em producao e{" "}
         {retiradaNoBalcao ? "pronto para retirada." : "saiu para entrega."}
       </p>
       <Link
         href="/"
         className="block w-full text-center bg-white border border-slate-200 text-slate-700 py-3 rounded-2xl font-black uppercase tracking-wider text-sm"
       >
-        Voltar para o cardápio
+        Voltar para o cardapio
       </Link>
     </>
   );

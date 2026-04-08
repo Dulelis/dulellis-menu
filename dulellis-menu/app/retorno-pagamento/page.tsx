@@ -395,6 +395,8 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const info = getStatusInfo(statusNormalizado);
   const aprovado = pagamentoMercadoPagoAprovado(statusNormalizado);
   const pedidoResumo = await buscarResumoPedidoPorReferencia(referencia);
+  const pedidoIdInicial = Number(syncResult.pedidoId || 0);
+  const sincronizacaoPendente = aprovado && !pedidoResumo && pedidoIdInicial <= 0;
   const mensagemWhatsapp = montarMensagemWhatsappPadraoPedido(pedidoResumo, {
     clienteNome,
     tituloStatus: info.titulo,
@@ -421,6 +423,16 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
         </div>
 
         <p className="text-sm text-slate-700 mb-5">{info.descricao}</p>
+        {sincronizacaoPendente ? (
+          <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">
+              Sincronizando pedido
+            </p>
+            <p className="mt-2 text-sm font-medium text-amber-900">
+              O pagamento ja voltou como aprovado. Estamos finalizando a criacao do pedido na loja.
+            </p>
+          </div>
+        ) : null}
         {transactionId ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-5">
             <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">
@@ -472,6 +484,7 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
           refCode={referencia}
           paymentId={transactionId}
           initialStatus={statusNormalizado}
+          initialPedidoId={pedidoIdInicial}
           autoRedirect={aprovado}
           redirectUrl={redirectUrl}
           retiradaNoBalcao={Boolean(pedidoResumo?.retiradaNoBalcao)}

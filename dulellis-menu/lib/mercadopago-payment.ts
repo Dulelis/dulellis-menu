@@ -163,8 +163,23 @@ async function buscarPagamentoPorReferencia(
     ? (result.data.results as MercadoPagoPayment[])
     : [];
 
+  const candidato = escolherPagamentoMaisConfiavel(resultados);
+  if (!candidato) {
+    return { payment: null };
+  }
+
+  const paymentId = String(candidato.id || "").trim();
+  if (!paymentId) {
+    return { payment: candidato };
+  }
+
+  const detalhado = await buscarPagamentoPorId(accessToken, paymentId);
+  if (detalhado.payment) {
+    return detalhado;
+  }
+
   return {
-    payment: escolherPagamentoMaisConfiavel(resultados),
+    payment: candidato,
   };
 }
 
