@@ -175,8 +175,12 @@ type PedidoAcompanhamento = {
   forma_pagamento: string;
   status_pedido: string;
   status_pagamento: string;
+  status_pagamento_texto?: string;
+  pagamento_detalhe?: string;
   pagamento_referencia?: string;
   pagamento_id?: string;
+  troco_para?: number | null;
+  troco_texto?: string;
   created_at: string;
   status_chave: "aguardando_aceite" | "recebido" | "em_preparo" | "saiu_entrega" | "aprovado" | "pendente" | "recusado";
   status_texto: string;
@@ -536,6 +540,10 @@ function obterClasseStatusAcompanhamento(statusChave: PedidoAcompanhamento["stat
 }
 
 function obterStatusPagamentoPedido(pedido: PedidoAcompanhamento) {
+  if (String(pedido.status_pagamento_texto || "").trim()) {
+    return String(pedido.status_pagamento_texto || "").trim();
+  }
+
   const status = normalizarStatusPagamento(pedido.status_pagamento);
   if (STATUSS_PAGAMENTO_APROVADOS.includes(status)) return "Pagamento aprovado";
   if (STATUSS_PAGAMENTO_PENDENTES.includes(status)) return "Aguardando pagamento";
@@ -574,6 +582,10 @@ function obterMensagemAcompanhamentoPedido(
     return "O pagamento nao foi aprovado. Se quiser, voce pode tentar novamente.";
   }
   return pedido.status_texto || "Seu pedido segue em atualizacao.";
+}
+
+function obterTextoTrocoPedido(pedido: PedidoAcompanhamento) {
+  return String(pedido.troco_texto || "").trim();
 }
 
 function obterIndiceFluxoAcompanhamento(statusChave: PedidoAcompanhamento["status_chave"]) {
@@ -644,6 +656,8 @@ function PainelAcompanhamentoPedido({
   ];
   const indiceAtual = obterIndiceFluxoAcompanhamento(pedido.status_chave);
   const statusPagamentoTexto = obterStatusPagamentoPedido(pedido);
+  const detalhePagamento = String(pedido.pagamento_detalhe || "").trim();
+  const trocoTexto = obterTextoTrocoPedido(pedido);
   const mensagemAcompanhamento = obterMensagemAcompanhamentoPedido(
     pedido,
     retiradaNoBalcao,
@@ -661,6 +675,27 @@ function PainelAcompanhamentoPedido({
         <p className="text-sm font-bold leading-relaxed text-slate-600">
           {mensagemAcompanhamento}
         </p>
+        <div className="rounded-[1.2rem] border border-slate-100 bg-slate-50 px-4 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Resumo do pagamento
+          </p>
+          <p className="mt-1 text-sm font-black text-slate-800">
+            {pedido.forma_pagamento || "Pagamento na entrega"}
+          </p>
+          <p className="mt-1 text-xs font-bold text-slate-600">
+            {statusPagamentoTexto}
+          </p>
+          {detalhePagamento ? (
+            <p className="mt-1 text-xs font-bold text-slate-500">
+              {detalhePagamento}
+            </p>
+          ) : null}
+          {trocoTexto ? (
+            <p className="mt-1 text-xs font-black text-slate-700">
+              {trocoTexto}
+            </p>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -683,7 +718,7 @@ function PainelAcompanhamentoPedido({
             Pagamento
           </p>
           <p className="mt-1 text-sm font-black text-slate-800">
-            {pedido.forma_pagamento || "Nao informado"}
+            {pedido.forma_pagamento || "Pagamento na entrega"}
           </p>
         </div>
         <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
@@ -693,7 +728,22 @@ function PainelAcompanhamentoPedido({
           <p className="mt-1 text-sm font-black text-slate-800">
             {statusPagamentoTexto}
           </p>
+          {detalhePagamento ? (
+            <p className="mt-1 text-xs font-bold text-slate-500">
+              {detalhePagamento}
+            </p>
+          ) : null}
         </div>
+        {trocoTexto ? (
+          <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3 sm:col-span-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+              Troco
+            </p>
+            <p className="mt-1 text-sm font-black text-slate-800">
+              {trocoTexto}
+            </p>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-4 rounded-[1.6rem] border border-slate-100 bg-slate-50 p-4">
@@ -2560,6 +2610,22 @@ function ClientePageContent() {
         const referenciaPedido = String(
           jsonPedido.data.referencia || referenciaPagamento || "",
         ).trim();
+        const statusPagamentoLocal =
+          formaPagamento === FORMA_DINHEIRO
+            ? retiradaNoBalcao
+              ? "Receber no balcao"
+              : "Receber na entrega"
+            : formaPagamento === FORMA_CARTAO_ENTREGA
+              ? retiradaNoBalcao
+                ? "Cobrar no balcao"
+                : "Cobrar na entrega"
+              : "";
+        const trocoTextoLocal =
+          formaPagamento === FORMA_DINHEIRO
+            ? trocoParaValor !== null
+              ? `Troco para ${formatarMoedaBR(trocoParaValor)}`
+              : "Sem troco informado"
+            : "";
 
         setWhatsappAcompanhamento(whatsappPedido);
         setPedidoAcompanhamento({
@@ -2570,8 +2636,12 @@ function ClientePageContent() {
           forma_pagamento: formaPagamento,
           status_pedido: "aguardando_aceite",
           status_pagamento: "",
+          status_pagamento_texto: statusPagamentoLocal,
+          pagamento_detalhe: "Pagamento presencial",
           pagamento_referencia: referenciaPedido,
           pagamento_id: "",
+          troco_para: formaPagamento === FORMA_DINHEIRO ? trocoParaValor : null,
+          troco_texto: trocoTextoLocal,
           created_at: new Date().toISOString(),
           status_chave: "aguardando_aceite",
           status_texto: "Aguardando aceite da loja",

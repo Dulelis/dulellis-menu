@@ -13,9 +13,14 @@ type PedidoStatus = {
   status_pedido?: string | null;
   status_pagamento?: string | null;
   pagamento_referencia?: string | null;
+  troco_para?: number | string | null;
   observacao?: string | null;
   created_at?: string | null;
 };
+
+function formatarMoedaBR(valor: number) {
+  return `R$ ${Number(valor || 0).toFixed(2).replace(".", ",")}`;
+}
 
 function normalizarNumero(value: string): string {
   return String(value || "").replace(/\D/g, "");
@@ -31,6 +36,119 @@ function normalizarTexto(value: string): string {
 
 function pedidoEhRetiradaNoBalcao(pedido: PedidoStatus) {
   return normalizarTexto(String(pedido.observacao || "")).includes("tipo de entrega: retirar no balcao");
+}
+
+function formaPagamentoExibicao(pedido: PedidoStatus) {
+  const forma = String(pedido.forma_pagamento || "").trim();
+  if (forma) return forma;
+
+  if (String(pedido.status_pagamento || "").trim() || String(pedido.pagamento_referencia || "").trim()) {
+    return "Mercado Pago";
+  }
+
+  return "Pagamento na entrega";
+}
+
+function resumoPagamento(pedido: PedidoStatus) {
+  const forma = formaPagamentoExibicao(pedido);
+  const formaNormalizada = normalizarTexto(forma);
+  const statusPagamento = normalizarTexto(String(pedido.status_pagamento || ""));
+  const referencia = String(pedido.pagamento_referencia || "").trim();
+  const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(pedido);
+
+  if (
+    ["pix", "cartao mercado pago", "mercado pago"].includes(formaNormalizada) ||
+    statusPagamento ||
+    referencia
+  ) {
+    const titulo = formaNormalizada === "mercado pago" ? "Mercado Pago" : forma;
+    if (["approved", "aprovado", "paid", "authorized", "pago"].includes(statusPagamento)) {
+      return {
+        forma: titulo,
+        statusTexto: "Pago",
+        detalhe: referencia ? `Ref. ${referencia}` : "Pagamento confirmado",
+      };
+    }
+    if (["rejected", "cancelled", "canceled", "failed", "negado"].includes(statusPagamento)) {
+      return {
+        forma: titulo,
+        statusTexto: "Nao pago",
+        detalhe: referencia ? `Ref. ${referencia}` : "Pagamento nao aprovado",
+      };
+    }
+    if (["pending", "in_process", "in_mediation", "aguardando", "waiting"].includes(statusPagamento)) {
+      return {
+        forma: titulo,
+        statusTexto: "Aguardando pagamento",
+        detalhe: referencia ? `Ref. ${referencia}` : "Pagamento em analise",
+      };
+    }
+    return {
+      forma: titulo,
+      statusTexto: "Aguardando pagamento",
+      detalhe: referencia ? `Ref. ${referencia}` : "Pagamento em analise",
+    };
+  }
+
+  if (formaNormalizada === "dinheiro") {
+    return {
+      forma: "Dinheiro",
+      statusTexto: retiradaNoBalcao ? "Receber no balcao" : "Receber na entrega",
+      detalhe: "Pagamento presencial",
+    };
+  }
+
+  if (formaNormalizada === "cartao na entrega") {
+    return {
+      forma: "Cartao na entrega",
+      statusTexto: retiradaNoBalcao ? "Cobrar no balcao" : "Cobrar na entrega",
+      detalhe: "Pagamento presencial",
+    };
+  }
+
+  return {
+    forma,
+    statusTexto: "Forma registrada no pedido",
+    detalhe: referencia ? `Ref. ${referencia}` : "Pagamento em atualizacao",
+  };
+}
+
+function resumoTrocoPedido(pedido: PedidoStatus) {
+  const trocoDireto = Number(pedido.troco_para);
+  if (Number.isFinite(trocoDireto) && trocoDireto > 0) {
+    return {
+      exibir: true,
+      valor: trocoDireto,
+      texto: `Troco para ${formatarMoedaBR(trocoDireto)}`,
+    };
+  }
+
+  const observacao = String(pedido.observacao || "");
+  const trocoMatch = observacao.match(/troco\s+para:\s*r\$\s*([\d.,]+)/i);
+  if (trocoMatch?.[1]) {
+    const trocoNormalizado = Number(trocoMatch[1].replace(/\./g, "").replace(",", "."));
+    if (Number.isFinite(trocoNormalizado) && trocoNormalizado > 0) {
+      return {
+        exibir: true,
+        valor: trocoNormalizado,
+        texto: `Troco para ${formatarMoedaBR(trocoNormalizado)}`,
+      };
+    }
+  }
+
+  if (normalizarTexto(String(pedido.forma_pagamento || "")) === "dinheiro") {
+    return {
+      exibir: true,
+      valor: null,
+      texto: "Sem troco informado",
+    };
+  }
+
+  return {
+    exibir: false,
+    valor: null,
+    texto: "",
+  };
 }
 
 function whatsappEquivalente(a: string, b: string): boolean {
@@ -127,8 +245,11 @@ export async function GET(request: Request) {
   }
 
   const tentativasSelect = [
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,troco_para,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,observacao,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,troco_para,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,observacao,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,troco_para,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,observacao,created_at",
     "id,cliente_nome,whatsapp,total,created_at",
@@ -178,6 +299,8 @@ export async function GET(request: Request) {
   }
 
   const resumo = statusResumo(pedidoFinal);
+  const pagamento = resumoPagamento(pedidoFinal);
+  const troco = resumoTrocoPedido(pedidoFinal);
   return NextResponse.json({
     ok: true,
     data: {
@@ -185,10 +308,14 @@ export async function GET(request: Request) {
       cliente_nome: String(pedidoFinal.cliente_nome || "").trim(),
       whatsapp: zap,
       total: Number(pedidoFinal.total || 0),
-      forma_pagamento: String(pedidoFinal.forma_pagamento || "").trim(),
+      forma_pagamento: pagamento.forma,
       status_pedido: String(pedidoFinal.status_pedido || "").trim(),
       status_pagamento: String(pedidoFinal.status_pagamento || "").trim(),
+      status_pagamento_texto: pagamento.statusTexto,
+      pagamento_detalhe: pagamento.detalhe,
       pagamento_referencia: String(pedidoFinal.pagamento_referencia || "").trim(),
+      troco_para: troco.valor,
+      troco_texto: troco.texto,
       created_at: String(pedidoFinal.created_at || ""),
       status_chave: resumo.chave,
       status_texto: resumo.texto,
