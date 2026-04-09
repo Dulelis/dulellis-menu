@@ -79,6 +79,7 @@ const TIPO_ENTREGA = "Entrega";
 const TIPO_RETIRADA_BALCAO = "Retirar no balcão";
 const TIPOS_ENTREGA = [TIPO_ENTREGA, TIPO_RETIRADA_BALCAO] as const;
 const VITRINE_MODAL_SLIDE_MS = 6000;
+const ACOMPANHAMENTO_POLLING_MS = 5000;
 const AUTH_DRAFT_STORAGE_KEY = "dulellis.auth.draft";
 const VITRINE_CACHE_STORAGE_KEY = "dulellis.vitrine.cache.v1";
 const MERCADOPAGO_REDIRECT_DRAFT_STORAGE_KEY = "dulellis.mercadopago.redirect.v1";
@@ -183,6 +184,7 @@ type PedidoAcompanhamento = {
   pagamento_id?: string;
   troco_para?: number | null;
   troco_texto?: string;
+  ultima_atualizacao?: string;
   created_at: string;
   status_chave: "aguardando_aceite" | "recebido" | "em_preparo" | "saiu_entrega" | "aprovado" | "pendente" | "recusado";
   status_texto: string;
@@ -590,8 +592,20 @@ function obterTextoTrocoPedido(pedido: PedidoAcompanhamento) {
   return String(pedido.troco_texto || "").trim();
 }
 
-function carregarPedidoAcompanhamentoResposta(bruto: unknown) {
-  return ((bruto as { data?: PedidoAcompanhamento | null }).data || null) as PedidoAcompanhamento | null;
+function obterAssinaturaPedidoAcompanhamento(pedido: PedidoAcompanhamento | null) {
+  if (!pedido) return "";
+  return [
+    pedido.id,
+    pedido.status_pedido,
+    pedido.status_pagamento,
+    pedido.status_texto,
+    pedido.status_pagamento_texto || "",
+    pedido.pagamento_detalhe || "",
+    pedido.pagamento_referencia || "",
+    pedido.forma_pagamento || "",
+    pedido.troco_texto || "",
+    pedido.troco_para ?? "",
+  ].join("|");
 }
 
 async function buscarPedidoAcompanhamento(whatsappBase: string) {
@@ -894,6 +908,7 @@ function ClientePageContent() {
   const authDraftRestauradoRef = useRef(false);
   const recarregarVitrineRef = useRef<number | null>(null);
   const recarregarAcompanhamentoRef = useRef<number | null>(null);
+  const assinaturaPedidoAcompanhamentoRef = useRef("");
   const vitrineSlideTimeoutRef = useRef<number | null>(null);
   const vitrineSlideInicioRef = useRef<number | null>(null);
   const vitrineSlideTempoRestanteRef = useRef(VITRINE_MODAL_SLIDE_MS);
@@ -2146,6 +2161,38 @@ function ClientePageContent() {
     return (json.data || payloadCliente) as Cliente;
   }, []);
 
+  const sincronizarPedidoAcompanhamento = useCallback(async (
+    whatsappBase: string,
+    options?: {
+      mostrarLoading?: boolean;
+      alertarErro?: boolean;
+    },
+  ) => {
+    const zap = normalizarNumero(whatsappBase);
+    if (zap.length < 10) return null;
+
+    if (options?.mostrarLoading) {
+      setCarregandoAcompanhamento(true);
+    }
+
+    try {
+      const pedido = await buscarPedidoAcompanhamento(zap);
+      setPedidoAcompanhamento(pedido);
+      setPodeAcompanharPedido(Boolean(pedido));
+      return pedido;
+    } catch (error) {
+      if (options?.alertarErro) {
+        const mensagem = obterMensagemErro(error) || "Não foi possível consultar o pedido.";
+        alert(mensagem);
+      }
+      return null;
+    } finally {
+      if (options?.mostrarLoading) {
+        setCarregandoAcompanhamento(false);
+      }
+    }
+  }, []);
+
   const consultarAcompanhamentoPedido = useCallback(async (whatsappBase?: string) => {
     const zap = normalizarNumero(whatsappBase || whatsappAcompanhamento);
     if (zap.length < 10) {
@@ -2153,50 +2200,80 @@ function ClientePageContent() {
       return;
     }
 
-    setCarregandoAcompanhamento(true);
-    try {
-      const pedido = await buscarPedidoAcompanhamento(zap);
-      setPedidoAcompanhamento(pedido);
-    } catch (error) {
-      const mensagem = obterMensagemErro(error) || "Não foi possível consultar o pedido.";
-      alert(mensagem);
-    } finally {
-      setCarregandoAcompanhamento(false);
+    setWhatsappAcompanhamento(zap);
+    await sincronizarPedidoAcompanhamento(zap, {
+      mostrarLoading: true,
+      alertarErro: true,
+    });
+  }, [sincronizarPedidoAcompanhamento, whatsappAcompanhamento]);
+
+  const acompanhamentoMonitoradoWhatsapp = useMemo(() => {
+    const zap = normalizarNumero(whatsappAcompanhamento || authWhatsapp || "");
+    if (zap.length < 10) return "";
+
+    if (
+      modalAcompanhamentoAberto ||
+      modalPedidoFinalizadoAberto ||
+      Boolean(pedidoAcompanhamento)
+    ) {
+      return zap;
     }
-  }, [whatsappAcompanhamento]);
+
+    return "";
+  }, [
+    authWhatsapp,
+    modalAcompanhamentoAberto,
+    modalPedidoFinalizadoAberto,
+    pedidoAcompanhamento,
+    whatsappAcompanhamento,
+  ]);
 
   useEffect(() => {
-    const zapMonitorado = normalizarNumero(whatsappAcompanhamento || authWhatsapp || "");
-    if (zapMonitorado.length < 10) return;
+    if (!acompanhamentoMonitoradoWhatsapp) return;
 
-    const atualizarStatus = () => {
+    let ativo = true;
+
+    const atualizarStatus = (delay = 0) => {
       if (recarregarAcompanhamentoRef.current) {
         window.clearTimeout(recarregarAcompanhamentoRef.current);
       }
+
       recarregarAcompanhamentoRef.current = window.setTimeout(() => {
-        void fetch(`/api/public/order-status?whatsapp=${encodeURIComponent(zapMonitorado)}`, {
-          cache: "no-store",
-        })
-          .then((res) => res.json().catch(() => ({})))
-          .then((json) => {
-            setPedidoAcompanhamento(carregarPedidoAcompanhamentoResposta(json));
-          })
-          .catch(() => undefined);
-      }, 250);
+        if (!ativo) return;
+        void sincronizarPedidoAcompanhamento(acompanhamentoMonitoradoWhatsapp);
+      }, delay);
+    };
+
+    const atualizarAoVoltar = () => {
+      if (document.visibilityState === "visible") {
+        atualizarStatus();
+      }
     };
 
     const channel = supabase
-      .channel(`cliente-pedido-${zapMonitorado}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, atualizarStatus)
+      .channel(`cliente-pedido-${acompanhamentoMonitoradoWhatsapp}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pedidos" }, () => atualizarStatus(150))
       .subscribe();
 
+    const pollingId = window.setInterval(() => {
+      atualizarStatus();
+    }, ACOMPANHAMENTO_POLLING_MS);
+
+    window.addEventListener("focus", atualizarAoVoltar);
+    document.addEventListener("visibilitychange", atualizarAoVoltar);
+    atualizarStatus();
+
     return () => {
+      ativo = false;
       if (recarregarAcompanhamentoRef.current) {
         window.clearTimeout(recarregarAcompanhamentoRef.current);
       }
+      window.clearInterval(pollingId);
+      window.removeEventListener("focus", atualizarAoVoltar);
+      document.removeEventListener("visibilitychange", atualizarAoVoltar);
       void supabase.removeChannel(channel);
     };
-  }, [authWhatsapp, whatsappAcompanhamento]);
+  }, [acompanhamentoMonitoradoWhatsapp, sincronizarPedidoAcompanhamento]);
 
   async function verificarDisponibilidadeAcompanhamento(whatsappBase: string) {
     const zap = normalizarNumero(whatsappBase);
@@ -2277,11 +2354,19 @@ function ClientePageContent() {
 
   useEffect(() => {
     if (!pedidoAcompanhamento) {
+      assinaturaPedidoAcompanhamentoRef.current = "";
       setUltimaAtualizacaoAcompanhamento("");
       return;
     }
 
-    setUltimaAtualizacaoAcompanhamento(new Date().toISOString());
+    const assinaturaAtual = obterAssinaturaPedidoAcompanhamento(pedidoAcompanhamento);
+    if (assinaturaAtual === assinaturaPedidoAcompanhamentoRef.current) return;
+
+    assinaturaPedidoAcompanhamentoRef.current = assinaturaAtual;
+    setUltimaAtualizacaoAcompanhamento(
+      String(pedidoAcompanhamento.ultima_atualizacao || "").trim() ||
+        new Date().toISOString(),
+    );
   }, [pedidoAcompanhamento]);
 
   const infoModalPedidoFinalizado = useMemo(() => {
@@ -2359,23 +2444,14 @@ function ClientePageContent() {
     setWhatsappAcompanhamento((atual) =>
       normalizarNumero(atual) === whatsappPedido ? atual : whatsappPedido,
     );
-    setCarregandoAcompanhamento(true);
-    void buscarPedidoAcompanhamento(whatsappPedido)
-      .then((pedido) => {
-        if (pedido) {
-          setPedidoAcompanhamento(pedido);
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        setCarregandoAcompanhamento(false);
-      });
+    void sincronizarPedidoAcompanhamento(whatsappPedido, { mostrarLoading: true });
   }, [
     authWhatsapp,
     cliente.whatsapp,
     infoModalPedidoFinalizado.mostrarAcompanhar,
     modalPedidoFinalizadoAberto,
     sessaoCliente?.whatsapp,
+    sincronizarPedidoAcompanhamento,
   ]);
 
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
@@ -2530,18 +2606,13 @@ function ClientePageContent() {
           pagamento_id: "",
           troco_para: formaPagamento === FORMA_DINHEIRO ? trocoParaValor : null,
           troco_texto: trocoTextoLocal,
+          ultima_atualizacao: new Date().toISOString(),
           created_at: new Date().toISOString(),
           status_chave: "aguardando_aceite",
-          status_texto: "Aguardando aceite da loja",
+          status_texto: "Pedido enviado",
           retiradaNoBalcao,
         });
-        void buscarPedidoAcompanhamento(whatsappPedido)
-          .then((pedido) => {
-            if (pedido) {
-              setPedidoAcompanhamento(pedido);
-            }
-          })
-          .catch(() => undefined);
+        void sincronizarPedidoAcompanhamento(whatsappPedido);
       }
 
       limparRascunhoCheckoutMercadoPago();
@@ -2559,7 +2630,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [abrirModalPedidoFinalizado, carrinho, carregarDadosIniciais, cliente, enderecoSalvoCliente, formaPagamento, referenciaPagamento, resetarFluxoCheckout, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, tipoEntrega, totalGeral, trocoParaPreenchido, trocoParaValor]);
+  }, [abrirModalPedidoFinalizado, carrinho, carregarDadosIniciais, cliente, enderecoSalvoCliente, formaPagamento, referenciaPagamento, resetarFluxoCheckout, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, sincronizarPedidoAcompanhamento, taxaEntrega, tipoEntrega, totalGeral, trocoParaPreenchido, trocoParaValor]);
 
   const quantidadesCarrinho = useMemo(
     () =>

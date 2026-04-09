@@ -165,13 +165,13 @@ function statusResumo(pedido: PedidoStatus) {
     return { chave: "pendente", texto: "Aguardando pagamento" };
   }
   if (["aguardando_aceite", "novo", "pendente_aceite"].includes(statusPedido)) {
-    return { chave: "aguardando_aceite", texto: "Aguardando aceite da loja" };
+    return { chave: "aguardando_aceite", texto: "Pedido enviado" };
   }
   if (["recebido", "aceito"].includes(statusPedido)) {
-    return { chave: "recebido", texto: "Pedido recebido" };
+    return { chave: "recebido", texto: "Pedido aceito" };
   }
   if (["em_preparo", "preparo", "preparando"].includes(statusPedido)) {
-    return { chave: "em_preparo", texto: "Pedido em preparo" };
+    return { chave: "em_preparo", texto: "Em preparo" };
   }
   if (["saiu_entrega", "saiu_para_entrega", "entrega"].includes(statusPedido)) {
     return {

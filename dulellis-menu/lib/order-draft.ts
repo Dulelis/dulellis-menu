@@ -63,6 +63,7 @@ export type OrderDraftSnapshot = {
   taxa_entrega: number;
   desconto_promocoes: number;
   forma_pagamento: string;
+  troco_para: number | null;
   observacao: string | null;
   pagamento_referencia: string;
   tipo_entrega: string;
@@ -279,6 +280,7 @@ function buildOrderPayloadBase(
     total: snapshot.total,
     taxa_entrega: snapshot.taxa_entrega,
     forma_pagamento: options?.formaPagamento || snapshot.forma_pagamento,
+    troco_para: snapshot.troco_para,
     observacao: snapshot.observacao,
     pagamento_referencia: snapshot.pagamento_referencia || null,
   };
@@ -308,6 +310,7 @@ function buildInsertPayloads(
     total: base.total,
     taxa_entrega: base.taxa_entrega,
     forma_pagamento: base.forma_pagamento,
+    troco_para: base.troco_para,
     observacao: base.observacao,
     pagamento_referencia: base.pagamento_referencia,
     status_pagamento: statusPagamento,
@@ -334,6 +337,7 @@ function buildInsertPayloads(
     total: base.total,
     taxa_entrega: base.taxa_entrega,
     forma_pagamento: base.forma_pagamento,
+    troco_para: base.troco_para,
     observacao: base.observacao,
     status_pedido: statusPedido,
   };
@@ -344,6 +348,7 @@ function buildInsertPayloads(
     total: base.total,
     taxa_entrega: base.taxa_entrega,
     forma_pagamento: base.forma_pagamento,
+    troco_para: base.troco_para,
     status_pedido: statusPedido,
   };
   const payloadLegado = {
@@ -379,27 +384,30 @@ async function tentarAtualizarPedidoPosInsert(
       ...base,
       status_pedido: statusPedido,
       status_pagamento: statusPagamento,
-      pagamento_id: pagamentoId,
-      pagamento_atualizado_em: pagamentoAtualizadoEm,
+    pagamento_id: pagamentoId,
+    pagamento_atualizado_em: pagamentoAtualizadoEm,
+  },
+  {
+    forma_pagamento: base.forma_pagamento,
+    troco_para: base.troco_para,
+    pagamento_referencia: base.pagamento_referencia,
+    status_pagamento: statusPagamento,
+    pagamento_id: pagamentoId,
+    pagamento_atualizado_em: pagamentoAtualizadoEm,
+    status_pedido: statusPedido,
+    observacao: base.observacao,
+  },
+  {
+    forma_pagamento: base.forma_pagamento,
+    troco_para: base.troco_para,
+    pagamento_referencia: base.pagamento_referencia,
+    status_pagamento: statusPagamento,
+    status_pedido: statusPedido,
+    observacao: base.observacao,
     },
     {
       forma_pagamento: base.forma_pagamento,
-      pagamento_referencia: base.pagamento_referencia,
-      status_pagamento: statusPagamento,
-      pagamento_id: pagamentoId,
-      pagamento_atualizado_em: pagamentoAtualizadoEm,
-      status_pedido: statusPedido,
-      observacao: base.observacao,
-    },
-    {
-      forma_pagamento: base.forma_pagamento,
-      pagamento_referencia: base.pagamento_referencia,
-      status_pagamento: statusPagamento,
-      status_pedido: statusPedido,
-      observacao: base.observacao,
-    },
-    {
-      forma_pagamento: base.forma_pagamento,
+      troco_para: base.troco_para,
       status_pedido: statusPedido,
     },
   ];
@@ -559,6 +567,7 @@ export async function prepareOrderDraft(args: {
       taxa_entrega: taxaEntrega,
       desconto_promocoes: descontoPromocoes,
       forma_pagamento: formaPagamento,
+      troco_para: trocoPara,
       observacao: observacaoPedido || null,
       pagamento_referencia: referencia,
       tipo_entrega: tipoEntrega,
@@ -749,6 +758,9 @@ export function normalizeOrderDraftSnapshot(
       Number(base.desconto_promocoes || 0),
     ),
     forma_pagamento: formaPagamento,
+    troco_para: Number.isFinite(Number(base.troco_para))
+      ? Math.max(0, Number(base.troco_para || 0)) || null
+      : null,
     observacao: String(base.observacao || "").trim() || null,
     pagamento_referencia: referencia,
     tipo_entrega: tipoEntrega,
