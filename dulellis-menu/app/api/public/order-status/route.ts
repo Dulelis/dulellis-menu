@@ -12,6 +12,7 @@ type PedidoStatus = {
   forma_pagamento?: string | null;
   status_pedido?: string | null;
   status_pagamento?: string | null;
+  pagamento_referencia?: string | null;
   observacao?: string | null;
   created_at?: string | null;
 };
@@ -126,6 +127,7 @@ export async function GET(request: Request) {
   }
 
   const tentativasSelect = [
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,observacao,created_at",
@@ -186,6 +188,7 @@ export async function GET(request: Request) {
       forma_pagamento: String(pedidoFinal.forma_pagamento || "").trim(),
       status_pedido: String(pedidoFinal.status_pedido || "").trim(),
       status_pagamento: String(pedidoFinal.status_pagamento || "").trim(),
+      pagamento_referencia: String(pedidoFinal.pagamento_referencia || "").trim(),
       created_at: String(pedidoFinal.created_at || ""),
       status_chave: resumo.chave,
       status_texto: resumo.texto,

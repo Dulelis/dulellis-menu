@@ -175,8 +175,8 @@ type PedidoAcompanhamento = {
   forma_pagamento: string;
   status_pedido: string;
   status_pagamento: string;
-  pagamento_referencia: string;
-  pagamento_id: string;
+  pagamento_referencia?: string;
+  pagamento_id?: string;
   created_at: string;
   status_chave: "aguardando_aceite" | "recebido" | "em_preparo" | "saiu_entrega" | "aprovado" | "pendente" | "recusado";
   status_texto: string;
@@ -514,6 +514,247 @@ function obterMensagemErro(error: unknown) {
     }
   }
   return "";
+}
+
+function formatarDataHoraPedido(valor?: string | null) {
+  const texto = String(valor || "").trim();
+  if (!texto) return "Nao informada";
+
+  const data = new Date(texto);
+  if (Number.isNaN(data.getTime())) return "Nao informada";
+  return data.toLocaleString("pt-BR");
+}
+
+function obterClasseStatusAcompanhamento(statusChave: PedidoAcompanhamento["status_chave"]) {
+  if (statusChave === "aprovado") return "text-green-600";
+  if (statusChave === "saiu_entrega") return "text-sky-600";
+  if (statusChave === "em_preparo") return "text-orange-600";
+  if (statusChave === "aguardando_aceite") return "text-violet-600";
+  if (statusChave === "pendente") return "text-amber-600";
+  if (statusChave === "recusado") return "text-rose-600";
+  return "text-slate-700";
+}
+
+function obterStatusPagamentoPedido(pedido: PedidoAcompanhamento) {
+  const status = normalizarStatusPagamento(pedido.status_pagamento);
+  if (STATUSS_PAGAMENTO_APROVADOS.includes(status)) return "Pagamento aprovado";
+  if (STATUSS_PAGAMENTO_PENDENTES.includes(status)) return "Aguardando pagamento";
+  if (STATUSS_PAGAMENTO_RECUSADOS.includes(status)) return "Pagamento nao aprovado";
+  if (!status && !formaPagamentoUsaMercadoPago(pedido.forma_pagamento)) {
+    return "Pagamento na entrega";
+  }
+  return "Status do pagamento em atualizacao";
+}
+
+function obterMensagemAcompanhamentoPedido(
+  pedido: PedidoAcompanhamento,
+  retiradaNoBalcao: boolean,
+) {
+  if (pedido.status_chave === "aguardando_aceite") {
+    return "Pedido enviado com sucesso. Agora ele esta aguardando o aceite da loja.";
+  }
+  if (pedido.status_chave === "recebido") {
+    return "Pedido aceito pela loja. Ja seguimos com a organizacao e separacao dos itens.";
+  }
+  if (pedido.status_chave === "em_preparo") {
+    return "Seu pedido esta em preparo neste momento.";
+  }
+  if (pedido.status_chave === "saiu_entrega") {
+    return retiradaNoBalcao
+      ? "Seu pedido esta pronto para retirada na loja."
+      : "Seu pedido saiu para entrega e esta a caminho.";
+  }
+  if (pedido.status_chave === "aprovado") {
+    return "Pagamento aprovado. O pedido ja voltou para a fila da loja e aguarda o aceite.";
+  }
+  if (pedido.status_chave === "pendente") {
+    return "Estamos aguardando a confirmacao do pagamento para liberar o pedido.";
+  }
+  if (pedido.status_chave === "recusado") {
+    return "O pagamento nao foi aprovado. Se quiser, voce pode tentar novamente.";
+  }
+  return pedido.status_texto || "Seu pedido segue em atualizacao.";
+}
+
+function obterIndiceFluxoAcompanhamento(statusChave: PedidoAcompanhamento["status_chave"]) {
+  if (statusChave === "recebido") return 1;
+  if (statusChave === "em_preparo") return 2;
+  if (statusChave === "saiu_entrega") return 3;
+  return 0;
+}
+
+function carregarPedidoAcompanhamentoResposta(bruto: unknown) {
+  return ((bruto as { data?: PedidoAcompanhamento | null }).data || null) as PedidoAcompanhamento | null;
+}
+
+async function buscarPedidoAcompanhamento(whatsappBase: string) {
+  const zap = normalizarNumero(whatsappBase);
+  if (zap.length < 10) {
+    throw new Error("Informe um WhatsApp valido.");
+  }
+
+  const res = await fetch(`/api/public/order-status?whatsapp=${encodeURIComponent(zap)}`, {
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    data?: PedidoAcompanhamento | null;
+    error?: string;
+  };
+
+  if (!res.ok || json.ok === false) {
+    throw new Error(json.error || "Falha ao consultar pedido.");
+  }
+
+  return (json.data || null) as PedidoAcompanhamento | null;
+}
+
+function PainelAcompanhamentoPedido({
+  pedido,
+  retiradaNoBalcao,
+  className = "",
+}: {
+  pedido: PedidoAcompanhamento;
+  retiradaNoBalcao: boolean;
+  className?: string;
+}) {
+  const etapas = [
+    {
+      ordem: 0,
+      titulo: "Pedido enviado",
+      descricao: "Pedido registrado e pronto para entrar no fluxo da loja.",
+    },
+    {
+      ordem: 1,
+      titulo: "Aceite da loja",
+      descricao: "A equipe confirma o pedido e libera a producao.",
+    },
+    {
+      ordem: 2,
+      titulo: "Preparando",
+      descricao: "Itens sendo separados e preparados.",
+    },
+    {
+      ordem: 3,
+      titulo: retiradaNoBalcao ? "Pronto para retirada" : "Saiu para entrega",
+      descricao: retiradaNoBalcao
+        ? "Pedido liberado para retirada no balcao."
+        : "Pedido saiu com o entregador.",
+    },
+  ];
+  const indiceAtual = obterIndiceFluxoAcompanhamento(pedido.status_chave);
+  const statusPagamentoTexto = obterStatusPagamentoPedido(pedido);
+  const mensagemAcompanhamento = obterMensagemAcompanhamentoPedido(
+    pedido,
+    retiradaNoBalcao,
+  );
+
+  return (
+    <div className={`rounded-[2rem] border border-slate-200 bg-white p-5 text-left shadow-sm ${className}`}>
+      <div className="space-y-2">
+        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+          Mensagem de acompanhamento
+        </p>
+        <p className={`text-sm font-black ${obterClasseStatusAcompanhamento(pedido.status_chave)}`}>
+          {pedido.status_texto}
+        </p>
+        <p className="text-sm font-bold leading-relaxed text-slate-600">
+          {mensagemAcompanhamento}
+        </p>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Pedido
+          </p>
+          <p className="mt-1 text-sm font-black text-slate-800">#{pedido.id}</p>
+        </div>
+        <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Data e hora
+          </p>
+          <p className="mt-1 text-sm font-black text-slate-800">
+            {formatarDataHoraPedido(pedido.created_at)}
+          </p>
+        </div>
+        <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Pagamento
+          </p>
+          <p className="mt-1 text-sm font-black text-slate-800">
+            {pedido.forma_pagamento || "Nao informado"}
+          </p>
+        </div>
+        <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Status do pagamento
+          </p>
+          <p className="mt-1 text-sm font-black text-slate-800">
+            {statusPagamentoTexto}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[1.6rem] border border-slate-100 bg-slate-50 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+            Atualizacoes do pedido
+          </p>
+          <p className="text-xs font-black text-slate-600">
+            Total: {formatarMoedaBR(pedido.total || 0)}
+          </p>
+        </div>
+        <div className="mt-3 space-y-3">
+          {etapas.map((etapa) => {
+            const concluida = indiceAtual > etapa.ordem;
+            const ativa = indiceAtual === etapa.ordem;
+            const cardClasse = concluida
+              ? "border-emerald-200 bg-emerald-50"
+              : ativa
+                ? "border-slate-900 bg-slate-900"
+                : "border-slate-200 bg-white";
+            const tituloClasse = concluida
+              ? "text-emerald-700"
+              : ativa
+                ? "text-white"
+                : "text-slate-500";
+            const descricaoClasse = concluida
+              ? "text-emerald-700/80"
+              : ativa
+                ? "text-white/80"
+                : "text-slate-400";
+            const marcadorClasse = concluida
+              ? "bg-emerald-500 text-white"
+              : ativa
+                ? "bg-white text-slate-900"
+                : "bg-slate-100 text-slate-400";
+
+            return (
+              <div
+                key={etapa.titulo}
+                className={`flex items-start gap-3 rounded-[1.2rem] border px-3 py-3 ${cardClasse}`}
+              >
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-black ${marcadorClasse}`}>
+                  {concluida ? <CheckCircle2 size={15} /> : etapa.ordem + 1}
+                </div>
+                <div>
+                  <p className={`text-sm font-black ${tituloClasse}`}>{etapa.titulo}</p>
+                  <p className={`text-xs font-bold ${descricaoClasse}`}>{etapa.descricao}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {pedido.pagamento_referencia ? (
+        <p className="mt-4 break-all text-[11px] font-mono text-slate-500">
+          Ref: {pedido.pagamento_referencia}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function extrairPontoReferenciaDeEndereco(endereco: string) {
@@ -1985,18 +2226,8 @@ function ClientePageContent() {
 
     setCarregandoAcompanhamento(true);
     try {
-      const res = await fetch(`/api/public/order-status?whatsapp=${encodeURIComponent(zap)}`, {
-        cache: "no-store",
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        data?: PedidoAcompanhamento | null;
-        error?: string;
-      };
-      if (!res.ok || json.ok === false) {
-        throw new Error(json.error || "Falha ao consultar pedido.");
-      }
-      setPedidoAcompanhamento((json.data || null) as PedidoAcompanhamento | null);
+      const pedido = await buscarPedidoAcompanhamento(zap);
+      setPedidoAcompanhamento(pedido);
     } catch (error) {
       const mensagem = obterMensagemErro(error) || "Não foi possível consultar o pedido.";
       alert(mensagem);
@@ -2019,7 +2250,7 @@ function ClientePageContent() {
         })
           .then((res) => res.json().catch(() => ({})))
           .then((json) => {
-            setPedidoAcompanhamento(((json as { data?: PedidoAcompanhamento | null }).data || null) as PedidoAcompanhamento | null);
+            setPedidoAcompanhamento(carregarPedidoAcompanhamentoResposta(json));
           })
           .catch(() => undefined);
       }, 250);
@@ -2179,6 +2410,36 @@ function ClientePageContent() {
     };
   }, [retornoPixInfo, ultimoPedidoFoiRetirada]);
 
+  useEffect(() => {
+    if (!modalPedidoFinalizadoAberto || !infoModalPedidoFinalizado.mostrarAcompanhar) return;
+
+    const whatsappPedido = normalizarNumero(
+      String(sessaoCliente?.whatsapp || cliente.whatsapp || authWhatsapp || ""),
+    );
+    if (whatsappPedido.length < 10) return;
+
+    setWhatsappAcompanhamento((atual) =>
+      normalizarNumero(atual) === whatsappPedido ? atual : whatsappPedido,
+    );
+    setCarregandoAcompanhamento(true);
+    void buscarPedidoAcompanhamento(whatsappPedido)
+      .then((pedido) => {
+        if (pedido) {
+          setPedidoAcompanhamento(pedido);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        setCarregandoAcompanhamento(false);
+      });
+  }, [
+    authWhatsapp,
+    cliente.whatsapp,
+    infoModalPedidoFinalizado.mostrarAcompanhar,
+    modalPedidoFinalizadoAberto,
+    sessaoCliente?.whatsapp,
+  ]);
+
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
 
@@ -2210,8 +2471,14 @@ function ClientePageContent() {
     setLoading(true);
     const usaMercadoPago = formaPagamentoUsaMercadoPago(formaPagamento);
     try {
-      const payloadCliente = await salvarOuAtualizarCliente(cliente);
+      let clienteJaSalvoNoFluxo = Boolean(enderecoSalvoCliente);
+      const clienteBaseCheckout =
+        enderecoSalvoCliente || cliente;
+      const payloadCliente = clienteJaSalvoNoFluxo
+        ? normalizarClienteParaEntrega(clienteBaseCheckout)
+        : await salvarOuAtualizarCliente(cliente);
       const enderecoAtualizado = normalizarClienteParaEntrega(payloadCliente);
+      clienteJaSalvoNoFluxo = true;
       setEnderecoSalvoCliente(enderecoAtualizado);
       if (!retiradaNoBalcao) {
         setUltimaTaxaEntregaSalva(taxaEntrega);
@@ -2228,6 +2495,7 @@ function ClientePageContent() {
             taxa_entrega: retiradaNoBalcao ? 0 : taxaEntrega,
             referencia: referenciaPagamento || undefined,
             tipo_entrega: tipoEntrega,
+            cliente_ja_salvo: clienteJaSalvoNoFluxo,
           }),
         });
         const dataCheckout = (await resCheckout.json().catch(() => ({}))) as {
@@ -2285,6 +2553,37 @@ function ClientePageContent() {
         ) {
           throw new Error(jsonPedido.error || "Falha ao registrar pedido.");
         }
+
+        const whatsappPedido = normalizarNumero(
+          String(payloadCliente.whatsapp || sessaoCliente?.whatsapp || cliente.whatsapp || ""),
+        );
+        const referenciaPedido = String(
+          jsonPedido.data.referencia || referenciaPagamento || "",
+        ).trim();
+
+        setWhatsappAcompanhamento(whatsappPedido);
+        setPedidoAcompanhamento({
+          id: Number(jsonPedido.data.pedido_id || 0),
+          cliente_nome: String(payloadCliente.nome || cliente.nome || "").trim(),
+          whatsapp: whatsappPedido,
+          total: Number(jsonPedido.data.total || totalGeral || 0),
+          forma_pagamento: formaPagamento,
+          status_pedido: "aguardando_aceite",
+          status_pagamento: "",
+          pagamento_referencia: referenciaPedido,
+          pagamento_id: "",
+          created_at: new Date().toISOString(),
+          status_chave: "aguardando_aceite",
+          status_texto: "Aguardando aceite da loja",
+          retiradaNoBalcao,
+        });
+        void buscarPedidoAcompanhamento(whatsappPedido)
+          .then((pedido) => {
+            if (pedido) {
+              setPedidoAcompanhamento(pedido);
+            }
+          })
+          .catch(() => undefined);
       }
 
       limparRascunhoCheckoutMercadoPago();
@@ -2302,7 +2601,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [abrirModalPedidoFinalizado, carrinho, carregarDadosIniciais, cliente, formaPagamento, referenciaPagamento, resetarFluxoCheckout, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, tipoEntrega, totalGeral, trocoParaPreenchido, trocoParaValor]);
+  }, [abrirModalPedidoFinalizado, carrinho, carregarDadosIniciais, cliente, enderecoSalvoCliente, formaPagamento, referenciaPagamento, resetarFluxoCheckout, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, taxaEntrega, tipoEntrega, totalGeral, trocoParaPreenchido, trocoParaValor]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -2608,6 +2907,8 @@ function ClientePageContent() {
     : formaPagamentoUsaMercadoPago(formaPagamento)
       ? "Ir para o Mercado Pago"
       : "Finalizar Pedido";
+  const exibindoTransicaoMercadoPago =
+    loading && passo === 3 && formaPagamentoUsaMercadoPago(formaPagamento);
   const abaAppAtiva = abaCarrinho || modalAuthAberto || modalAcompanhamentoAberto ? "order" : mobileAppTab;
 
   const rolarParaSecao = useCallback((ref: React.RefObject<HTMLElement | HTMLDivElement | null>, aba: MobileAppTab) => {
@@ -2646,6 +2947,24 @@ function ClientePageContent() {
       data-has-cart={temAtalhoCarrinho ? "true" : "false"}
     >
       <PwaLaunchSplash loading={loading} />
+      {exibindoTransicaoMercadoPago ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
+          <div className="w-full max-w-sm rounded-[2.8rem] bg-white px-7 py-8 text-center shadow-2xl">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <Loader2 size={28} className="animate-spin" />
+            </div>
+            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.3em] text-emerald-500">
+              Checkout seguro
+            </p>
+            <h3 className="mt-2 text-2xl font-black italic text-slate-800">
+              Abrindo Mercado Pago
+            </h3>
+            <p className="mt-3 text-sm font-bold leading-relaxed text-slate-500">
+              Estamos preparando seu checkout para deixar a transicao mais rapida.
+            </p>
+          </div>
+        </div>
+      ) : null}
       <header
         ref={topoVitrineRef}
         className="app-topbar relative overflow-hidden border-b border-pink-50 bg-white p-8 text-center"
@@ -3359,40 +3678,10 @@ function ClientePageContent() {
 
             {pedidoAcompanhamento ? (
               <div className="mt-5 space-y-4">
-                <div className="rounded-3xl border border-slate-100 bg-slate-50 p-5 space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status atual</p>
-                  <p
-                    className={`text-sm font-black ${
-                      pedidoAcompanhamento.status_chave === "aprovado"
-                        ? "text-green-600"
-                        : pedidoAcompanhamento.status_chave === "saiu_entrega"
-                          ? "text-sky-600"
-                          : pedidoAcompanhamento.status_chave === "em_preparo"
-                            ? "text-orange-600"
-                            : pedidoAcompanhamento.status_chave === "aguardando_aceite"
-                              ? "text-violet-600"
-                        : pedidoAcompanhamento.status_chave === "pendente"
-                          ? "text-amber-600"
-                          : pedidoAcompanhamento.status_chave === "recusado"
-                            ? "text-rose-600"
-                            : "text-slate-700"
-                    }`}
-                  >
-                    {pedidoAcompanhamento.status_texto}
-                  </p>
-                  <p className="text-xs font-bold text-slate-700">Cliente: {pedidoAcompanhamento.cliente_nome || "Não informado"}</p>
-                  <p className="text-xs font-bold text-slate-700">Pedido: #{pedidoAcompanhamento.id}</p>
-                  <p className="text-xs font-bold text-slate-700">Pagamento: {pedidoAcompanhamento.forma_pagamento || "Não informado"}</p>
-                  <p className="text-xs font-bold text-slate-700">Total: R$ {Number(pedidoAcompanhamento.total || 0).toFixed(2)}</p>
-                  <p className="text-xs font-bold text-slate-700">
-                    Data: {pedidoAcompanhamento.created_at ? new Date(pedidoAcompanhamento.created_at).toLocaleString("pt-BR") : "Não informada"}
-                  </p>
-                  {pedidoAcompanhamento.pagamento_referencia ? (
-                    <p className="text-[11px] font-mono break-all text-slate-500">
-                      Ref: {pedidoAcompanhamento.pagamento_referencia}
-                    </p>
-                  ) : null}
-                </div>
+                <PainelAcompanhamentoPedido
+                  pedido={pedidoAcompanhamento}
+                  retiradaNoBalcao={acompanhamentoEhRetiradaNoBalcao}
+                />
                 {acompanhamentoEhRetiradaNoBalcao ? (
                   <BlocoRetiradaLoja
                     className="text-left"
@@ -3439,6 +3728,20 @@ function ClientePageContent() {
             {retornoPixInfo?.referencia ? (
               <p className="mt-3 text-[11px] font-mono text-slate-500 break-all">
                 Ref: {retornoPixInfo.referencia}
+              </p>
+            ) : null}
+            {infoModalPedidoFinalizado.mostrarAcompanhar && pedidoAcompanhamento ? (
+              <PainelAcompanhamentoPedido
+                pedido={pedidoAcompanhamento}
+                retiradaNoBalcao={acompanhamentoEhRetiradaNoBalcao}
+                className="mt-6"
+              />
+            ) : null}
+            {infoModalPedidoFinalizado.mostrarAcompanhar &&
+            !pedidoAcompanhamento &&
+            carregandoAcompanhamento ? (
+              <p className="mt-4 text-sm font-bold text-slate-500">
+                Carregando as informacoes de acompanhamento do seu pedido...
               </p>
             ) : null}
             {ultimoPedidoFoiRetirada && !pagamentoPixRecusado(retornoPixInfo?.status) ? (

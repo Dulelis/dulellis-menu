@@ -18,6 +18,7 @@ type CheckoutBody = PublicOrderBody & {
   cliente_nome?: string;
   whatsapp?: string;
   pedido_id?: number;
+  cliente_ja_salvo?: boolean;
   itens?: Array<{
     id?: number;
     qtd?: number;
@@ -113,6 +114,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const clienteJaSalvo = Boolean(body.cliente_ja_salvo);
     let total = Number(body.total || 0);
     let referencia = String(body.referencia || `dulelis-${Date.now()}`);
     let clienteNome = String(body.cliente_nome || "").trim();
@@ -154,7 +156,9 @@ export async function POST(request: Request) {
         body,
         sessionWhatsapp: String(sessao.whatsapp || ""),
       });
-      await upsertOrderCustomer(supabase, draft.customerPayload);
+      if (!clienteJaSalvo) {
+        await upsertOrderCustomer(supabase, draft.customerPayload);
+      }
       total = draft.total;
       referencia = draft.reference;
       clienteNome = draft.customerPayload.nome;
