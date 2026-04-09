@@ -2249,6 +2249,10 @@ function AdminPageContent() {
         montarEnderecoEntrega(pedidoCompleto);
       const linkAceiteEntrega = montarLinkAceiteEntrega(pedidoCompleto);
       const troco = obterResumoTrocoPedido(pedidoCompleto);
+      const trocoCalculado =
+        troco.precisaTroco && troco.valor !== null
+          ? Math.max(0, troco.valor - valorTotal)
+          : null;
       const observacao = limparObservacaoTroco(
         String(pedidoCompleto?.observacao || "").trim(),
       );
@@ -2291,8 +2295,14 @@ function AdminPageContent() {
         ...(pagamento.detalhe ? [pagamento.detalhe] : []),
         ...(troco.exibir
           ? [
-              `TROCO: ${troco.precisaTroco ? "SIM" : "NAO"}`,
-              ...(troco.valor !== null ? [`PARA: ${formatarValor(troco.valor)}`] : []),
+              ...(troco.valor !== null ? [`TROCO P/: ${formatarValor(troco.valor)}`] : []),
+              `TROCO: ${
+                troco.precisaTroco
+                  ? trocoCalculado !== null
+                    ? formatarValor(trocoCalculado)
+                    : "SIM"
+                  : "NAO PRECISA"
+              }`,
             ]
           : []),
       ]
@@ -2349,6 +2359,18 @@ function AdminPageContent() {
         negritoOn +
         fonteDobro +
         `TOTAL: ${formatarValor(valorTotal)}\n` +
+        (troco.exibir && troco.valor !== null
+          ? `TROCO P/: ${formatarValor(troco.valor)}\n`
+          : "") +
+        (troco.exibir
+          ? `TROCO: ${
+              troco.precisaTroco
+                ? trocoCalculado !== null
+                  ? formatarValor(trocoCalculado)
+                  : "SIM"
+                : "NAO PRECISA"
+            }\n`
+          : "") +
         "\n\n" +
         blocoQrMaps +
         negritoOff +
@@ -2426,6 +2448,10 @@ function AdminPageContent() {
         montarEnderecoEntrega(pedidoCompleto);
       const linkAceiteEntrega = montarLinkAceiteEntrega(pedidoCompleto);
       const troco = obterResumoTrocoPedido(pedidoCompleto);
+      const trocoCalculado =
+        troco.precisaTroco && troco.valor !== null
+          ? Math.max(0, troco.valor - Number(pedidoCompleto?.total || 0))
+          : null;
       const observacao = limparObservacaoTroco(
         String(pedidoCompleto?.observacao || "").trim(),
       );
@@ -2443,7 +2469,23 @@ function AdminPageContent() {
         : "";
       const qrCodeImageUrlSerializado = JSON.stringify(qrCodeImageUrl);
       const trocoHtml = troco.exibir
-        ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Troco:</strong> ${troco.precisaTroco ? troco.valor !== null ? `Sim, para R$ ${troco.valor.toFixed(2)}` : "Sim" : "Nao precisa"}</div>`
+        ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Troco:</strong> ${troco.precisaTroco ? troco.valor !== null ? `Troco para R$ ${troco.valor.toFixed(2)}${trocoCalculado !== null ? ` | Troco: R$ ${trocoCalculado.toFixed(2)}` : ""}` : "Sim" : "Nao precisa"}</div>`
+        : "";
+      const trocoResumoHtml = troco.exibir
+        ? `
+            ${
+              troco.valor !== null
+                ? `<div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Troco para:</strong> R$ ${troco.valor.toFixed(2)}</div>`
+                : ""
+            }
+            <div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Troco:</strong> ${
+              troco.precisaTroco
+                ? trocoCalculado !== null
+                  ? `R$ ${trocoCalculado.toFixed(2)}`
+                  : "Sim"
+                : "Nao precisa"
+            }</div>
+          `
         : "";
 
       if (!visualizar) {
@@ -2628,6 +2670,7 @@ function AdminPageContent() {
             <div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Entrega:</strong> R$ ${taxaEntrega.toFixed(2)}</div>
             <div style="font-size:12px;margin-top:1mm;line-height:1.2;font-weight:500;"><strong>Desconto:</strong> R$ ${descontoAplicado.toFixed(2)}</div>
             <div style="font-weight:700;font-size:15px;margin-top:2.2mm;line-height:1.12;">Total: R$ ${Number(pedidoCompleto?.total || 0).toFixed(2)}</div>
+            ${trocoResumoHtml}
             ${
               linkAceiteEntrega
                 ? `
