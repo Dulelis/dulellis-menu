@@ -39,4 +39,4 @@
 
 ## URLs para Mercado Pago
 
-- **URL de notificação (Webhook)**: `https://seu-dominio.com.br/api/webhooks/mercadopago`
+- **URL de notificação (Webhook)**: `https://seu-dominio.com.br/api/mercadopago/webhook`

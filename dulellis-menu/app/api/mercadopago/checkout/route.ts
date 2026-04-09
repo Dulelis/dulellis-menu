@@ -7,9 +7,12 @@ import {
 } from "@/lib/request-security";
 import { getCustomerSessionFromRequest } from "@/lib/customer-request";
 import {
+  insertOrderFromSnapshot,
   OrderDraftError,
   prepareOrderDraft,
+  type OrderDraftSnapshot,
   type PublicOrderBody,
+  type ServiceSupabaseClient,
   upsertOrderCustomer,
 } from "@/lib/order-draft";
 
@@ -66,6 +69,98 @@ function obterMetodosPagamentoCheckout(formaPagamento: string) {
   };
 }
 
+function schemaError(message: string) {
+  const texto = String(message || "").toLowerCase();
+  return texto.includes("schema cache") || texto.includes("column");
+}
+
+async function atualizarPedidoPendenteMercadoPago(
+  supabase: ServiceSupabaseClient,
+  pedidoId: number,
+  snapshot: OrderDraftSnapshot,
+  formaPagamento: string,
+) {
+  const atualizadoEm = new Date().toISOString();
+  const referencia = String(snapshot.pagamento_referencia || "").trim();
+  const tentativas: Array<Record<string, unknown>> = [
+    {
+      forma_pagamento: formaPagamento,
+      pagamento_referencia: referencia || null,
+      status_pedido: "pagamento_pendente",
+      status_pagamento: "pending",
+      pagamento_id: null,
+      pagamento_atualizado_em: atualizadoEm,
+    },
+    {
+      forma_pagamento: formaPagamento,
+      pagamento_referencia: referencia || null,
+      status_pedido: "pagamento_pendente",
+      status_pagamento: "pending",
+    },
+    {
+      forma_pagamento: formaPagamento,
+      pagamento_referencia: referencia || null,
+      status_pedido: "pagamento_pendente",
+    },
+    {
+      forma_pagamento: formaPagamento,
+      status_pedido: "pagamento_pendente",
+    },
+  ];
+
+  for (const tentativa of tentativas) {
+    const { error } = await supabase
+      .from("pedidos")
+      .update(tentativa)
+      .eq("id", pedidoId);
+
+    if (!error) return;
+    if (!schemaError(error.message)) {
+      throw new OrderDraftError(500, error.message);
+    }
+  }
+}
+
+async function garantirPedidoPendenteMercadoPago(
+  supabase: ServiceSupabaseClient,
+  snapshot: OrderDraftSnapshot,
+  formaPagamento: string,
+) {
+  const referencia = String(snapshot.pagamento_referencia || "").trim();
+
+  if (referencia) {
+    const { data: pedidoExistente, error } = await supabase
+      .from("pedidos")
+      .select("id")
+      .eq("pagamento_referencia", referencia)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error && !schemaError(error.message)) {
+      throw new OrderDraftError(500, error.message);
+    }
+
+    const pedidoExistenteId = Number(pedidoExistente?.id || 0);
+    if (pedidoExistenteId > 0) {
+      await atualizarPedidoPendenteMercadoPago(
+        supabase,
+        pedidoExistenteId,
+        snapshot,
+        formaPagamento,
+      );
+      return pedidoExistenteId;
+    }
+  }
+
+  return insertOrderFromSnapshot(supabase, snapshot, {
+    statusPedido: "pagamento_pendente",
+    statusPagamento: "pending",
+    pagamentoAtualizadoEm: new Date().toISOString(),
+    formaPagamento,
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const sessao = getCustomerSessionFromRequest(request);
@@ -119,10 +214,11 @@ export async function POST(request: Request) {
     let referencia = String(body.referencia || `dulelis-${Date.now()}`);
     let clienteNome = String(body.cliente_nome || "").trim();
     let whatsapp = String(body.whatsapp || "").trim();
-    const pedidoId = Number(body.pedido_id || 0);
+    let pedidoId = Number(body.pedido_id || 0);
     let itensMetadata: Array<{ nome: string; qtd: number; preco: number }> =
       [];
     let pedidoDraftMetadata: unknown = null;
+    let pedidoDraftSnapshot: OrderDraftSnapshot | null = null;
 
     if (Number.isInteger(pedidoId) && pedidoId > 0) {
       const { data: pedido, error: erroPedido } = await supabase
@@ -169,6 +265,7 @@ export async function POST(request: Request) {
         preco: item.preco,
       }));
       pedidoDraftMetadata = draft.snapshot;
+      pedidoDraftSnapshot = draft.snapshot;
     }
 
     if (!Number.isFinite(total) || total <= 0) {
@@ -274,7 +371,15 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ url, referencia, total });
+    if (pedidoId <= 0 && pedidoDraftSnapshot) {
+      pedidoId = await garantirPedidoPendenteMercadoPago(
+        supabase,
+        pedidoDraftSnapshot,
+        formaPagamentoCheckout,
+      );
+    }
+
+    return NextResponse.json({ url, referencia, total, pedido_id: pedidoId || null });
   } catch (error) {
     if (error instanceof OrderDraftError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

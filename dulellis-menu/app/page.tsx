@@ -1958,7 +1958,7 @@ function ClientePageContent() {
     });
     setUltimoPedidoFoiRetirada(searchParams.get("pix_retirada") === "1");
     setPodeAcompanharPedido(pagamentoPixAprovado(statusPixDaUrl));
-    setModalPedidoFinalizadoAberto(true);
+    abrirModalPedidoFinalizado();
 
     if (pagamentoPixAprovado(statusPixDaUrl)) {
       limparRascunhoCheckoutMercadoPago();
@@ -1975,7 +1975,7 @@ function ClientePageContent() {
     url.searchParams.delete("pix_payment_id");
     url.searchParams.delete("pix_retirada");
     window.history.replaceState({}, "", url.toString());
-  }, [resetarFluxoCheckout, restaurarRascunhoMercadoPago, searchParams]);
+  }, [abrirModalPedidoFinalizado, resetarFluxoCheckout, restaurarRascunhoMercadoPago, searchParams]);
 
   const setItemEstoqueProcessando = useCallback((id: number, processando: boolean) => {
     setEstoqueEmAtualizacao((prev) => ({ ...prev, [id]: processando }));
@@ -2213,7 +2213,6 @@ function ClientePageContent() {
 
     if (
       modalAcompanhamentoAberto ||
-      modalPedidoFinalizadoAberto ||
       Boolean(pedidoAcompanhamento)
     ) {
       return zap;
@@ -2223,7 +2222,6 @@ function ClientePageContent() {
   }, [
     authWhatsapp,
     modalAcompanhamentoAberto,
-    modalPedidoFinalizadoAberto,
     pedidoAcompanhamento,
     whatsappAcompanhamento,
   ]);
@@ -2376,25 +2374,23 @@ function ClientePageContent() {
         descricao: ultimoPedidoFoiRetirada
           ? "Agradecemos pelo seu pedido. Vamos separar tudo com carinho para a sua retirada na loja."
           : "Agradecemos pelo seu pedido. Estamos preparando tudo com carinho para você.",
-        destaque: "Acompanhe seu pedido aqui na vitrine sempre que quiser.",
+        destaque: "Obrigado pela preferência.",
         destaqueClasse: "text-pink-500",
         iconeClasse: "bg-green-100 text-green-600",
         Icone: CheckCircle2,
-        mostrarAcompanhar: true,
       };
     }
 
     if (pagamentoPixAprovado(retornoPixInfo.status)) {
       return {
-        titulo: "Pagamento aprovado!",
+        titulo: "Pedido finalizado com sucesso!",
         descricao: ultimoPedidoFoiRetirada
-          ? "Seu pagamento foi confirmado e o pedido voltou para a fila da loja para separação e impressão do cupom."
-          : "Seu pagamento foi confirmado e o pedido voltou para a fila da loja para confirmação e impressão do cupom.",
-        destaque: "Status atualizado com sucesso. Você já pode acompanhar o pedido por aqui.",
+          ? "Agradecemos pelo seu pedido. Vamos separar tudo com carinho para a sua retirada na loja."
+          : "Agradecemos pelo seu pedido. Estamos preparando tudo com carinho para você.",
+        destaque: "Obrigado pela preferência.",
         destaqueClasse: "text-green-600",
         iconeClasse: "bg-green-100 text-green-600",
         Icone: CheckCircle2,
-        mostrarAcompanhar: true,
       };
     }
 
@@ -2406,7 +2402,6 @@ function ClientePageContent() {
         destaqueClasse: "text-amber-600",
         iconeClasse: "bg-amber-100 text-amber-600",
         Icone: Clock3,
-        mostrarAcompanhar: false,
       };
     }
 
@@ -2418,7 +2413,6 @@ function ClientePageContent() {
         destaqueClasse: "text-rose-600",
         iconeClasse: "bg-rose-100 text-rose-600",
         Icone: AlertTriangle,
-        mostrarAcompanhar: false,
       };
     }
 
@@ -2429,30 +2423,8 @@ function ClientePageContent() {
       destaqueClasse: "text-slate-500",
       iconeClasse: "bg-slate-100 text-slate-600",
       Icone: Clock3,
-      mostrarAcompanhar: false,
     };
   }, [retornoPixInfo, ultimoPedidoFoiRetirada]);
-
-  useEffect(() => {
-    if (!modalPedidoFinalizadoAberto || !infoModalPedidoFinalizado.mostrarAcompanhar) return;
-
-    const whatsappPedido = normalizarNumero(
-      String(sessaoCliente?.whatsapp || cliente.whatsapp || authWhatsapp || ""),
-    );
-    if (whatsappPedido.length < 10) return;
-
-    setWhatsappAcompanhamento((atual) =>
-      normalizarNumero(atual) === whatsappPedido ? atual : whatsappPedido,
-    );
-    void sincronizarPedidoAcompanhamento(whatsappPedido, { mostrarLoading: true });
-  }, [
-    authWhatsapp,
-    cliente.whatsapp,
-    infoModalPedidoFinalizado.mostrarAcompanhar,
-    modalPedidoFinalizadoAberto,
-    sessaoCliente?.whatsapp,
-    sincronizarPedidoAcompanhamento,
-  ]);
 
   const selecionarFormaPagamento = useCallback(async (forma: string) => {
     setFormaPagamento(forma);
@@ -3755,61 +3727,17 @@ function ClientePageContent() {
             <p className={`mt-2 text-sm font-black uppercase tracking-widest sm:text-base ${infoModalPedidoFinalizado.destaqueClasse}`}>
               {infoModalPedidoFinalizado.destaque}
             </p>
-            {retornoPixInfo?.referencia ? (
-              <p className="mt-3 text-[11px] font-mono text-slate-500 break-all">
-                Ref: {retornoPixInfo.referencia}
-              </p>
-            ) : null}
-            {infoModalPedidoFinalizado.mostrarAcompanhar && pedidoAcompanhamento ? (
-              <PainelAcompanhamentoPedido
-                pedido={pedidoAcompanhamento}
-                retiradaNoBalcao={acompanhamentoEhRetiradaNoBalcao}
-                ultimaAtualizacao={ultimaAtualizacaoAcompanhamento}
-                className="mt-6"
-              />
-            ) : null}
-            {infoModalPedidoFinalizado.mostrarAcompanhar &&
-            !pedidoAcompanhamento &&
-            carregandoAcompanhamento ? (
-              <p className="mt-4 text-sm font-bold text-slate-500">
-                Carregando as informacoes de acompanhamento do seu pedido...
-              </p>
-            ) : null}
-            {ultimoPedidoFoiRetirada && !pagamentoPixRecusado(retornoPixInfo?.status) ? (
-              <BlocoRetiradaLoja
-                className="mt-6 text-left"
-                descricao="Seu pedido ficará disponível neste endereço para retirada, sem taxa de entrega."
-              />
-            ) : null}
-            <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {infoModalPedidoFinalizado.mostrarAcompanhar ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const whatsappPedido = normalizarNumero(
-                      String(sessaoCliente?.whatsapp || cliente.whatsapp || ""),
-                    );
-                    setRetornoPixInfo(null);
-                    setModalPedidoFinalizadoAberto(false);
-                    setPedidoAcompanhamento(null);
-                    setWhatsappAcompanhamento(whatsappPedido);
-                    setModalAcompanhamentoAberto(true);
-                    void consultarAcompanhamentoPedido(whatsappPedido);
-                  }}
-                  className="w-full rounded-[2rem] bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
-                >
-                  Acompanhar pedido
-                </button>
-              ) : null}
+            <div className="mt-8">
               <button
                 type="button"
                 onClick={() => {
                   setRetornoPixInfo(null);
                   setModalPedidoFinalizadoAberto(false);
+                  topoVitrineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                 }}
-                className="w-full rounded-[2rem] bg-slate-100 px-5 py-4 text-sm font-black uppercase tracking-widest text-slate-500 transition-colors hover:bg-slate-200"
+                className="w-full rounded-[2rem] bg-slate-900 px-5 py-4 text-sm font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800"
               >
-                Fechar
+                Voltar ao início
               </button>
             </div>
           </div>
