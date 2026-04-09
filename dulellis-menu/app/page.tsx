@@ -36,6 +36,8 @@ const LOJA_ENDERECO_RETIRADA = "Rua Manoel Felício Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
 const LOJA_CEP_RETIRADA = "88370-314";
+const WHATSAPP_LOJA_ACOMPANHAMENTO = "5547992375871";
+const WHATSAPP_LOJA_ACOMPANHAMENTO_LABEL = "(47) 99237-5871";
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
 const CIDADE_ATENDIDA = "Navegantes";
@@ -588,13 +590,6 @@ function obterTextoTrocoPedido(pedido: PedidoAcompanhamento) {
   return String(pedido.troco_texto || "").trim();
 }
 
-function obterIndiceFluxoAcompanhamento(statusChave: PedidoAcompanhamento["status_chave"]) {
-  if (statusChave === "recebido") return 1;
-  if (statusChave === "em_preparo") return 2;
-  if (statusChave === "saiu_entrega") return 3;
-  return 0;
-}
-
 function carregarPedidoAcompanhamentoResposta(bruto: unknown) {
   return ((bruto as { data?: PedidoAcompanhamento | null }).data || null) as PedidoAcompanhamento | null;
 }
@@ -624,185 +619,68 @@ async function buscarPedidoAcompanhamento(whatsappBase: string) {
 function PainelAcompanhamentoPedido({
   pedido,
   retiradaNoBalcao,
+  ultimaAtualizacao,
   className = "",
 }: {
   pedido: PedidoAcompanhamento;
   retiradaNoBalcao: boolean;
+  ultimaAtualizacao?: string;
   className?: string;
 }) {
-  const etapas = [
-    {
-      ordem: 0,
-      titulo: "Pedido enviado",
-      descricao: "Pedido registrado e pronto para entrar no fluxo da loja.",
-    },
-    {
-      ordem: 1,
-      titulo: "Aceite da loja",
-      descricao: "A equipe confirma o pedido e libera a producao.",
-    },
-    {
-      ordem: 2,
-      titulo: "Preparando",
-      descricao: "Itens sendo separados e preparados.",
-    },
-    {
-      ordem: 3,
-      titulo: retiradaNoBalcao ? "Pronto para retirada" : "Saiu para entrega",
-      descricao: retiradaNoBalcao
-        ? "Pedido liberado para retirada no balcao."
-        : "Pedido saiu com o entregador.",
-    },
-  ];
-  const indiceAtual = obterIndiceFluxoAcompanhamento(pedido.status_chave);
   const statusPagamentoTexto = obterStatusPagamentoPedido(pedido);
-  const detalhePagamento = String(pedido.pagamento_detalhe || "").trim();
   const trocoTexto = obterTextoTrocoPedido(pedido);
   const mensagemAcompanhamento = obterMensagemAcompanhamentoPedido(
     pedido,
     retiradaNoBalcao,
   );
+  const whatsappLojaHref = `https://wa.me/${WHATSAPP_LOJA_ACOMPANHAMENTO}?text=${encodeURIComponent(
+    `Ola Dulelis, preciso de ajuda com o pedido #${pedido.id}.`,
+  )}`;
 
   return (
     <div className={`rounded-[2rem] border border-slate-200 bg-white p-5 text-left shadow-sm ${className}`}>
-      <div className="space-y-2">
-        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
-          Mensagem de acompanhamento
-        </p>
-        <p className={`text-sm font-black ${obterClasseStatusAcompanhamento(pedido.status_chave)}`}>
-          {pedido.status_texto}
-        </p>
-        <p className="text-sm font-bold leading-relaxed text-slate-600">
-          {mensagemAcompanhamento}
-        </p>
-        <div className="rounded-[1.2rem] border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Resumo do pagamento
-          </p>
-          <p className="mt-1 text-sm font-black text-slate-800">
-            {pedido.forma_pagamento || "Pagamento na entrega"}
-          </p>
-          <p className="mt-1 text-xs font-bold text-slate-600">
-            {statusPagamentoTexto}
-          </p>
-          {detalhePagamento ? (
-            <p className="mt-1 text-xs font-bold text-slate-500">
-              {detalhePagamento}
-            </p>
-          ) : null}
-          {trocoTexto ? (
-            <p className="mt-1 text-xs font-black text-slate-700">
-              {trocoTexto}
-            </p>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Pedido
-          </p>
-          <p className="mt-1 text-sm font-black text-slate-800">#{pedido.id}</p>
-        </div>
-        <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Data e hora
-          </p>
-          <p className="mt-1 text-sm font-black text-slate-800">
-            {formatarDataHoraPedido(pedido.created_at)}
-          </p>
-        </div>
-        <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Pagamento
-          </p>
-          <p className="mt-1 text-sm font-black text-slate-800">
-            {pedido.forma_pagamento || "Pagamento na entrega"}
-          </p>
-        </div>
-        <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Status do pagamento
-          </p>
-          <p className="mt-1 text-sm font-black text-slate-800">
-            {statusPagamentoTexto}
-          </p>
-          {detalhePagamento ? (
-            <p className="mt-1 text-xs font-bold text-slate-500">
-              {detalhePagamento}
-            </p>
-          ) : null}
-        </div>
-        {trocoTexto ? (
-          <div className="rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3 sm:col-span-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-              Troco
-            </p>
-            <p className="mt-1 text-sm font-black text-slate-800">
-              {trocoTexto}
-            </p>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-4 rounded-[1.6rem] border border-slate-100 bg-slate-50 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
-            Atualizacoes do pedido
-          </p>
-          <p className="text-xs font-black text-slate-600">
-            Total: {formatarMoedaBR(pedido.total || 0)}
-          </p>
-        </div>
-        <div className="mt-3 space-y-3">
-          {etapas.map((etapa) => {
-            const concluida = indiceAtual > etapa.ordem;
-            const ativa = indiceAtual === etapa.ordem;
-            const cardClasse = concluida
-              ? "border-emerald-200 bg-emerald-50"
-              : ativa
-                ? "border-slate-900 bg-slate-900"
-                : "border-slate-200 bg-white";
-            const tituloClasse = concluida
-              ? "text-emerald-700"
-              : ativa
-                ? "text-white"
-                : "text-slate-500";
-            const descricaoClasse = concluida
-              ? "text-emerald-700/80"
-              : ativa
-                ? "text-white/80"
-                : "text-slate-400";
-            const marcadorClasse = concluida
-              ? "bg-emerald-500 text-white"
-              : ativa
-                ? "bg-white text-slate-900"
-                : "bg-slate-100 text-slate-400";
-
-            return (
-              <div
-                key={etapa.titulo}
-                className={`flex items-start gap-3 rounded-[1.2rem] border px-3 py-3 ${cardClasse}`}
-              >
-                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-black ${marcadorClasse}`}>
-                  {concluida ? <CheckCircle2 size={15} /> : etapa.ordem + 1}
-                </div>
-                <div>
-                  <p className={`text-sm font-black ${tituloClasse}`}>{etapa.titulo}</p>
-                  <p className={`text-xs font-bold ${descricaoClasse}`}>{etapa.descricao}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {pedido.pagamento_referencia ? (
-        <p className="mt-4 break-all text-[11px] font-mono text-slate-500">
-          Ref: {pedido.pagamento_referencia}
+      <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+        Acompanhamento do pedido
+      </p>
+      <p className={`mt-2 text-sm font-black ${obterClasseStatusAcompanhamento(pedido.status_chave)}`}>
+        {pedido.status_texto}
+      </p>
+      <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">
+        {mensagemAcompanhamento}
+      </p>
+      {ultimaAtualizacao ? (
+        <p className="mt-2 text-xs font-bold text-slate-500">
+          Ultima atualizacao: {formatarDataHoraPedido(ultimaAtualizacao)}
         </p>
       ) : null}
+
+      <div className="mt-4 rounded-[1.4rem] border border-slate-100 bg-slate-50 px-4 py-3">
+        <div className="space-y-2 text-sm font-bold text-slate-700">
+          <p>Pedido: #{pedido.id}</p>
+          <p>Data e hora: {formatarDataHoraPedido(pedido.created_at)}</p>
+          <p>Pagamento: {pedido.forma_pagamento || "Pagamento na entrega"}</p>
+          <p>Status do pagamento: {statusPagamentoTexto}</p>
+          {trocoTexto ? <p>Troco: {trocoTexto}</p> : null}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[1.4rem] border border-emerald-100 bg-emerald-50 px-4 py-3">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+          Falar com a loja
+        </p>
+        <p className="mt-1 text-sm font-black text-emerald-900">
+          WhatsApp: {WHATSAPP_LOJA_ACOMPANHAMENTO_LABEL}
+        </p>
+        <a
+          href={whatsappLojaHref}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white transition-colors hover:bg-emerald-700"
+        >
+          <Phone size={14} />
+          Chamar no WhatsApp
+        </a>
+      </div>
     </div>
   );
 }
@@ -995,6 +873,7 @@ function ClientePageContent() {
   const [whatsappAcompanhamento, setWhatsappAcompanhamento] = useState("");
   const [carregandoAcompanhamento, setCarregandoAcompanhamento] = useState(false);
   const [pedidoAcompanhamento, setPedidoAcompanhamento] = useState<PedidoAcompanhamento | null>(null);
+  const [ultimaAtualizacaoAcompanhamento, setUltimaAtualizacaoAcompanhamento] = useState("");
   const [podeAcompanharPedido, setPodeAcompanharPedido] = useState(false);
   const [modalAuthAberto, setModalAuthAberto] = useState(false);
   const [authModoCadastro, setAuthModoCadastro] = useState(false);
@@ -2396,6 +2275,15 @@ function ClientePageContent() {
     return whatsappAcompanhamentoAtual === whatsappClienteAtual;
   }, [pedidoAcompanhamento?.retiradaNoBalcao, whatsappAcompanhamento, cliente.whatsapp, ultimoPedidoFoiRetirada]);
 
+  useEffect(() => {
+    if (!pedidoAcompanhamento) {
+      setUltimaAtualizacaoAcompanhamento("");
+      return;
+    }
+
+    setUltimaAtualizacaoAcompanhamento(new Date().toISOString());
+  }, [pedidoAcompanhamento]);
+
   const infoModalPedidoFinalizado = useMemo(() => {
     if (!retornoPixInfo) {
       return {
@@ -3751,6 +3639,7 @@ function ClientePageContent() {
                 <PainelAcompanhamentoPedido
                   pedido={pedidoAcompanhamento}
                   retiradaNoBalcao={acompanhamentoEhRetiradaNoBalcao}
+                  ultimaAtualizacao={ultimaAtualizacaoAcompanhamento}
                 />
                 {acompanhamentoEhRetiradaNoBalcao ? (
                   <BlocoRetiradaLoja
@@ -3804,6 +3693,7 @@ function ClientePageContent() {
               <PainelAcompanhamentoPedido
                 pedido={pedidoAcompanhamento}
                 retiradaNoBalcao={acompanhamentoEhRetiradaNoBalcao}
+                ultimaAtualizacao={ultimaAtualizacaoAcompanhamento}
                 className="mt-6"
               />
             ) : null}
