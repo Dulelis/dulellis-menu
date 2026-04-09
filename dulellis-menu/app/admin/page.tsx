@@ -6334,6 +6334,13 @@ function AdminPageContent() {
                       const observacao = limparObservacaoTroco(
                         String(pedidoCompleto?.observacao || "").trim(),
                       );
+                      const trocoDevolver = troco.precisaTroco
+                        ? Math.max(
+                            0,
+                            Number(troco.valor || 0) -
+                              Number(pedidoCompleto?.total || 0),
+                          )
+                        : 0;
                       const trocoTexto = !troco.exibir
                         ? "Nao se aplica"
                         : troco.precisaTroco
@@ -6341,17 +6348,9 @@ function AdminPageContent() {
                             ? `Troco para ${formatarMoedaAdmin(
                                 troco.valor,
                               )}${
-                                Math.max(
-                                  0,
-                                  Number(troco.valor || 0) -
-                                    Number(pedidoCompleto?.total || 0),
-                                ) > 0
+                                trocoDevolver > 0
                                   ? ` | Devolver ${formatarMoedaAdmin(
-                                      Math.max(
-                                        0,
-                                        Number(troco.valor || 0) -
-                                          Number(pedidoCompleto?.total || 0),
-                                      ),
+                                      trocoDevolver,
                                     )}`
                                   : ""
                               }`
@@ -6370,11 +6369,38 @@ function AdminPageContent() {
                         : [bairro || "", cidade || "Navegantes"]
                             .filter(Boolean)
                             .join(" - ");
+                      const itensResumo = itensPedido.length
+                        ? itensPedido
+                            .map(
+                              (item: any) =>
+                                `${Number(item?.qtd || 1)}x ${String(
+                                  item?.nome || "Item",
+                                )}`,
+                            )
+                            .join(" • ")
+                        : "Itens nao informados";
+                      const pagamentoResumo = [
+                        `${pagamento.titulo} - ${pagamento.situacao}`,
+                        pagamento.detalhe || "",
+                        `Troco: ${trocoTexto}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" • ");
+                      const entregaResumo = retiradaNoBalcao
+                        ? `${enderecoFormal} • ${localidadeFormal} • CEP ${LOJA_CEP_RETIRADA}`
+                        : [
+                            enderecoFormal,
+                            localidadeFormal,
+                            `Ref. ${pontoReferencia || "Nao informada"}`,
+                            `CEP ${cep || "Nao informado"}`,
+                          ]
+                            .filter(Boolean)
+                            .join(" • ");
 
                       return (
                         <div
                           key={pedido.id}
-                          className="w-full rounded-[1.7rem] border border-slate-200 bg-white p-4 shadow-sm"
+                          className="w-full rounded-[1.35rem] border border-slate-200 bg-white p-3 shadow-sm"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <button
@@ -6387,177 +6413,91 @@ function AdminPageContent() {
                               }
                               className="flex-1 text-left transition-opacity hover:opacity-90"
                             >
-                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                <div>
-                                  <p className="text-[10px] font-black uppercase tracking-[0.26em] text-slate-400">
+                              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
                                     Pedido #{Number(pedidoCompleto.id || 0)}{" "}
                                     <span className="mx-1 text-slate-300">•</span>
                                     {formatarDataRastreamento(
                                       pedidoCompleto.created_at,
                                     )}
                                   </p>
-                                  <p className="mt-1 text-base font-black leading-tight text-slate-900">
+                                  <p className="mt-1 text-[15px] font-black leading-tight text-slate-900">
                                     {pedidoCompleto.cliente_nome ||
                                       "Cliente sem nome"}
                                   </p>
-                                  <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                  <p className="mt-1 text-[11px] font-bold text-slate-500">
                                     {pedidoCompleto.whatsapp || "Sem numero"}
                                   </p>
                                 </div>
                                 <div className="text-left lg:text-right">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
-                                    Total do pedido
+                                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                    Total
                                   </p>
-                                  <p className="mt-1 text-xl font-black text-emerald-600">
+                                  <p className="mt-1 text-lg font-black text-emerald-600">
                                     {formatarMoedaAdmin(pedidoCompleto.total)}
                                   </p>
                                 </div>
                               </div>
 
-                              <div className="mt-3 flex flex-wrap gap-2">
+                              <div className="mt-2 flex flex-wrap gap-1.5">
                                 <span
-                                  className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${obterClasseStatusPedido(
+                                  className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${obterClasseStatusPedido(
                                     pedidoCompleto,
                                   )}`}
                                 >
                                   {obterRotuloStatusPedido(pedidoCompleto)}
                                 </span>
                                 <span
-                                  className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${pagamento.classe}`}
+                                  className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${pagamento.classe}`}
                                 >
                                   {pagamento.titulo}
                                 </span>
-                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
                                   {modalidadeEntrega}
+                                </span>
+                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
+                                  {itensPedido.length} item(ns)
                                 </span>
                               </div>
 
-                              <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                                <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+                              <div className="mt-2.5 grid gap-2 xl:grid-cols-2">
+                                <div className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
                                     Atendimento
                                   </p>
-                                  <div className="mt-2 grid grid-cols-[84px,1fr] gap-x-3 gap-y-1.5 text-[12px] leading-relaxed">
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      Cliente
-                                    </p>
-                                    <p className="font-semibold text-slate-700">
-                                      {pedidoCompleto.cliente_nome ||
-                                        "Nao informado"}
-                                    </p>
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      Contato
-                                    </p>
-                                    <p className="font-semibold text-slate-700">
-                                      {pedidoCompleto.whatsapp || "Nao informado"}
-                                    </p>
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      Pagamento
-                                    </p>
-                                    <p className="font-semibold text-slate-700">
-                                      {pagamento.titulo} - {pagamento.situacao}
-                                    </p>
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      Detalhe
-                                    </p>
-                                    <p className="font-semibold text-slate-700">
-                                      {pagamento.detalhe || "Nao informado"}
-                                    </p>
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      Troco
-                                    </p>
-                                    <p className="font-semibold text-slate-700">
-                                      {trocoTexto}
-                                    </p>
-                                  </div>
+                                  <p className="mt-1.5 text-[12px] font-semibold leading-relaxed text-slate-700">
+                                    Contato: {pedidoCompleto.whatsapp || "Nao informado"} • {pagamentoResumo}
+                                  </p>
                                 </div>
 
-                                <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+                                <div className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
                                     Entrega
                                   </p>
-                                  <div className="mt-2 grid grid-cols-[84px,1fr] gap-x-3 gap-y-1.5 text-[12px] leading-relaxed">
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      Modalidade
-                                    </p>
-                                    <p className="font-semibold text-slate-700">
-                                      {modalidadeEntrega}
-                                    </p>
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      Endereco
-                                    </p>
-                                    <p className="font-semibold text-slate-700 break-words">
-                                      {enderecoFormal}
-                                    </p>
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      Local
-                                    </p>
-                                    <p className="font-semibold text-slate-700">
-                                      {localidadeFormal || "Nao informado"}
-                                    </p>
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      Referencia
-                                    </p>
-                                    <p className="font-semibold text-slate-700 break-words">
-                                      {retiradaNoBalcao
-                                        ? "Retirada no caixa"
-                                        : pontoReferencia || "Nao informado"}
-                                    </p>
-                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
-                                      CEP
-                                    </p>
-                                    <p className="font-semibold text-slate-700">
-                                      {retiradaNoBalcao
-                                        ? LOJA_CEP_RETIRADA
-                                        : cep || "Nao informado"}
-                                    </p>
-                                  </div>
+                                  <p className="mt-1.5 text-[12px] font-semibold leading-relaxed text-slate-700">
+                                    {entregaResumo}
+                                  </p>
                                 </div>
                               </div>
 
-                              <div className="mt-3 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
+                              <div className="mt-2.5 rounded-[1rem] border border-slate-200 bg-white px-3 py-2.5">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
                                     Itens do pedido
                                   </p>
-                                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
                                     {itensPedido.length} item(ns) • {volumesPedido} volume(s)
                                   </p>
                                 </div>
-                                <div className="mt-2 space-y-1.5">
-                                  {itensPedido.length > 0 ? (
-                                    itensPedido.map((item: any, index: number) => (
-                                      <div
-                                        key={`${pedidoCompleto.id}-${String(
-                                          item?.id || index,
-                                        )}-${index}`}
-                                        className="flex items-start justify-between gap-3 text-[12px] leading-relaxed"
-                                      >
-                                        <p className="font-semibold text-slate-700">
-                                          <span className="font-black text-slate-900">
-                                            {Number(item?.qtd || 1)}x
-                                          </span>{" "}
-                                          {String(item?.nome || "Item")}
-                                        </p>
-                                        <p className="whitespace-nowrap font-black text-slate-600">
-                                          {formatarMoedaAdmin(
-                                            Number(item?.preco || 0) *
-                                              Number(item?.qtd || 0),
-                                          )}
-                                        </p>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <p className="text-[12px] font-semibold text-slate-500">
-                                      Itens nao informados.
-                                    </p>
-                                  )}
-                                </div>
+                                <p className="mt-1.5 text-[12px] font-semibold leading-relaxed text-slate-700">
+                                  {itensResumo}
+                                </p>
                               </div>
 
                               {observacao ? (
-                                <div className="mt-3 rounded-[1.25rem] border border-amber-100 bg-amber-50 px-4 py-3">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-700">
+                                <div className="mt-2.5 rounded-[1rem] border border-amber-100 bg-amber-50 px-3 py-2.5">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">
                                     Observacao
                                   </p>
                                   <p className="mt-1 text-[12px] font-semibold leading-relaxed text-amber-900">
@@ -6577,7 +6517,7 @@ function AdminPageContent() {
                             />
                           </div>
 
-                          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
                             <button
                               type="button"
                               onClick={() =>

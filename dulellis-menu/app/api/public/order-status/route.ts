@@ -271,6 +271,18 @@ export async function GET(request: Request) {
 
   const tentativasSelect = [
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,troco_para,observacao,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,status_pagamento,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,forma_pagamento,created_at",
+    "id,cliente_nome,whatsapp,total,status_pedido,status_pagamento,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,status_pedido,status_pagamento,created_at",
+    "id,cliente_nome,whatsapp,total,status_pedido,pagamento_referencia,created_at",
+    "id,cliente_nome,whatsapp,total,status_pedido,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,troco_para,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,observacao,created_at",
