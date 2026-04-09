@@ -1,3 +1,4 @@
+import { encodeOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { getServiceSupabase } from "@/lib/server-supabase";
 
 export type ItemInput = { id?: number; qtd?: number };
@@ -266,6 +267,7 @@ function buildOrderPayloadBase(
   snapshot: OrderDraftSnapshot,
   options?: InsertOrderOptions,
 ) {
+  const formaPagamento = options?.formaPagamento || snapshot.forma_pagamento;
   return {
     cliente_nome: snapshot.cliente.nome,
     whatsapp: snapshot.cliente.whatsapp,
@@ -279,10 +281,15 @@ function buildOrderPayloadBase(
     itens: snapshot.itens,
     total: snapshot.total,
     taxa_entrega: snapshot.taxa_entrega,
-    forma_pagamento: options?.formaPagamento || snapshot.forma_pagamento,
+    forma_pagamento: formaPagamento,
     troco_para: snapshot.troco_para,
     observacao: snapshot.observacao,
-    pagamento_referencia: snapshot.pagamento_referencia || null,
+    pagamento_referencia:
+      encodeOrderPaymentReference(
+        snapshot.pagamento_referencia || null,
+        formaPagamento,
+        snapshot.troco_para,
+      ) || null,
   };
 }
 
@@ -341,6 +348,38 @@ function buildInsertPayloads(
     observacao: base.observacao,
     status_pedido: statusPedido,
   };
+  const payloadSemTroco = {
+    cliente_nome: base.cliente_nome,
+    whatsapp: base.whatsapp,
+    itens: base.itens,
+    total: base.total,
+    taxa_entrega: base.taxa_entrega,
+    forma_pagamento: base.forma_pagamento,
+    observacao: base.observacao,
+    pagamento_referencia: base.pagamento_referencia,
+    status_pagamento: statusPagamento,
+    pagamento_id: pagamentoId,
+    pagamento_atualizado_em: pagamentoAtualizadoEm,
+    status_pedido: statusPedido,
+  };
+  const payloadComPagamentoSemTroco = {
+    cliente_nome: base.cliente_nome,
+    whatsapp: base.whatsapp,
+    cep: base.cep,
+    endereco: base.endereco,
+    numero: base.numero,
+    bairro: base.bairro,
+    cidade: base.cidade,
+    ponto_referencia: base.ponto_referencia,
+    data_aniversario: base.data_aniversario,
+    itens: base.itens,
+    total: base.total,
+    taxa_entrega: base.taxa_entrega,
+    forma_pagamento: base.forma_pagamento,
+    observacao: base.observacao,
+    pagamento_referencia: base.pagamento_referencia,
+    status_pedido: statusPedido,
+  };
   const payloadSemObservacao = {
     cliente_nome: base.cliente_nome,
     whatsapp: base.whatsapp,
@@ -349,6 +388,33 @@ function buildInsertPayloads(
     taxa_entrega: base.taxa_entrega,
     forma_pagamento: base.forma_pagamento,
     troco_para: base.troco_para,
+    status_pedido: statusPedido,
+  };
+  const payloadSemTrocoObservacao = {
+    cliente_nome: base.cliente_nome,
+    whatsapp: base.whatsapp,
+    itens: base.itens,
+    total: base.total,
+    taxa_entrega: base.taxa_entrega,
+    forma_pagamento: base.forma_pagamento,
+    pagamento_referencia: base.pagamento_referencia,
+    status_pedido: statusPedido,
+  };
+  const payloadComEnderecoSemTrocoObservacao = {
+    cliente_nome: base.cliente_nome,
+    whatsapp: base.whatsapp,
+    cep: base.cep,
+    endereco: base.endereco,
+    numero: base.numero,
+    bairro: base.bairro,
+    cidade: base.cidade,
+    ponto_referencia: base.ponto_referencia,
+    data_aniversario: base.data_aniversario,
+    itens: base.itens,
+    total: base.total,
+    taxa_entrega: base.taxa_entrega,
+    forma_pagamento: base.forma_pagamento,
+    pagamento_referencia: base.pagamento_referencia,
     status_pedido: statusPedido,
   };
   const payloadLegado = {
@@ -362,8 +428,12 @@ function buildInsertPayloads(
     payloadCompleto,
     payloadSemRastreamento,
     payloadComForma,
+    payloadSemTroco,
     payloadComPagamento,
+    payloadComPagamentoSemTroco,
     payloadSemObservacao,
+    payloadSemTrocoObservacao,
+    payloadComEnderecoSemTrocoObservacao,
     payloadLegado,
   ];
 }
@@ -384,30 +454,53 @@ async function tentarAtualizarPedidoPosInsert(
       ...base,
       status_pedido: statusPedido,
       status_pagamento: statusPagamento,
-    pagamento_id: pagamentoId,
-    pagamento_atualizado_em: pagamentoAtualizadoEm,
-  },
-  {
-    forma_pagamento: base.forma_pagamento,
-    troco_para: base.troco_para,
-    pagamento_referencia: base.pagamento_referencia,
-    status_pagamento: statusPagamento,
-    pagamento_id: pagamentoId,
-    pagamento_atualizado_em: pagamentoAtualizadoEm,
-    status_pedido: statusPedido,
-    observacao: base.observacao,
-  },
-  {
-    forma_pagamento: base.forma_pagamento,
-    troco_para: base.troco_para,
-    pagamento_referencia: base.pagamento_referencia,
-    status_pagamento: statusPagamento,
-    status_pedido: statusPedido,
-    observacao: base.observacao,
+      pagamento_id: pagamentoId,
+      pagamento_atualizado_em: pagamentoAtualizadoEm,
+    },
+    {
+      cliente_nome: base.cliente_nome,
+      whatsapp: base.whatsapp,
+      cep: base.cep,
+      endereco: base.endereco,
+      numero: base.numero,
+      bairro: base.bairro,
+      cidade: base.cidade,
+      ponto_referencia: base.ponto_referencia,
+      data_aniversario: base.data_aniversario,
+      itens: base.itens,
+      total: base.total,
+      taxa_entrega: base.taxa_entrega,
+      forma_pagamento: base.forma_pagamento,
+      pagamento_referencia: base.pagamento_referencia,
+      status_pagamento: statusPagamento,
+      pagamento_id: pagamentoId,
+      pagamento_atualizado_em: pagamentoAtualizadoEm,
+      status_pedido: statusPedido,
     },
     {
       forma_pagamento: base.forma_pagamento,
       troco_para: base.troco_para,
+      pagamento_referencia: base.pagamento_referencia,
+      status_pagamento: statusPagamento,
+      pagamento_id: pagamentoId,
+      pagamento_atualizado_em: pagamentoAtualizadoEm,
+      status_pedido: statusPedido,
+      observacao: base.observacao,
+    },
+    {
+      forma_pagamento: base.forma_pagamento,
+      pagamento_referencia: base.pagamento_referencia,
+      status_pagamento: statusPagamento,
+      status_pedido: statusPedido,
+      observacao: base.observacao,
+    },
+    {
+      forma_pagamento: base.forma_pagamento,
+      pagamento_referencia: base.pagamento_referencia,
+      status_pedido: statusPedido,
+    },
+    {
+      forma_pagamento: base.forma_pagamento,
       status_pedido: statusPedido,
     },
   ];

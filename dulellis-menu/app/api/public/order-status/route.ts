@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
+import { parseOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request-security";
 import { getCustomerSessionFromRequest } from "@/lib/customer-request";
@@ -39,10 +40,18 @@ function pedidoEhRetiradaNoBalcao(pedido: PedidoStatus) {
 }
 
 function formaPagamentoExibicao(pedido: PedidoStatus) {
-  const forma = String(pedido.forma_pagamento || "").trim();
+  const referenciaInfo = parseOrderPaymentReference(
+    String(pedido.pagamento_referencia || ""),
+  );
+  const forma = String(
+    pedido.forma_pagamento || referenciaInfo.fallbackForm || "",
+  ).trim();
   if (forma) return forma;
 
-  if (String(pedido.status_pagamento || "").trim() || String(pedido.pagamento_referencia || "").trim()) {
+  if (
+    String(pedido.status_pagamento || "").trim() ||
+    String(referenciaInfo.reference || "").trim()
+  ) {
     return "Mercado Pago";
   }
 
@@ -53,7 +62,9 @@ function resumoPagamento(pedido: PedidoStatus) {
   const forma = formaPagamentoExibicao(pedido);
   const formaNormalizada = normalizarTexto(forma);
   const statusPagamento = normalizarTexto(String(pedido.status_pagamento || ""));
-  const referencia = String(pedido.pagamento_referencia || "").trim();
+  const referencia = parseOrderPaymentReference(
+    String(pedido.pagamento_referencia || ""),
+  ).reference;
   const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(pedido);
 
   if (
@@ -120,6 +131,20 @@ function resumoTrocoPedido(pedido: PedidoStatus) {
       exibir: true,
       valor: trocoDireto,
       texto: `Troco para ${formatarMoedaBR(trocoDireto)}`,
+    };
+  }
+
+  const referenciaInfo = parseOrderPaymentReference(
+    String(pedido.pagamento_referencia || ""),
+  );
+  if (
+    Number.isFinite(Number(referenciaInfo.trocoPara)) &&
+    Number(referenciaInfo.trocoPara) > 0
+  ) {
+    return {
+      exibir: true,
+      valor: Number(referenciaInfo.trocoPara),
+      texto: `Troco para ${formatarMoedaBR(Number(referenciaInfo.trocoPara))}`,
     };
   }
 

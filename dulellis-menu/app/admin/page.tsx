@@ -13,6 +13,7 @@ import React, {
 import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 import { PropagandaFrame } from "@/components/PropagandaFrame";
+import { parseOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { supabase } from "@/lib/supabase";
 import { openSpreadsheetReport } from "@/lib/admin-report-print";
 import {
@@ -53,6 +54,10 @@ const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
 const ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY = "dulellis.admin.order-alarm.sound";
 const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
 const ADMIN_ALARME_PEDIDOS_REPETICAO_MS = 10000;
+const LOJA_ENDERECO_RETIRADA_ADMIN = "Rua Manoel Felício Adriano, 532";
+const LOJA_BAIRRO_RETIRADA = "Centro";
+const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
+const LOJA_CEP_RETIRADA = "88370-314";
 const STATUSS_PAGAMENTO_APROVADOS_ADMIN = [
   "approved",
   "paid",
@@ -2061,12 +2066,17 @@ function AdminPageContent() {
   };
   const obterResumoPagamento = useCallback(
     (pedido: any) => {
+      const referenciaInfo = parseOrderPaymentReference(
+        String(pedido?.pagamento_referencia || ""),
+      );
       const forma =
-        String(pedido?.forma_pagamento || "").trim() || "Não informado";
+        String(
+          pedido?.forma_pagamento || referenciaInfo.fallbackForm || "",
+        ).trim() || "Não informado";
       const statusPagamento = String(pedido?.status_pagamento || "")
         .trim()
         .toLowerCase();
-      const referencia = String(pedido?.pagamento_referencia || "").trim();
+      const referencia = referenciaInfo.reference;
       const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(pedido);
 
       const formaNormalizada = forma
@@ -2148,6 +2158,20 @@ function AdminPageContent() {
       return { exibir: true, precisaTroco: true, valor: trocoDiretoBruto };
     }
 
+    const referenciaInfo = parseOrderPaymentReference(
+      String(pedido?.pagamento_referencia || ""),
+    );
+    if (
+      Number.isFinite(Number(referenciaInfo.trocoPara)) &&
+      Number(referenciaInfo.trocoPara) > 0
+    ) {
+      return {
+        exibir: true,
+        precisaTroco: true,
+        valor: Number(referenciaInfo.trocoPara),
+      };
+    }
+
     const observacao = String(pedido?.observacao || "");
     const trocoMatch = observacao.match(/troco\s+para:\s*r\$\s*([\d.,]+)/i);
     if (trocoMatch?.[1]) {
@@ -2159,7 +2183,11 @@ function AdminPageContent() {
       }
     }
 
-    const formaPagamento = String(pedido?.forma_pagamento || "").trim().toLowerCase();
+    const formaPagamento = String(
+      pedido?.forma_pagamento || referenciaInfo.fallbackForm || "",
+    )
+      .trim()
+      .toLowerCase();
     if (formaPagamento === "dinheiro") {
       return { exibir: true, precisaTroco: false, valor: null };
     }
@@ -6284,98 +6312,315 @@ function AdminPageContent() {
                 </h3>
                 <div className="space-y-3 max-h-[72vh] overflow-y-auto pr-1">
                   {pedidosDoDia.length > 0 ? (
-                    pedidosDoDia.slice(0, 10).map((pedido) => (
-                      <div
-                        key={pedido.id}
-                        className="w-full p-4 rounded-2xl border border-slate-100 bg-slate-50"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              irParaCadastroCliente(
-                                pedido.whatsapp,
-                                pedido.cliente_nome,
-                              )
-                            }
-                            className="text-left flex-1 hover:opacity-80 transition-opacity"
-                          >
-                            <p className="text-base font-black text-slate-800 leading-tight">
-                              {pedido.cliente_nome || "Cliente sem nome"}
-                            </p>
-                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                              {pedido.whatsapp || "sem numero"}
-                            </p>
-                            <div
-                              className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterClasseStatusPedido(pedido)}`}
-                            >
-                              {obterRotuloStatusPedido(pedido)}
-                            </div>
-                            <div
-                              className={`mt-2 ml-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-widest ${obterResumoPagamento(pedido).classe}`}
-                            >
-                              {obterResumoPagamento(pedido).titulo}
-                            </div>
-                            <p className="mt-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                              {obterResumoPagamento(pedido).detalhe}
-                            </p>
-                            <p className="text-base font-black text-green-600 mt-2">
-                              R$ {Number(pedido.total || 0).toFixed(2)}
-                            </p>
-                          </button>
-                          <input
-                            type="checkbox"
-                            className="w-5 h-5 accent-pink-600 mt-1"
-                            checked={pedidosSelecionadosVendas.includes(
-                              pedido.id,
-                            )}
-                            onChange={() => alternarSelecaoVenda(pedido.id)}
-                          />
-                        </div>
-                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void imprimirPedidoAceito(pedido, {
-                                visualizar: true,
-                              })
-                            }
-                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
-                          >
-                            Visualizar impressao
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void imprimirPedidoAceito(pedido)}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
-                          >
-                            Imprimir
-                          </button>
-                          {obterProximoFluxoPedido(pedido) ? (
+                    pedidosDoDia.slice(0, 10).map((pedido) => {
+                      const pedidoCompleto = completarPedidoComCliente(pedido);
+                      const pagamento = obterResumoPagamento(pedidoCompleto);
+                      const troco = obterResumoTrocoPedido(pedidoCompleto);
+                      const proximoFluxo = obterProximoFluxoPedido(pedidoCompleto);
+                      const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(
+                        pedidoCompleto,
+                      );
+                      const itensPedido = parseItensPedido(pedidoCompleto);
+                      const volumesPedido = itensPedido.reduce(
+                        (acc: number, item: any) =>
+                          acc + Math.max(1, Number(item?.qtd || 1)),
+                        0,
+                      );
+                      const { enderecoCompleto, bairro, cidade, cep } =
+                        montarEnderecoEntrega(pedidoCompleto);
+                      const pontoReferencia = extrairPontoReferencia(
+                        pedidoCompleto,
+                      );
+                      const observacao = limparObservacaoTroco(
+                        String(pedidoCompleto?.observacao || "").trim(),
+                      );
+                      const trocoTexto = !troco.exibir
+                        ? "Nao se aplica"
+                        : troco.precisaTroco
+                          ? troco.valor !== null
+                            ? `Troco para ${formatarMoedaAdmin(
+                                troco.valor,
+                              )}${
+                                Math.max(
+                                  0,
+                                  Number(troco.valor || 0) -
+                                    Number(pedidoCompleto?.total || 0),
+                                ) > 0
+                                  ? ` | Devolver ${formatarMoedaAdmin(
+                                      Math.max(
+                                        0,
+                                        Number(troco.valor || 0) -
+                                          Number(pedidoCompleto?.total || 0),
+                                      ),
+                                    )}`
+                                  : ""
+                              }`
+                            : "Solicitado"
+                          : "Nao precisa";
+                      const modalidadeEntrega = retiradaNoBalcao
+                        ? "Retirada no balcao"
+                        : "Entrega";
+                      const enderecoFormal = retiradaNoBalcao
+                        ? LOJA_ENDERECO_RETIRADA_ADMIN
+                        : enderecoCompleto || "Nao informado";
+                      const localidadeFormal = retiradaNoBalcao
+                        ? [LOJA_BAIRRO_RETIRADA, LOJA_CIDADE_UF_RETIRADA]
+                            .filter(Boolean)
+                            .join(" - ")
+                        : [bairro || "", cidade || "Navegantes"]
+                            .filter(Boolean)
+                            .join(" - ");
+
+                      return (
+                        <div
+                          key={pedido.id}
+                          className="w-full rounded-[1.7rem] border border-slate-200 bg-white p-4 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-3">
                             <button
                               type="button"
                               onClick={() =>
-                                void atualizarStatusPedido(
-                                  pedido.id,
-                                  obterProximoFluxoPedido(pedido)?.proximo ||
-                                    "recebido",
+                                irParaCadastroCliente(
+                                  pedidoCompleto.whatsapp,
+                                  pedidoCompleto.cliente_nome,
                                 )
                               }
-                              disabled={pedidoAtualizandoId === pedido.id}
-                              className="w-full rounded-xl bg-slate-900 px-3 py-3 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="flex-1 text-left transition-opacity hover:opacity-90"
                             >
-                              {pedidoAtualizandoId === pedido.id
-                                ? "Atualizando..."
-                                : obterProximoFluxoPedido(pedido)?.label}
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.26em] text-slate-400">
+                                    Pedido #{Number(pedidoCompleto.id || 0)}{" "}
+                                    <span className="mx-1 text-slate-300">•</span>
+                                    {formatarDataRastreamento(
+                                      pedidoCompleto.created_at,
+                                    )}
+                                  </p>
+                                  <p className="mt-1 text-base font-black leading-tight text-slate-900">
+                                    {pedidoCompleto.cliente_nome ||
+                                      "Cliente sem nome"}
+                                  </p>
+                                  <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                    {pedidoCompleto.whatsapp || "Sem numero"}
+                                  </p>
+                                </div>
+                                <div className="text-left lg:text-right">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
+                                    Total do pedido
+                                  </p>
+                                  <p className="mt-1 text-xl font-black text-emerald-600">
+                                    {formatarMoedaAdmin(pedidoCompleto.total)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <span
+                                  className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${obterClasseStatusPedido(
+                                    pedidoCompleto,
+                                  )}`}
+                                >
+                                  {obterRotuloStatusPedido(pedidoCompleto)}
+                                </span>
+                                <span
+                                  className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${pagamento.classe}`}
+                                >
+                                  {pagamento.titulo}
+                                </span>
+                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+                                  {modalidadeEntrega}
+                                </span>
+                              </div>
+
+                              <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                                <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+                                    Atendimento
+                                  </p>
+                                  <div className="mt-2 grid grid-cols-[84px,1fr] gap-x-3 gap-y-1.5 text-[12px] leading-relaxed">
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      Cliente
+                                    </p>
+                                    <p className="font-semibold text-slate-700">
+                                      {pedidoCompleto.cliente_nome ||
+                                        "Nao informado"}
+                                    </p>
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      Contato
+                                    </p>
+                                    <p className="font-semibold text-slate-700">
+                                      {pedidoCompleto.whatsapp || "Nao informado"}
+                                    </p>
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      Pagamento
+                                    </p>
+                                    <p className="font-semibold text-slate-700">
+                                      {pagamento.titulo} - {pagamento.situacao}
+                                    </p>
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      Detalhe
+                                    </p>
+                                    <p className="font-semibold text-slate-700">
+                                      {pagamento.detalhe || "Nao informado"}
+                                    </p>
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      Troco
+                                    </p>
+                                    <p className="font-semibold text-slate-700">
+                                      {trocoTexto}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+                                    Entrega
+                                  </p>
+                                  <div className="mt-2 grid grid-cols-[84px,1fr] gap-x-3 gap-y-1.5 text-[12px] leading-relaxed">
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      Modalidade
+                                    </p>
+                                    <p className="font-semibold text-slate-700">
+                                      {modalidadeEntrega}
+                                    </p>
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      Endereco
+                                    </p>
+                                    <p className="font-semibold text-slate-700 break-words">
+                                      {enderecoFormal}
+                                    </p>
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      Local
+                                    </p>
+                                    <p className="font-semibold text-slate-700">
+                                      {localidadeFormal || "Nao informado"}
+                                    </p>
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      Referencia
+                                    </p>
+                                    <p className="font-semibold text-slate-700 break-words">
+                                      {retiradaNoBalcao
+                                        ? "Retirada no caixa"
+                                        : pontoReferencia || "Nao informado"}
+                                    </p>
+                                    <p className="font-black uppercase tracking-[0.16em] text-slate-400">
+                                      CEP
+                                    </p>
+                                    <p className="font-semibold text-slate-700">
+                                      {retiradaNoBalcao
+                                        ? LOJA_CEP_RETIRADA
+                                        : cep || "Nao informado"}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
+                                    Itens do pedido
+                                  </p>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                                    {itensPedido.length} item(ns) • {volumesPedido} volume(s)
+                                  </p>
+                                </div>
+                                <div className="mt-2 space-y-1.5">
+                                  {itensPedido.length > 0 ? (
+                                    itensPedido.map((item: any, index: number) => (
+                                      <div
+                                        key={`${pedidoCompleto.id}-${String(
+                                          item?.id || index,
+                                        )}-${index}`}
+                                        className="flex items-start justify-between gap-3 text-[12px] leading-relaxed"
+                                      >
+                                        <p className="font-semibold text-slate-700">
+                                          <span className="font-black text-slate-900">
+                                            {Number(item?.qtd || 1)}x
+                                          </span>{" "}
+                                          {String(item?.nome || "Item")}
+                                        </p>
+                                        <p className="whitespace-nowrap font-black text-slate-600">
+                                          {formatarMoedaAdmin(
+                                            Number(item?.preco || 0) *
+                                              Number(item?.qtd || 0),
+                                          )}
+                                        </p>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <p className="text-[12px] font-semibold text-slate-500">
+                                      Itens nao informados.
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {observacao ? (
+                                <div className="mt-3 rounded-[1.25rem] border border-amber-100 bg-amber-50 px-4 py-3">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-700">
+                                    Observacao
+                                  </p>
+                                  <p className="mt-1 text-[12px] font-semibold leading-relaxed text-amber-900">
+                                    {observacao}
+                                  </p>
+                                </div>
+                              ) : null}
                             </button>
-                          ) : (
-                            <p className="flex items-center justify-center rounded-xl bg-slate-100 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                              Fluxo operacional concluido
-                            </p>
-                          )}
+
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-5 w-5 accent-pink-600"
+                              checked={pedidosSelecionadosVendas.includes(
+                                pedido.id,
+                              )}
+                              onChange={() => alternarSelecaoVenda(pedido.id)}
+                            />
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void imprimirPedidoAceito(pedidoCompleto, {
+                                  visualizar: true,
+                                })
+                              }
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
+                            >
+                              Visualizar impressao
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void imprimirPedidoAceito(pedidoCompleto)}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
+                            >
+                              Imprimir
+                            </button>
+                            {proximoFluxo ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void atualizarStatusPedido(
+                                    pedido.id,
+                                    proximoFluxo.proximo || "recebido",
+                                  )
+                                }
+                                disabled={pedidoAtualizandoId === pedido.id}
+                                className="w-full rounded-xl bg-slate-900 px-3 py-3 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {pedidoAtualizandoId === pedido.id
+                                  ? "Atualizando..."
+                                  : proximoFluxo.label}
+                              </button>
+                            ) : (
+                              <p className="flex items-center justify-center rounded-xl bg-slate-100 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                Fluxo operacional concluido
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-slate-400 italic text-sm text-center py-10">
                       Sem vendas hoje.
