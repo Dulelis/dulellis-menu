@@ -4214,43 +4214,66 @@ function ClientePageContent() {
                     Escolha a forma de pagamento para finalizar seu pedido.
                   </p>
                 </div>
-                <div className="max-h-56 overflow-y-auto space-y-3 p-4 bg-slate-50 rounded-[2.5rem] border border-slate-100">
-                  {carrinho.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-slate-50"
-                    >
-                      <div className="flex-1">
-                        <p className="font-black text-slate-800 text-sm">{item.nome}</p>
-                        <p className="text-[10px] font-black text-pink-400">
-                          R$ {item.preco.toFixed(2)} un
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => void removerDoCarrinho(item.id)}
-                          disabled={loading || Boolean(estoqueEmAtualizacao[item.id]) || interacoesBloqueadas}
-                          className="text-pink-600"
-                        >
-                          <Minus size={16} />
-                        </button>
-                        <span className="font-black text-sm w-4 text-center">{item.qtd}</span>
-                        <button
-                          type="button"
-                          onClick={() => void adicionarAoCarrinho(item)}
-                          disabled={loading || Boolean(estoqueEmAtualizacao[item.id]) || interacoesBloqueadas}
-                          className="text-pink-600"
-                        >
-                          <Plus size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
                 <div className="bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl">
                   <div className="space-y-3 relative">
+                    <div className="border-b border-white/10 pb-4">
+                      <p className="text-[10px] uppercase font-black text-pink-500 tracking-[0.2em]">
+                        Itens pedidos
+                      </p>
+                      <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
+                        {carrinho.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-[1.35rem] border border-white/10 bg-white/8 px-4 py-3"
+                          >
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="min-w-0">
+                                <p className="text-sm font-black leading-tight text-white">
+                                  {item.nome}
+                                </p>
+                                <p className="mt-1 text-[10px] font-black text-pink-300">
+                                  R$ {item.preco.toFixed(2)} un
+                                </p>
+                              </div>
+                              <div className="flex items-center justify-between gap-3 sm:justify-end">
+                                <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/10 p-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => void removerDoCarrinho(item.id)}
+                                    disabled={
+                                      loading ||
+                                      Boolean(estoqueEmAtualizacao[item.id]) ||
+                                      interacoesBloqueadas
+                                    }
+                                    className="text-pink-300 disabled:opacity-40"
+                                  >
+                                    <Minus size={16} />
+                                  </button>
+                                  <span className="w-4 text-center text-sm font-black text-white">
+                                    {item.qtd}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void adicionarAoCarrinho(item)}
+                                    disabled={
+                                      loading ||
+                                      Boolean(estoqueEmAtualizacao[item.id]) ||
+                                      interacoesBloqueadas
+                                    }
+                                    className="text-pink-300 disabled:opacity-40"
+                                  >
+                                    <Plus size={16} />
+                                  </button>
+                                </div>
+                                <p className="shrink-0 text-sm font-black text-amber-200">
+                                  R$ {(item.preco * item.qtd).toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                     <div className="flex justify-between text-xs font-bold text-slate-400">
                       <span>Subtotal</span>
                       <span>R$ {subtotal.toFixed(2)}</span>
