@@ -3001,8 +3001,9 @@ function ClientePageContent() {
             className="h-auto w-full max-w-[260px] object-contain drop-shadow-sm sm:max-w-[340px]"
             priority
           />
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.4em]">
-            Delivery artesanal
+          <p className="inline-flex items-baseline justify-center gap-2 text-slate-400 uppercase tracking-normal">
+            <span className="text-lg font-black text-pink-500 sm:text-xl">Delivery</span>
+            <span className="text-[11px] font-bold sm:text-xs">artesanal</span>
           </p>
         </div>
         <div className="max-w-xl mx-auto mt-4 flex items-center justify-between gap-3">
