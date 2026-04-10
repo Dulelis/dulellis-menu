@@ -38,7 +38,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#ec4899",
+  themeColor: "#8a4b1d",
   colorScheme: "light",
 };
 
@@ -49,7 +49,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-br">
-      <body className="bg-[#fff7fa] text-slate-900 antialiased">
+      <body className="bg-white text-slate-900 antialiased">
         <PwaRegistration />
         {children}
       </body>

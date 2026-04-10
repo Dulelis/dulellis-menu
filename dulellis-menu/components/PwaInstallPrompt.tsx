@@ -120,7 +120,7 @@ export function PwaInstallPrompt() {
   return (
     <div className="mx-auto mt-4 flex max-w-xl flex-col gap-2">
       {showInstallCard && (
-        <div className="rounded-[1.8rem] border border-pink-200 bg-gradient-to-r from-pink-50 via-white to-rose-50 px-4 py-4 shadow-[0_12px_28px_rgba(236,72,153,0.12)]">
+        <div className="rounded-[1.8rem] border border-pink-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(138,75,29,0.12)]">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 rounded-2xl bg-pink-600 p-3 text-white shadow-lg shadow-pink-200/80">
               {installEvent ? <Download size={18} /> : <Share2 size={18} />}
@@ -168,7 +168,7 @@ export function PwaInstallPrompt() {
       )}
 
       {!isOnline && (
-        <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 px-4 py-3 shadow-[0_8px_20px_rgba(245,158,11,0.08)]">
+        <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 px-4 py-3 shadow-[0_8px_20px_rgba(138,75,29,0.08)]">
           <div className="flex items-start gap-3">
             <div className="rounded-2xl bg-amber-500 p-3 text-white">
               <WifiOff size={18} />

@@ -88,7 +88,7 @@ const secoes = [
 
 export default function PoliticaDePrivacidadePage() {
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_30%,#fff1f2_100%)] px-4 py-10 text-slate-800">
+    <main className="min-h-screen bg-white px-4 py-10 text-slate-800">
       <div className="mx-auto max-w-4xl">
         <div className="rounded-[2rem] border border-amber-200 bg-white/90 p-6 shadow-sm backdrop-blur">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-rose-500">

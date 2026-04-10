@@ -71,13 +71,13 @@ export function PwaLaunchSplash({ loading }: { loading: boolean }) {
 
   return (
     <div
-      className={`pwa-splash-shell fixed inset-0 z-[120] flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(251,207,232,0.65),transparent_34%),linear-gradient(180deg,#fff7fa_0%,#fffafc_55%,#ffffff_100%)] px-6 transition-all duration-500 ${
+      className={`pwa-splash-shell fixed inset-0 z-[120] flex items-center justify-center bg-white px-6 transition-all duration-500 ${
         isClosing ? "pointer-events-none opacity-0 scale-[1.02]" : "opacity-100 scale-100"
       }`}
     >
-      <div className="relative w-full max-w-sm overflow-hidden rounded-[2.8rem] border border-white/80 bg-white/88 p-8 text-center shadow-[0_28px_70px_rgba(236,72,153,0.18)] backdrop-blur-xl">
+      <div className="relative w-full max-w-sm overflow-hidden rounded-[2.8rem] border border-white/80 bg-white/88 p-8 text-center shadow-[0_28px_70px_rgba(138,75,29,0.16)] backdrop-blur-xl">
         <div className="pwa-splash-glow absolute inset-x-8 top-5 h-28 rounded-full bg-pink-200/60 blur-3xl" />
-        <div className="relative mx-auto flex h-24 w-24 items-center justify-center rounded-[2rem] bg-gradient-to-br from-pink-500 via-rose-500 to-fuchsia-500 shadow-[0_18px_40px_rgba(236,72,153,0.34)]">
+        <div className="relative mx-auto flex h-24 w-24 items-center justify-center rounded-[2rem] bg-amber-700 shadow-[0_18px_40px_rgba(138,75,29,0.24)]">
           <Image
             src="/logo.png"
             alt="Dulelis"
@@ -96,7 +96,7 @@ export function PwaLaunchSplash({ loading }: { loading: boolean }) {
         <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
           Bolos, doces e salgados com visual de app para pedir mais rápido no celular.
         </p>
-        <div className="mt-7 flex items-center justify-center gap-3 rounded-[1.6rem] bg-[#fff7fa] px-4 py-3">
+        <div className="mt-7 flex items-center justify-center gap-3 rounded-[1.6rem] bg-amber-50 px-4 py-3">
           <Loader2 className="animate-spin text-pink-500" size={18} />
           <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-600">
             {loading ? "Sincronizando vitrine" : "Tudo pronto"}

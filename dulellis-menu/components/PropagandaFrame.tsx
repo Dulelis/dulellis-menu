@@ -40,11 +40,11 @@ export function PropagandaFrame({
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.24),transparent_58%),linear-gradient(135deg,rgba(255,255,255,0.14),rgba(15,23,42,0.42))]"
+        className="pointer-events-none absolute inset-0 bg-slate-950/25"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(135deg,rgba(255,255,255,0.16)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.16)_50%,rgba(255,255,255,0.16)_75%,transparent_75%,transparent)] [background-size:18px_18px]"
+        className="pointer-events-none absolute inset-0 bg-amber-50/10"
       />
       <div className={imageContainerClassName}>
         <Image

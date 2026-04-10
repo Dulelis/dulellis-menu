@@ -417,7 +417,7 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const redirectUrl = `/?${retornoHomeParams.toString()}`;
 
   return (
-    <main className="min-h-screen bg-[#FDFCFD] text-slate-900 flex items-center justify-center p-6">
+    <main className="min-h-screen bg-white text-slate-900 flex items-center justify-center p-6">
       <section className={`w-full max-w-md rounded-3xl border p-7 shadow-sm ${info.card}`}>
         <div className="flex items-center gap-3 mb-4">
           <info.Icone className={info.cor} size={28} />

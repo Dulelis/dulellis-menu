@@ -2944,7 +2944,7 @@ function ClientePageContent() {
 
   return (
     <div
-      className="app-page min-h-[100dvh] bg-[#FDFCFD] font-sans text-slate-900"
+      className="app-page min-h-[100dvh] bg-white font-sans text-slate-900"
       data-has-cart={temAtalhoCarrinho ? "true" : "false"}
     >
       <PwaLaunchSplash loading={loading} />
@@ -2970,7 +2970,7 @@ function ClientePageContent() {
         ref={topoVitrineRef}
         className="app-topbar relative overflow-hidden border-b border-pink-50 bg-white p-8 text-center"
       >
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-200 via-pink-500 to-pink-200"></div>
+        <div className="absolute top-0 left-0 w-full h-1 bg-amber-600"></div>
         <div className="absolute top-4 right-4 z-10 flex gap-2">
           {!sessaoCliente ? (
             <button
@@ -3072,7 +3072,7 @@ function ClientePageContent() {
           </div>
           <div
             ref={destaquesVitrineRef}
-            className="max-w-xl mx-auto rounded-2xl bg-gradient-to-r from-pink-600 via-pink-500 to-fuchsia-500 text-white px-4 py-3 shadow-lg h-[336px] flex flex-col"
+            className="max-w-xl mx-auto rounded-2xl bg-amber-700 text-white px-4 py-3 shadow-lg h-[336px] flex flex-col"
           >
             <div className="h-3 mb-2">
               {mensagensVitrine.length > 1 && (
@@ -3154,7 +3154,7 @@ function ClientePageContent() {
                   Dulelis
                 </div>
               )}
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 via-black/30 to-transparent p-2 rounded-b-[10px]">
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-slate-950/70 p-2 rounded-b-[10px]">
                 <h3 className="font-black text-sm leading-tight line-clamp-1 text-white drop-shadow-sm">
                   {slideAtualVitrine?.titulo}
                 </h3>
@@ -3189,7 +3189,7 @@ function ClientePageContent() {
             key={cat}
             type="button"
             onClick={() => setCategoriaAtiva(cat)}
-            className={`px-1 py-2 rounded-full font-black text-[9px] text-center whitespace-nowrap transition-all uppercase tracking-wide border-2 sm:px-7 sm:py-2.5 sm:text-[10px] sm:tracking-widest ${categoriaAtiva === cat ? "bg-pink-600 border-pink-600 text-white shadow-lg" : "bg-[#fff8fb] border-[#efe4ea] text-slate-500"}`}
+            className={`px-1 py-2 rounded-full font-black text-[9px] text-center whitespace-nowrap transition-all uppercase tracking-wide border-2 sm:px-7 sm:py-2.5 sm:text-[10px] sm:tracking-widest ${categoriaAtiva === cat ? "bg-pink-600 border-pink-600 text-white shadow-lg" : "bg-white border-amber-100 text-slate-500"}`}
           >
             {cat}
           </button>
@@ -3213,8 +3213,8 @@ function ClientePageContent() {
         ) : (
           secoesVitrine.map((secao) => (
             <section key={secao.categoria} className="space-y-3">
-              <div className="overflow-hidden rounded-[1.8rem] border border-pink-200 bg-[#fffafc] shadow-[0_10px_22px_rgba(236,72,153,0.08)]">
-                <div className="bg-gradient-to-r from-pink-600 via-rose-500 to-pink-600 px-5 py-3 text-center">
+              <div className="overflow-hidden rounded-[1.8rem] border border-pink-200 bg-white shadow-[0_10px_22px_rgba(138,75,29,0.08)]">
+                <div className="bg-amber-700 px-5 py-3 text-center">
                   <p className="text-[11px] font-black uppercase tracking-[0.34em] text-white">
                     {DESCRICOES_CATEGORIA[secao.categoria] || secao.categoria}
                   </p>
@@ -3223,8 +3223,8 @@ function ClientePageContent() {
 
               {secao.itens.length > 0 ? (
                 secao.itens.map((prod) => (
-                  <div key={prod.id} className="group flex items-center gap-3 p-3 rounded-[1.8rem] border bg-[#fffafc] border-[#f3e8ee] shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition-all active:scale-[0.98]">
-                    <div className="w-16 h-16 rounded-[1.1rem] bg-[#fff5f9] overflow-hidden shrink-0 border border-[#f6eaf0]">
+                  <div key={prod.id} className="group flex items-center gap-3 p-3 rounded-[1.8rem] border bg-white border-amber-100 shadow-[0_8px_18px_rgba(138,75,29,0.06)] transition-all active:scale-[0.98]">
+                    <div className="w-16 h-16 rounded-[1.1rem] bg-amber-50 overflow-hidden shrink-0 border border-amber-100">
                       {prod.imagem_url ? (
                         <Image
                           src={prod.imagem_url}
@@ -3235,7 +3235,7 @@ function ClientePageContent() {
                           sizes="96px"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-[#fffafc] p-2">
+                        <div className="w-full h-full flex items-center justify-center bg-white p-2">
                           <Image
                             src="/logo.png"
                             alt="Dulelis"
@@ -3270,7 +3270,7 @@ function ClientePageContent() {
                         <div className="mt-1 flex items-center justify-between gap-2">
                           <p className="text-pink-600 font-black text-[1.65rem] leading-none">R$ {Number(prod.preco).toFixed(2)}</p>
                           {sessaoCliente ? (
-                            <div className="flex items-center gap-1.5 bg-[#f8f5f7] p-1 rounded-xl border border-[#eee5ea] shrink-0">
+                            <div className="flex items-center gap-1.5 bg-amber-50 p-1 rounded-xl border border-amber-100 shrink-0">
                               <button
                                 type="button"
                                 onClick={() => void removerDoCarrinho(prod.id)}
@@ -3306,7 +3306,7 @@ function ClientePageContent() {
                   </div>
                 ))
               ) : secao.categoria === "Produtos naturais" ? (
-                <div className="rounded-[1.8rem] border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-lime-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(16,185,129,0.08)]">
+                <div className="rounded-[1.8rem] border border-emerald-200 bg-amber-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(138,75,29,0.08)]">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-500">
                     Em construção
                   </p>
@@ -3315,7 +3315,7 @@ function ClientePageContent() {
                   </p>
                 </div>
               ) : secao.categoria === "Personalizado" ? (
-                <div className="rounded-[1.8rem] border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-orange-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(245,158,11,0.08)]">
+                <div className="rounded-[1.8rem] border border-amber-200 bg-amber-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(138,75,29,0.08)]">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-600">
                     Em produção
                   </p>
@@ -3330,7 +3330,7 @@ function ClientePageContent() {
       </main>
 
       <footer className="max-w-xl mx-auto px-4 pb-6 sm:px-6">
-        <div className="rounded-2xl border border-pink-100 bg-gradient-to-r from-[#fff7fa] via-white to-[#fff7fa] px-4 py-4 text-center">
+        <div className="rounded-2xl border border-pink-100 bg-white px-4 py-4 text-center">
           <p className="text-sm font-black text-pink-700 tracking-tight">
             Dulelis Confeitaria - desde 2014
           </p>
@@ -3408,8 +3408,8 @@ function ClientePageContent() {
               <div
                 className={`mb-4 rounded-[2rem] border px-4 py-3 ${
                   authModoCadastro
-                    ? "border-pink-200 bg-gradient-to-r from-pink-50 to-rose-50 text-pink-700"
-                    : "border-emerald-200 bg-gradient-to-r from-emerald-50 to-white text-emerald-700"
+                    ? "border-pink-200 bg-pink-50 text-pink-700"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
                 }`}
               >
                 <div className="flex items-start gap-3">

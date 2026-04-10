@@ -287,7 +287,7 @@ export default function EntregaPageClient({ pedidoId }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#ffe7d6,_#fff8f1_55%,_#ffffff)] px-4 py-8 text-slate-900">
+    <main className="min-h-screen bg-white px-4 py-8 text-slate-900">
       <section className="mx-auto max-w-xl rounded-[2rem] border border-orange-200 bg-white/95 p-6 shadow-[0_25px_80px_-35px_rgba(234,88,12,0.45)] backdrop-blur">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">

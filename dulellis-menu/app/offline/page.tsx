@@ -8,9 +8,9 @@ export const metadata: Metadata = {
 
 export default function OfflinePage() {
   return (
-    <main className="app-page min-h-[100dvh] bg-[#fff7fa] px-4 py-8 text-slate-900">
+    <main className="app-page min-h-[100dvh] bg-white px-4 py-8 text-slate-900">
       <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-md items-center">
-        <section className="w-full rounded-[2.5rem] border border-pink-100 bg-white p-8 text-center shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
+        <section className="w-full rounded-[2.5rem] border border-pink-100 bg-white p-8 text-center shadow-[0_24px_60px_rgba(138,75,29,0.12)]">
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[2rem] bg-pink-50 shadow-inner">
             <Image src="/logo.png" alt="Dulelis" width={64} height={64} className="object-contain" />
           </div>

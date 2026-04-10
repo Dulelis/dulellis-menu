@@ -576,9 +576,6 @@ function AdminPageContent() {
       .toLowerCase();
     return !CATEGORIAS_ESTOQUE.some((base) => base.toLowerCase() === categoria);
   });
-  const salesView =
-    searchParams.get("salesView") === "extras" ? "extras" : "dia";
-
   const normalizarHorarioInput = (valor?: string | null) => {
     const texto = String(valor || "").trim();
     const match = texto.match(/^(\d{2}):(\d{2})/);
@@ -3230,14 +3227,14 @@ function AdminPageContent() {
           <style>
             @page { size: A4; margin: 14mm; }
             * { box-sizing: border-box; }
-            body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: #f8fafc; }
+            body { margin: 0; font-family: Arial, sans-serif; color: #26160f; background: #fbf8f3; }
             .page { padding: 28px; }
-            .hero { background: linear-gradient(135deg, #111827 0%, #1e293b 100%); color: #fff; border-radius: 24px; padding: 24px; }
+            .hero { background: #6d3517; color: #fff; border-radius: 24px; padding: 24px; }
             .hero h1 { margin: 0; font-size: 28px; }
-            .hero p { margin: 8px 0 0; color: #cbd5e1; font-weight: 700; }
+            .hero p { margin: 8px 0 0; color: #f9e9bc; font-weight: 700; }
             .totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
-            .total-card { background: #fff; color: #0f172a; border-radius: 18px; padding: 14px 16px; }
-            .total-card span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #64748b; font-weight: 700; }
+            .total-card { background: #fff; color: #26160f; border-radius: 18px; padding: 14px 16px; }
+            .total-card span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #7a5a3b; font-weight: 700; }
             .total-card strong { display: block; margin-top: 8px; font-size: 22px; }
             .driver-card { margin-top: 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 22px; padding: 20px; page-break-inside: avoid; }
             .driver-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
@@ -3521,14 +3518,14 @@ function AdminPageContent() {
           <style>
             @page { size: A4; margin: 14mm; }
             * { box-sizing: border-box; }
-            body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: #f8fafc; }
+            body { margin: 0; font-family: Arial, sans-serif; color: #26160f; background: #fbf8f3; }
             .page { padding: 28px; }
-            .hero { background: linear-gradient(135deg, #111827 0%, #1e293b 100%); color: #fff; border-radius: 24px; padding: 24px; }
+            .hero { background: #6d3517; color: #fff; border-radius: 24px; padding: 24px; }
             .hero h1 { margin: 0; font-size: 28px; }
-            .hero p { margin: 8px 0 0; color: #cbd5e1; font-weight: 700; }
+            .hero p { margin: 8px 0 0; color: #f9e9bc; font-weight: 700; }
             .totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
-            .total-card { background: #fff; color: #0f172a; border-radius: 18px; padding: 14px 16px; }
-            .total-card span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #64748b; font-weight: 700; }
+            .total-card { background: #fff; color: #26160f; border-radius: 18px; padding: 14px 16px; }
+            .total-card span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #7a5a3b; font-weight: 700; }
             .total-card strong { display: block; margin-top: 8px; font-size: 22px; }
             .driver-card { margin-top: 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 22px; padding: 20px; page-break-inside: avoid; }
             .driver-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
@@ -3713,7 +3710,6 @@ function AdminPageContent() {
   const marcarVendasEmDestaque = () => {
     setPedidosSelecionadosVendas(
       pedidosDoDia
-        .slice(0, 10)
         .map((pedido) => Number(pedido.id))
         .filter((id) => Number.isFinite(id)),
     );
@@ -4535,6 +4531,33 @@ function AdminPageContent() {
     }
   }, []);
 
+  const resumoVendasDoDia = pedidosDoDia.reduce(
+    (acc, pedido) => {
+      const status = normalizarStatusPedido(pedido);
+      const pagamento = obterResumoPagamento(pedido);
+
+      if (status === "aguardando_aceite") acc.aguardandoAceite += 1;
+      if (["recebido", "em_preparo", "saiu_entrega"].includes(status)) {
+        acc.emAndamento += 1;
+      }
+      if (
+        pagamento.situacao === "A receber" ||
+        pagamento.situacao === "Aguardando"
+      ) {
+        acc.pagamentosAReceber += 1;
+        acc.valorAReceber += Number(pedido?.total || 0) || 0;
+      }
+
+      return acc;
+    },
+    {
+      aguardandoAceite: 0,
+      emAndamento: 0,
+      pagamentosAReceber: 0,
+      valorAReceber: 0,
+    },
+  );
+
   return (
     <div className="admin-app-shell flex min-h-[100dvh] flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
       <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
@@ -4721,57 +4744,6 @@ function AdminPageContent() {
 
             <button
               type="button"
-              onClick={alternarAlarmePedidos}
-              className={`w-full sm:w-auto px-4 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all border ${
-                alarmePedidosAtivo
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {alarmePedidosAtivo ? (
-                <BellRing size={18} />
-              ) : (
-                <BellOff size={18} />
-              )}
-              {alarmePedidosAtivo ? "Alarme ligado" : "Alarme desligado"}
-            </button>
-
-            {alarmePedidosAtivo ? (
-              <button
-                type="button"
-                onClick={() => {
-                  void testarAlarmePedidos();
-                }}
-                className="w-full sm:w-auto bg-white text-slate-700 px-4 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-sm border border-slate-200 hover:bg-slate-50 transition-all"
-              >
-                <BellRing size={18} />
-                Testar alarme
-              </button>
-            ) : null}
-
-            <div className="relative w-full sm:w-auto">
-              <select
-                value={alarmeSomSelecionado}
-                onChange={(e) =>
-                  setAlarmeSomSelecionado(normalizarAlarmeSomId(e.target.value))
-                }
-                aria-label="Toque do alarme de pedidos"
-                className="w-full appearance-none rounded-2xl border border-slate-200 bg-white py-3 pl-4 pr-11 text-sm font-bold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-pink-500 sm:min-w-[210px]"
-              >
-                {Object.entries(ALARME_SONS_PEDIDOS).map(([value, preset]) => (
-                  <option key={value} value={value}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={18}
-                className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-            </div>
-
-            <button
-              type="button"
               onClick={() => {
                 void sairAdmin();
               }}
@@ -4780,13 +4752,6 @@ function AdminPageContent() {
             >
               {saindo ? "Saindo..." : "Sair"}
             </button>
-
-            {alarmePedidosAtivo && !alarmeSonoroLiberado ? (
-              <p className="w-full text-xs font-bold text-amber-700">
-                Clique em `Testar alarme` uma vez para liberar o som no
-                navegador.
-              </p>
-            ) : null}
           </div>
         </header>
 
@@ -4844,6 +4809,88 @@ function AdminPageContent() {
                   {pedidosDoDia.length} pedido(s) hoje
                 </p>
               </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                    Som dos pedidos
+                  </p>
+                  <h2 className="mt-1 text-xl font-black text-slate-800">
+                    Aviso sonoro do admin
+                  </h2>
+                  <p className="mt-1 text-sm font-bold text-slate-500">
+                    Controle o alarme de novos pedidos em um unico lugar.
+                  </p>
+                </div>
+                <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
+                  <button
+                    type="button"
+                    onClick={alternarAlarmePedidos}
+                    className={`w-full rounded-2xl border px-4 py-3 text-sm font-bold transition-all sm:w-auto ${
+                      alarmePedidosAtivo
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="inline-flex items-center justify-center gap-2">
+                      {alarmePedidosAtivo ? (
+                        <BellRing size={18} />
+                      ) : (
+                        <BellOff size={18} />
+                      )}
+                      {alarmePedidosAtivo ? "Alarme ligado" : "Alarme desligado"}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void testarAlarmePedidos();
+                    }}
+                    disabled={!alarmePedidosAtivo}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                  >
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <BellRing size={18} />
+                      Testar alarme
+                    </span>
+                  </button>
+
+                  <div className="relative w-full sm:w-auto">
+                    <select
+                      value={alarmeSomSelecionado}
+                      onChange={(e) =>
+                        setAlarmeSomSelecionado(
+                          normalizarAlarmeSomId(e.target.value),
+                        )
+                      }
+                      aria-label="Toque do alarme de pedidos"
+                      className="w-full appearance-none rounded-2xl border border-slate-200 bg-white py-3 pl-4 pr-11 text-sm font-bold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-pink-500 sm:min-w-[210px]"
+                    >
+                      {Object.entries(ALARME_SONS_PEDIDOS).map(
+                        ([value, preset]) => (
+                          <option key={value} value={value}>
+                            {preset.label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                    <ChevronDown
+                      size={18}
+                      className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {alarmePedidosAtivo && !alarmeSonoroLiberado ? (
+                <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-xs font-bold text-amber-700">
+                  Clique em `Testar alarme` uma vez para liberar o som no
+                  navegador.
+                </p>
+              ) : null}
             </div>
 
             <div className="rounded-[2rem] border border-red-200 bg-red-50 p-6 shadow-sm">
@@ -6228,8 +6275,8 @@ function AdminPageContent() {
                   Vendas do Dia
                 </h2>
                 <p className="mt-1 text-sm font-bold text-slate-400">
-                  Tela focada em aceitar pedidos e acompanhar os 10 mais
-                  recentes.
+                  Tela focada em aceitar, imprimir e acompanhar todas as vendas
+                  do dia.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
@@ -6237,7 +6284,7 @@ function AdminPageContent() {
                   onClick={marcarVendasEmDestaque}
                   className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all"
                 >
-                  Marcar
+                  Marcar todas
                 </button>
                 <button
                   onClick={desmarcarVendasSelecionadas}
@@ -6267,7 +6314,7 @@ function AdminPageContent() {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
               <div className="p-5 rounded-[2rem] border border-pink-200 bg-pink-50">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-black text-slate-700 uppercase tracking-widest text-xs">
@@ -6285,34 +6332,72 @@ function AdminPageContent() {
               <div className="p-5 rounded-[2rem] border border-slate-200 bg-white">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-black text-slate-700 uppercase tracking-widest text-xs">
-                    Painel Operacional
+                    A aceitar
+                  </p>
+                  <BellRing size={18} className="text-emerald-500" />
+                </div>
+                <p className="text-2xl font-black text-slate-800">
+                  {resumoVendasDoDia.aguardandoAceite}
+                </p>
+                <p className="text-sm font-bold text-slate-500">
+                  pedidos aguardando
+                </p>
+              </div>
+              <div className="p-5 rounded-[2rem] border border-slate-200 bg-white">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-black text-slate-700 uppercase tracking-widest text-xs">
+                    A receber
+                  </p>
+                  <DollarSign size={18} className="text-emerald-500" />
+                </div>
+                <p className="text-2xl font-black text-slate-800">
+                  {formatarMoedaAdmin(resumoVendasDoDia.valorAReceber)}
+                </p>
+                <p className="text-sm font-bold text-slate-500">
+                  {resumoVendasDoDia.pagamentosAReceber} pagamento(s)
+                </p>
+              </div>
+              <div className="p-5 rounded-[2rem] border border-slate-200 bg-white">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-black text-slate-700 uppercase tracking-widest text-xs">
+                    Em andamento
                   </p>
                   <Clock3 size={18} className="text-slate-400" />
                 </div>
-                <p className="text-base font-black text-slate-800">
-                  Últimos 10 pedidos em destaque
+                <p className="text-2xl font-black text-slate-800">
+                  {resumoVendasDoDia.emAndamento}
                 </p>
-                <p className="text-sm font-bold text-slate-500 mt-1">
-                  Semana, aniversariantes e relatórios foram movidos para a
-                  subpasta <span className="text-slate-700">/admin/vendas</span>
-                  .
+                <p className="text-sm font-bold text-slate-500">
+                  pedidos no fluxo
+                </p>
+              </div>
+              <div className="p-5 rounded-[2rem] border border-slate-200 bg-white">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-black text-slate-700 uppercase tracking-widest text-xs">
+                    Selecionadas
+                  </p>
+                  <ShoppingBag size={18} className="text-slate-400" />
+                </div>
+                <p className="text-2xl font-black text-slate-800">
+                  {pedidosSelecionadosVendas.length}
+                </p>
+                <p className="text-sm font-bold text-slate-500">
+                  prontas para imprimir
                 </p>
               </div>
             </div>
-            {salesView === "extras" ? (
-              <div className="bg-white p-6 rounded-[2rem] border border-dashed border-slate-300 text-center text-slate-400 font-medium">
-                Esta visualizacao complementar foi movida para{" "}
-                <span className="font-black text-slate-700">/admin/vendas</span>
-                .
-              </div>
-            ) : (
-              <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
-                <h3 className="font-black text-base text-slate-800 mb-3">
-                  Ultimos 10 pedidos do dia
+            <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <h3 className="font-black text-base text-slate-800">
+                  Todas as vendas do dia
                 </h3>
+                <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                  {pedidosDoDia.length} registro(s)
+                </p>
+              </div>
                 <div className="space-y-3 max-h-[72vh] overflow-y-auto pr-1">
                   {pedidosDoDia.length > 0 ? (
-                    pedidosDoDia.slice(0, 10).map((pedido) => {
+                    pedidosDoDia.map((pedido) => {
                       const pedidoCompleto = completarPedidoComCliente(pedido);
                       const pagamento = obterResumoPagamento(pedidoCompleto);
                       const troco = obterResumoTrocoPedido(pedidoCompleto);
@@ -6518,6 +6603,34 @@ function AdminPageContent() {
                           </div>
 
                           <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            {proximoFluxo ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void atualizarStatusPedido(
+                                    pedido.id,
+                                    proximoFluxo.proximo || "recebido",
+                                  )
+                                }
+                                disabled={pedidoAtualizandoId === pedido.id}
+                                className="w-full rounded-xl bg-emerald-600 px-3 py-3 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {pedidoAtualizandoId === pedido.id
+                                  ? "Atualizando..."
+                                  : proximoFluxo.label}
+                              </button>
+                            ) : (
+                              <p className="flex items-center justify-center rounded-xl bg-slate-100 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                Fluxo operacional concluido
+                              </p>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => void imprimirPedidoAceito(pedidoCompleto)}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
+                            >
+                              Imprimir
+                            </button>
                             <button
                               type="button"
                               onClick={() =>
@@ -6529,34 +6642,6 @@ function AdminPageContent() {
                             >
                               Visualizar impressao
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => void imprimirPedidoAceito(pedidoCompleto)}
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
-                            >
-                              Imprimir
-                            </button>
-                            {proximoFluxo ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void atualizarStatusPedido(
-                                    pedido.id,
-                                    proximoFluxo.proximo || "recebido",
-                                  )
-                                }
-                                disabled={pedidoAtualizandoId === pedido.id}
-                                className="w-full rounded-xl bg-slate-900 px-3 py-3 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {pedidoAtualizandoId === pedido.id
-                                  ? "Atualizando..."
-                                  : proximoFluxo.label}
-                              </button>
-                            ) : (
-                              <p className="flex items-center justify-center rounded-xl bg-slate-100 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                Fluxo operacional concluido
-                              </p>
-                            )}
                           </div>
                         </div>
                       );
@@ -6568,7 +6653,6 @@ function AdminPageContent() {
                   )}
                 </div>
               </div>
-            )}
           </div>
         )}
         {activeTab === "relatorios" && (
@@ -6614,7 +6698,7 @@ function AdminPageContent() {
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gradient-to-br from-pink-500 to-pink-600 p-6 sm:p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden print:shadow-none print:border print:border-slate-300 print:text-black print:from-white print:to-white">
+              <div className="bg-amber-700 p-6 sm:p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden print:shadow-none print:border print:border-slate-300 print:bg-white print:text-black">
                 <DollarSign
                   size={100}
                   className="absolute -right-4 -bottom-4 text-white/10 rotate-12 print:hidden"
