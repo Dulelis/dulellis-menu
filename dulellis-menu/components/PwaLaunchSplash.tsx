@@ -77,13 +77,13 @@ export function PwaLaunchSplash({ loading }: { loading: boolean }) {
     >
       <div className="relative w-full max-w-sm overflow-hidden rounded-[2.8rem] border border-white/80 bg-white/88 p-8 text-center shadow-[0_28px_70px_rgba(138,75,29,0.16)] backdrop-blur-xl">
         <div className="pwa-splash-glow absolute inset-x-8 top-5 h-28 rounded-full bg-pink-200/60 blur-3xl" />
-        <div className="relative mx-auto flex h-24 w-24 items-center justify-center rounded-[2rem] bg-amber-700 shadow-[0_18px_40px_rgba(138,75,29,0.24)]">
+        <div className="relative mx-auto flex w-full max-w-[240px] items-center justify-center">
           <Image
             src="/logo.png"
             alt="Dulelis"
-            width={84}
-            height={84}
-            className="pwa-splash-logo object-contain drop-shadow-md"
+            width={240}
+            height={108}
+            className="pwa-splash-logo h-auto w-full object-contain drop-shadow-md"
             priority
           />
         </div>

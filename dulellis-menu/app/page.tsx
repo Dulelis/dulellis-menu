@@ -648,7 +648,7 @@ function PainelAcompanhamentoPedido({
     retiradaNoBalcao,
   );
   const whatsappLojaHref = `https://wa.me/${WHATSAPP_LOJA_ACOMPANHAMENTO}?text=${encodeURIComponent(
-    `Ola Dulelis, preciso de ajuda com o pedido #${pedido.id}.`,
+    `Oi, Dulelis! 💗 Tudo bem? Gostaria de saber uma informação sobre o meu pedido #${pedido.id}. Podem me ajudar, por favor? 🧁`,
   )}`;
 
   return (
@@ -2992,19 +2992,18 @@ function ClientePageContent() {
             </button>
           )}
         </div>
-        <div className="flex items-center justify-center gap-4">
-          <Image src="/logo.png" alt="Dulelis" width={80} height={80} className="object-contain" />
-          <div className="text-left">
-            <div className="flex items-baseline gap-2">
-              <h1 className="text-4xl font-black text-pink-600 italic tracking-tighter drop-shadow-sm">
-                DULELIS
-              </h1>
-              <span className="text-2xl text-pink-400">𝒟𝑒𝑙𝑖𝑣𝑒𝑟𝑦</span>
-            </div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.4em]">
-              Confeitaria Artesanal
-            </p>
-          </div>
+        <div className="flex flex-col items-center justify-center gap-2 pt-9 sm:pt-2">
+          <Image
+            src="/logo.png"
+            alt="Dulelis Confeitaria"
+            width={320}
+            height={144}
+            className="h-auto w-full max-w-[260px] object-contain drop-shadow-sm sm:max-w-[340px]"
+            priority
+          />
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.4em]">
+            Delivery artesanal
+          </p>
         </div>
         <div className="max-w-xl mx-auto mt-4 flex items-center justify-between gap-3">
           <div className="text-left min-h-[20px]">
@@ -3207,7 +3206,13 @@ function ClientePageContent() {
       <main ref={cardapioRef} className="max-w-xl mx-auto px-4 py-5 sm:px-6 sm:py-6 grid gap-5">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <Image src="/logo.png" alt="Carregando" width={60} height={60} className="object-contain animate-pulse" />
+            <Image
+              src="/logo.png"
+              alt="Carregando"
+              width={200}
+              height={90}
+              className="h-auto w-36 object-contain animate-pulse"
+            />
             <Loader2 className="animate-spin text-pink-500" size={30} />
           </div>
         ) : (
@@ -3239,9 +3244,9 @@ function ClientePageContent() {
                           <Image
                             src="/logo.png"
                             alt="Dulelis"
-                            width={50}
-                            height={50}
-                            className="object-contain opacity-50"
+                            width={70}
+                            height={32}
+                            className="h-auto w-12 object-contain opacity-50"
                           />
                         </div>
                       )}
