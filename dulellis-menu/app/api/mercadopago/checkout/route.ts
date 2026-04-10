@@ -41,6 +41,49 @@ function normalizarTexto(value: string) {
     .toLowerCase();
 }
 
+function normalizarEmail(value: string) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function emailValido(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizarEmail(value));
+}
+
+function normalizarNumero(value: string) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function obterTelefonePayer(whatsapp: string) {
+  const numero = normalizarNumero(whatsapp);
+  const semDdi =
+    numero.startsWith("55") && numero.length > 11 ? numero.slice(2) : numero;
+  if (semDdi.length < 10) return null;
+
+  return {
+    area_code: semDdi.slice(0, 2),
+    number: semDdi.slice(2),
+  };
+}
+
+function obterPayerCheckout(args: {
+  email?: string;
+  nome?: string;
+  whatsapp?: string;
+}) {
+  const nomeCompleto = String(args.nome || "").trim();
+  const [nome, ...sobrenomePartes] = nomeCompleto.split(/\s+/).filter(Boolean);
+  const email = normalizarEmail(args.email || "");
+  const telefone = obterTelefonePayer(args.whatsapp || "");
+
+  const payer: Record<string, unknown> = {};
+  if (emailValido(email)) payer.email = email;
+  if (nome) payer.name = nome;
+  if (sobrenomePartes.length) payer.surname = sobrenomePartes.join(" ");
+  if (telefone) payer.phone = telefone;
+
+  return Object.keys(payer).length ? payer : null;
+}
+
 function normalizarFormaPagamentoCheckout(value?: string) {
   return normalizarTexto(value || "") === "cartao mercado pago"
     ? FORMA_CARTAO_MERCADO_PAGO
@@ -50,6 +93,7 @@ function normalizarFormaPagamentoCheckout(value?: string) {
 function obterMetodosPagamentoCheckout(formaPagamento: string) {
   if (normalizarTexto(formaPagamento) === "cartao mercado pago") {
     return {
+      excluded_payment_methods: [{ id: "pix" }],
       excluded_payment_types: [
         { id: "bank_transfer" },
         { id: "ticket" },
@@ -59,6 +103,7 @@ function obterMetodosPagamentoCheckout(formaPagamento: string) {
   }
 
   return {
+    default_payment_method_id: "pix",
     excluded_payment_types: [
       { id: "credit_card" },
       { id: "debit_card" },
@@ -72,6 +117,49 @@ function obterMetodosPagamentoCheckout(formaPagamento: string) {
 function schemaError(message: string) {
   const texto = String(message || "").toLowerCase();
   return texto.includes("schema cache") || texto.includes("column");
+}
+
+async function buscarIdentidadeClienteCheckout(
+  supabase: ServiceSupabaseClient,
+  clienteId: number,
+) {
+  if (!Number.isInteger(clienteId) || clienteId <= 0) {
+    return { email: "", nome: "", whatsapp: "" };
+  }
+
+  const tentativasSelect = [
+    "nome,email,whatsapp",
+    "nome,whatsapp",
+    "email,whatsapp",
+    "email",
+  ];
+
+  let ultimoErro = "";
+  for (const selectCols of tentativasSelect) {
+    const { data, error } = await supabase
+      .from("clientes")
+      .select(selectCols)
+      .eq("id", clienteId)
+      .maybeSingle();
+
+    if (!error) {
+      const cliente = (data || {}) as Record<string, unknown>;
+      return {
+        email: normalizarEmail(String(cliente.email || "")),
+        nome: String(cliente.nome || "").trim(),
+        whatsapp: normalizarNumero(String(cliente.whatsapp || "")),
+      };
+    }
+
+    ultimoErro = error.message;
+    if (!schemaError(error.message)) break;
+  }
+
+  if (ultimoErro && !schemaError(ultimoErro)) {
+    throw new OrderDraftError(500, ultimoErro);
+  }
+
+  return { email: "", nome: "", whatsapp: "" };
 }
 
 async function atualizarPedidoPendenteMercadoPago(
@@ -214,11 +302,20 @@ export async function POST(request: Request) {
     let referencia = String(body.referencia || `dulelis-${Date.now()}`);
     let clienteNome = String(body.cliente_nome || "").trim();
     let whatsapp = String(body.whatsapp || "").trim();
+    const clienteCheckout = body.cliente as
+      | (NonNullable<CheckoutBody["cliente"]> & { email?: string })
+      | undefined;
+    let clienteEmail = normalizarEmail(String(clienteCheckout?.email || ""));
     let pedidoId = Number(body.pedido_id || 0);
     let itensMetadata: Array<{ nome: string; qtd: number; preco: number }> =
       [];
     let pedidoDraftMetadata: unknown = null;
     let pedidoDraftSnapshot: OrderDraftSnapshot | null = null;
+    const identidadeCliente = await buscarIdentidadeClienteCheckout(
+      supabase,
+      Number(sessao.clienteId || 0),
+    );
+    if (identidadeCliente.email) clienteEmail = identidadeCliente.email;
 
     if (Number.isInteger(pedidoId) && pedidoId > 0) {
       const { data: pedido, error: erroPedido } = await supabase
@@ -236,6 +333,8 @@ export async function POST(request: Request) {
       referencia = String(pedido.pagamento_referencia || referencia);
       clienteNome = String(pedido.cliente_nome || clienteNome);
       whatsapp = String(pedido.whatsapp || whatsapp);
+      if (!clienteNome) clienteNome = identidadeCliente.nome;
+      if (!whatsapp) whatsapp = identidadeCliente.whatsapp;
       formaPagamentoCheckout = normalizarFormaPagamentoCheckout(
         String(pedido.forma_pagamento || formaPagamentoCheckout),
       );
@@ -259,6 +358,8 @@ export async function POST(request: Request) {
       referencia = draft.reference;
       clienteNome = draft.customerPayload.nome;
       whatsapp = draft.customerPayload.whatsapp;
+      if (!clienteNome) clienteNome = identidadeCliente.nome;
+      if (!whatsapp) whatsapp = identidadeCliente.whatsapp;
       itensMetadata = draft.items.map((item) => ({
         nome: item.nome,
         qtd: item.qtd,
@@ -319,6 +420,7 @@ export async function POST(request: Request) {
         itens: itensMetadata,
         pedido_draft: pedidoDraftMetadata,
         forma_pagamento: formaPagamentoCheckout,
+        cliente_email: clienteEmail || null,
       },
       back_urls: {
         success: retornoSuccessUrl.toString(),
@@ -327,6 +429,14 @@ export async function POST(request: Request) {
       },
       payment_methods: obterMetodosPagamentoCheckout(formaPagamentoCheckout),
     };
+    const payer = obterPayerCheckout({
+      email: clienteEmail,
+      nome: clienteNome,
+      whatsapp,
+    });
+    if (payer) {
+      payload.payer = payer;
+    }
     if (baseEhPublico) {
       payload.auto_return = "approved";
       const webhookSecret = String(
