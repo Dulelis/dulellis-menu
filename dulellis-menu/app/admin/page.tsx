@@ -5225,15 +5225,16 @@ function AdminPageContent() {
                 key={propaganda.id}
                 className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4"
               >
-                <div className="relative w-full h-40 rounded-2xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center sm:h-28 sm:w-44">
+                <div className="relative w-full h-56 rounded-2xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center sm:h-40 sm:w-72 lg:w-80">
                   {propaganda.imagem_url ? (
                     <PropagandaFrame
                       src={propaganda.imagem_url}
                       alt={propaganda.titulo || "Propaganda"}
                       className="absolute inset-0"
-                      paddingClassName="p-2.5"
+                      paddingClassName="p-1.5"
+                      fitMode="cover"
                       imageClassName="drop-shadow-[0_8px_16px_rgba(15,23,42,0.2)]"
-                      sizes="(max-width: 640px) 100vw, 176px"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 288px, 320px"
                     />
                   ) : (
                     <Megaphone className="text-slate-300" size={26} />
