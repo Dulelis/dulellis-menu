@@ -4122,7 +4122,7 @@ function ClientePageContent() {
                   ) : null}
                 </div>
 
-                <div className="bg-amber-700 text-white p-8 rounded-[3rem] shadow-2xl">
+                <div className="bg-[#5e4b2d] text-white p-8 rounded-[3rem] shadow-2xl">
                   <div className="space-y-3 relative">
                     <div className="border-b border-white/10 pb-4">
                       <p className="text-[10px] uppercase font-black text-pink-500 tracking-[0.2em]">
@@ -4219,7 +4219,7 @@ function ClientePageContent() {
                     Escolha a forma de pagamento para finalizar seu pedido.
                   </p>
                 </div>
-                <div className="bg-amber-700 text-white p-8 rounded-[3rem] shadow-2xl">
+                <div className="bg-[#5e4b2d] text-white p-8 rounded-[3rem] shadow-2xl">
                   <div className="space-y-3 relative">
                     <div className="border-b border-white/10 pb-4">
                       <p className="text-[10px] uppercase font-black text-pink-500 tracking-[0.2em]">
