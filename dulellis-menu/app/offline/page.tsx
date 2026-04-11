@@ -4,6 +4,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Sem conexão",
+  description: "Você está offline. A vitrine da Dulelis sincronizará assim que a conexão voltar.",
 };
 
 export default function OfflinePage() {

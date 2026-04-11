@@ -1,11 +1,12 @@
-const STATIC_CACHE = "dulellis-static-v4";
-const RUNTIME_CACHE = "dulellis-runtime-v4";
-const IMAGE_CACHE = "dulellis-images-v4";
+const STATIC_CACHE = "dulellis-static-v5";
+const RUNTIME_CACHE = "dulellis-runtime-v5";
+const IMAGE_CACHE = "dulellis-images-v5";
 const OFFLINE_URL = "/offline";
 const APP_SHELL = [
   "/",
   OFFLINE_URL,
   "/manifest.webmanifest",
+  "/favicon.ico",
   "/logo.png",
   "/icon-192.png",
   "/icon-512.png",

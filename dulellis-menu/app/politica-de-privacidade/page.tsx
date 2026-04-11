@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   PRIVACY_POLICY_EFFECTIVE_DATE,
   PRIVACY_POLICY_VERSION,
 } from "@/lib/privacy-policy";
+
+export const metadata: Metadata = {
+  title: "Política de Privacidade | Dulellis",
+  description: "Transparência sobre o tratamento de dados pessoais na Dulellis confeitaria.",
+};
 
 const secoes = [
   {
@@ -116,12 +122,12 @@ export default function PoliticaDePrivacidadePage() {
         </div>
 
         <div className="mt-8 space-y-5">
-          {secoes.map((secao) => (
-            <section key={secao.titulo} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          {secoes.map((secao, idx) => (
+            <section key={`secao-${idx}`} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-xl font-black text-slate-800">{secao.titulo}</h2>
               <ul className="mt-4 space-y-3 text-sm font-medium leading-7 text-slate-600">
-                {secao.itens.map((item) => (
-                  <li key={item} className="rounded-2xl bg-slate-50 px-4 py-3">
+                {secao.itens.map((item, itemIdx) => (
+                  <li key={`item-${idx}-${itemIdx}`} className="rounded-2xl bg-slate-50 px-4 py-3">
                     {item}
                   </li>
                 ))}

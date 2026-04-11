@@ -1,5 +1,4 @@
 import type { ComponentPropsWithoutRef } from "react";
-import Image from "next/image";
 
 type PropagandaFrameProps = {
   src: string;
@@ -19,7 +18,7 @@ export function PropagandaFrame({
   imageClassName = "",
   paddingClassName = "p-3",
   fitMode = "contain",
-  sizes = "100vw",
+  sizes: _sizes = "100vw",
   priority = false,
   ...restProps
 }: PropagandaFrameProps) {
@@ -27,16 +26,17 @@ export function PropagandaFrame({
   const imageContainerClassName = ["relative z-10 h-full w-full", paddingClassName].filter(Boolean).join(" ");
   const foregroundFitClassName = fitMode === "cover" ? "object-cover" : "object-contain";
   const foregroundClassName = [foregroundFitClassName, imageClassName].filter(Boolean).join(" ");
+  const imageLoading = priority ? "eager" : "lazy";
 
   return (
     <div className={rootClassName} {...restProps}>
-      <Image
+      <img
         src={src}
         alt=""
-        fill
+        loading={imageLoading}
+        decoding="async"
         aria-hidden="true"
-        sizes={sizes}
-        className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-xl"
+        className="pointer-events-none absolute inset-0 block h-full w-full scale-110 object-cover opacity-40 blur-xl"
       />
       <div
         aria-hidden="true"
@@ -47,13 +47,13 @@ export function PropagandaFrame({
         className="pointer-events-none absolute inset-0 bg-amber-50/10"
       />
       <div className={imageContainerClassName}>
-        <Image
+        <img
           src={src}
           alt={alt}
-          fill
-          sizes={sizes}
-          priority={priority}
-          className={foregroundClassName}
+          loading={imageLoading}
+          decoding="async"
+          draggable={false}
+          className={`block h-full w-full ${foregroundClassName}`}
         />
       </div>
     </div>

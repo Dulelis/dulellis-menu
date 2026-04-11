@@ -163,9 +163,11 @@ type HorarioFuncionamentoRow = {
 };
 
 type CepApiResponse = {
+  cep?: string;
   address?: string;
   district?: string;
   city?: string;
+  state?: string;
   lat?: string;
   lng?: string;
 };
@@ -605,6 +607,7 @@ function obterAssinaturaPedidoAcompanhamento(pedido: PedidoAcompanhamento | null
     pedido.forma_pagamento || "",
     pedido.troco_texto || "",
     pedido.troco_para ?? "",
+    pedido.retiradaNoBalcao === true ? "retirada" : "entrega",
   ].join("|");
 }
 
@@ -678,6 +681,17 @@ function PainelAcompanhamentoPedido({
         </div>
       </div>
 
+      {retiradaNoBalcao ? (
+        <BlocoRetiradaLoja
+          className="mt-4"
+          descricao={
+            pedido.status_chave === "saiu_entrega"
+              ? "Seu pedido ja esta pronto. Use o endereço abaixo para retirar na loja."
+              : "Seu pedido sera retirado na loja. O endereço e o Maps estao aqui para facilitar."
+          }
+        />
+      ) : null}
+
       <div className="mt-4 rounded-[1.4rem] border border-emerald-100 bg-emerald-50 px-4 py-3">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
           Falar com a loja
@@ -685,15 +699,29 @@ function PainelAcompanhamentoPedido({
         <p className="mt-1 text-sm font-black text-emerald-900">
           WhatsApp: {WHATSAPP_LOJA_ACOMPANHAMENTO_LABEL}
         </p>
-        <a
-          href={whatsappLojaHref}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white transition-colors hover:bg-emerald-700"
-        >
-          <Phone size={14} />
-          Chamar no WhatsApp
-        </a>
+        <p className="mt-1 text-xs font-bold text-emerald-800/80">
+          Loja: {LOJA_ENDERECO_RETIRADA_RESUMO}
+        </p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <a
+            href={whatsappLojaHref}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white transition-colors hover:bg-emerald-700"
+          >
+            <Phone size={14} />
+            Chamar no WhatsApp
+          </a>
+          <a
+            href={LOJA_LINK_MAPS_RETIRADA}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-emerald-700 transition-colors hover:bg-emerald-100"
+          >
+            <MapPin size={14} />
+            Abrir no Maps
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -1151,14 +1179,25 @@ function ClientePageContent() {
 
       setBuscandoCep(true);
       try {
-        const res = await fetch(`https://cep.awesomeapi.com.br/json/${cepLimpo}`);
-        if (!res.ok) throw new Error("Falha ao consultar CEP");
+        const res = await fetch(`/api/public/cep?cep=${encodeURIComponent(cepLimpo)}`, {
+          cache: "no-store",
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          data?: CepApiResponse;
+          error?: string;
+        };
+        if (!res.ok || json.ok === false) {
+          throw new Error(json.error || "Falha ao consultar CEP");
+        }
 
-        const data = (await res.json()) as CepApiResponse;
+        const data = (json.data || {}) as CepApiResponse;
+        const cepRetornado = normalizarNumero(String(data.cep || cepLimpo)).slice(0, 8);
 
         if (data.address || data.district || data.city) {
           setCliente((prev) => ({
             ...prev,
+            cep: cepRetornado || prev.cep,
             endereco:
               options?.forcarPreenchimento
                 ? (data.address ?? prev.endereco)
@@ -1246,36 +1285,35 @@ function ClientePageContent() {
 
     setBuscandoCep(true);
     try {
-      const url = `https://viacep.com.br/ws/SC/${encodeURIComponent(cidadeAtual)}/${encodeURIComponent(rua)}/json/`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error("Falha ao buscar CEP pelo endereço.");
+      const params = new URLSearchParams({
+        street: rua,
+        number: String(cliente.numero || "").trim(),
+        city: cidadeAtual,
+        state: "SC",
+      });
+      if (bairroAtual) {
+        params.set("district", String(cliente.bairro || "").trim());
       }
 
-      const resultados = (await res.json().catch(() => [])) as Array<{
-        cep?: string;
-        logradouro?: string;
-        bairro?: string;
-        localidade?: string;
-      }>;
+      const res = await fetch(`/api/public/cep?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        data?: CepApiResponse;
+        error?: string;
+      };
 
-      if (!Array.isArray(resultados) || !resultados.length || "erro" in (resultados[0] || {})) {
-        throw new Error("CEP não encontrado para esse endereço.");
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || "Falha ao buscar CEP pelo endereço.");
       }
 
-      const resultado =
-        resultados.find((item) => {
-          const bairroItem = normalizarTexto(String(item.bairro || ""));
-          if (!bairroAtual) return true;
-          return bairroItem.includes(bairroAtual) || bairroAtual.includes(bairroItem);
-        }) || resultados[0];
-
-      const cepEncontrado = normalizarNumero(String(resultado.cep || "")).slice(0, 8);
+      const cepEncontrado = normalizarNumero(String(json.data?.cep || "")).slice(0, 8);
       if (cepEncontrado.length !== 8) {
         throw new Error("CEP não encontrado para esse endereço.");
       }
 
-      await executarBuscaCep(cepEncontrado);
+      await executarBuscaCep(cepEncontrado, { forcarPreenchimento: true });
     } catch (error) {
       setDistanciaKm(null);
       setTaxaEntrega(0);
@@ -3690,16 +3728,6 @@ function ClientePageContent() {
                   retiradaNoBalcao={acompanhamentoEhRetiradaNoBalcao}
                   ultimaAtualizacao={ultimaAtualizacaoAcompanhamento}
                 />
-                {acompanhamentoEhRetiradaNoBalcao ? (
-                  <BlocoRetiradaLoja
-                    className="text-left"
-                    descricao={
-                      pedidoAcompanhamento.status_chave === "saiu_entrega"
-                        ? "Seu pedido já está pronto. Use o endereço abaixo para retirar na loja."
-                        : "Seu pedido será retirado na loja. O endereço e o Maps estão aqui para facilitar."
-                    }
-                  />
-                ) : null}
               </div>
             ) : (
               <div className="mt-5 space-y-4">
