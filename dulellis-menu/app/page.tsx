@@ -83,6 +83,20 @@ const ACOMPANHAMENTO_POLLING_MS = 5000;
 const AUTH_DRAFT_STORAGE_KEY = "dulellis.auth.draft";
 const VITRINE_CACHE_STORAGE_KEY = "dulellis.vitrine.cache.v1";
 const MERCADOPAGO_REDIRECT_DRAFT_STORAGE_KEY = "dulellis.mercadopago.redirect.v1";
+const MESES_ANIVERSARIO = [
+  { value: "01", label: "Janeiro" },
+  { value: "02", label: "Fevereiro" },
+  { value: "03", label: "Marco" },
+  { value: "04", label: "Abril" },
+  { value: "05", label: "Maio" },
+  { value: "06", label: "Junho" },
+  { value: "07", label: "Julho" },
+  { value: "08", label: "Agosto" },
+  { value: "09", label: "Setembro" },
+  { value: "10", label: "Outubro" },
+  { value: "11", label: "Novembro" },
+  { value: "12", label: "Dezembro" },
+] as const;
 
 type Cliente = {
   nome: string;
@@ -856,6 +870,20 @@ function aniversarioEhHoje(dataAniversario?: string) {
   return mes === hojeMes && dia === hojeDia;
 }
 
+function extrairPartesDataAniversario(data?: string) {
+  const base = String(data || "").slice(0, 10);
+  const [ano = "", mes = "", dia = ""] = base.split("-");
+  return { dia, mes, ano };
+}
+
+function obterDiasNoMes(ano: string, mes: string) {
+  const anoNumero = Number.parseInt(ano, 10);
+  const mesNumero = Number.parseInt(mes, 10);
+  if (!Number.isInteger(mesNumero) || mesNumero < 1 || mesNumero > 12) return 31;
+  const anoBase = Number.isInteger(anoNumero) ? anoNumero : new Date().getFullYear();
+  return new Date(anoBase, mesNumero, 0).getDate();
+}
+
 function descricaoPromocaoVitrine(promo: Promocao) {
   const tipo = String(promo.tipo || "percentual");
   const valor = Number(promo.valor_promocional ?? promo.preco_promocional ?? 0);
@@ -923,6 +951,9 @@ function ClientePageContent() {
   const [authEmail, setAuthEmail] = useState("");
   const [authWhatsapp, setAuthWhatsapp] = useState("");
   const [authDataAniversario, setAuthDataAniversario] = useState("");
+  const [authDataAniversarioPartes, setAuthDataAniversarioPartes] = useState(() =>
+    extrairPartesDataAniversario(""),
+  );
   const [authSenha, setAuthSenha] = useState("");
   const [authAceitouPoliticaPrivacidade, setAuthAceitouPoliticaPrivacidade] = useState(false);
   const [authClienteEncontrado, setAuthClienteEncontrado] = useState(false);
@@ -944,6 +975,35 @@ function ClientePageContent() {
   const destaquesVitrineRef = useRef<HTMLDivElement | null>(null);
   const cardapioRef = useRef<HTMLElement | null>(null);
   const modalCarrinhoRef = useRef<HTMLDivElement | null>(null);
+  const authAnosDisponiveis = useMemo(() => {
+    const anoAtual = new Date().getFullYear();
+    return Array.from({ length: 101 }, (_, index) => String(anoAtual - index));
+  }, []);
+  const authDiasDisponiveis = useMemo(() => {
+    const totalDias = obterDiasNoMes(
+      authDataAniversarioPartes.ano,
+      authDataAniversarioPartes.mes,
+    );
+    return Array.from({ length: totalDias }, (_, index) =>
+      String(index + 1).padStart(2, "0"),
+    );
+  }, [authDataAniversarioPartes.ano, authDataAniversarioPartes.mes]);
+
+  const atualizarParteDataAniversario = useCallback(
+    (campo: "dia" | "mes" | "ano", valor: string) => {
+      setAuthDataAniversarioPartes((prev) => {
+        const proximo = { ...prev, [campo]: valor };
+        if (proximo.dia && proximo.mes) {
+          const limiteDias = obterDiasNoMes(proximo.ano, proximo.mes);
+          if (Number.parseInt(proximo.dia, 10) > limiteDias) {
+            proximo.dia = String(limiteDias).padStart(2, "0");
+          }
+        }
+        return proximo;
+      });
+    },
+    [],
+  );
 
   const aplicarVitrineCache = useCallback((cache: VitrineCache) => {
     setProdutos(cache.produtos);
@@ -1558,6 +1618,29 @@ function ClientePageContent() {
   useEffect(() => {
     void carregarSessaoCliente();
   }, [carregarSessaoCliente]);
+
+  useEffect(() => {
+    const partes = extrairPartesDataAniversario(authDataAniversario);
+    setAuthDataAniversarioPartes((prev) => {
+      if (
+        prev.dia === partes.dia &&
+        prev.mes === partes.mes &&
+        prev.ano === partes.ano
+      ) {
+        return prev;
+      }
+      return partes;
+    });
+  }, [authDataAniversario]);
+
+  useEffect(() => {
+    const { dia, mes, ano } = authDataAniversarioPartes;
+    const proximaData =
+      dia && mes && ano ? `${ano}-${mes}-${dia}` : "";
+
+    if (proximaData === authDataAniversario) return;
+    setAuthDataAniversario(proximaData);
+  }, [authDataAniversario, authDataAniversarioPartes]);
 
   useEffect(() => {
     if (authDraftRestauradoRef.current) return;
@@ -3493,19 +3576,56 @@ function ClientePageContent() {
                     Use o mesmo nome completo vinculado ao seu WhatsApp. Não é permitido trocar o nome em um número já cadastrado.
                   </p>
                   <div className="rounded-2xl bg-slate-50 border border-slate-200 px-4 py-3">
-                    <label
-                      htmlFor="auth-data-nascimento"
-                      className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-500"
-                    >
+                    <p className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
                       Data de nascimento
-                    </label>
-                    <input
-                      id="auth-data-nascimento"
-                      type="date"
-                      className="w-full bg-transparent focus:outline-none font-bold text-slate-700"
-                      value={authDataAniversario}
-                      onChange={(e) => setAuthDataAniversario(e.target.value)}
-                    />
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <label className="block">
+                        <span className="sr-only">Dia</span>
+                        <select
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-bold text-slate-700 outline-none transition-colors focus:border-pink-300"
+                          value={authDataAniversarioPartes.dia}
+                          onChange={(e) => atualizarParteDataAniversario("dia", e.target.value)}
+                        >
+                          <option value="">Dia</option>
+                          {authDiasDisponiveis.map((dia) => (
+                            <option key={dia} value={dia}>
+                              {dia}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="sr-only">Mês</span>
+                        <select
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-bold text-slate-700 outline-none transition-colors focus:border-pink-300"
+                          value={authDataAniversarioPartes.mes}
+                          onChange={(e) => atualizarParteDataAniversario("mes", e.target.value)}
+                        >
+                          <option value="">Mês</option>
+                          {MESES_ANIVERSARIO.map((mes) => (
+                            <option key={mes.value} value={mes.value}>
+                              {mes.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="sr-only">Ano</span>
+                        <select
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-bold text-slate-700 outline-none transition-colors focus:border-pink-300"
+                          value={authDataAniversarioPartes.ano}
+                          onChange={(e) => atualizarParteDataAniversario("ano", e.target.value)}
+                        >
+                          <option value="">Ano</option>
+                          {authAnosDisponiveis.map((ano) => (
+                            <option key={ano} value={ano}>
+                              {ano}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
                   </div>
                   <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-600">
                     <input
