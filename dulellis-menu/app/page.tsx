@@ -930,6 +930,8 @@ function ClientePageContent() {
   const [enderecoSalvoCliente, setEnderecoSalvoCliente] = useState<Cliente | null>(null);
   const [modoEnderecoEntrega, setModoEnderecoEntrega] = useState<"saved" | "new">("saved");
   const cadastroManualRef = useRef(false);
+  const versaoEnderecoRef = useRef(0);
+  const buscaCepRequestIdRef = useRef(0);
   const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega>(TIPO_ENTREGA);
   const [formaPagamento, setFormaPagamento] = useState("");
   const [trocoPara, setTrocoPara] = useState("");
@@ -1035,6 +1037,15 @@ function ClientePageContent() {
     setMsgTaxa(`Entrega: R$ ${taxaFinal.toFixed(2)} (último pedido)`);
     return true;
   }, []);
+
+  const registrarMudancaEndereco = useCallback(() => {
+    versaoEnderecoRef.current += 1;
+  }, []);
+
+  const marcarEdicaoManualEndereco = useCallback(() => {
+    cadastroManualRef.current = true;
+    registrarMudancaEndereco();
+  }, [registrarMudancaEndereco]);
 
   const subtotal = useMemo(
     () => carrinho.reduce((acc, i) => acc + i.preco * i.qtd, 0),
@@ -1230,18 +1241,124 @@ function ClientePageContent() {
     }
   }, [aplicarVitrineCache]);
 
+  const aplicarResultadoCep = useCallback(
+    (
+      data: CepApiResponse,
+      options?: { forcarPreenchimento?: boolean; cepFallback?: string },
+    ) => {
+      const cepRetornado = normalizarNumero(
+        String(data.cep || options?.cepFallback || ""),
+      ).slice(0, 8);
+
+      if (cepRetornado || data.address || data.district || data.city) {
+        setCliente((prev) => ({
+          ...prev,
+          cep: cepRetornado || prev.cep,
+          endereco:
+            options?.forcarPreenchimento
+              ? (data.address ?? prev.endereco)
+              : prev.endereco.trim()
+                ? prev.endereco
+                : (data.address ?? prev.endereco),
+          bairro:
+            options?.forcarPreenchimento
+              ? (data.district ?? prev.bairro)
+              : prev.bairro.trim()
+                ? prev.bairro
+                : (data.district ?? prev.bairro),
+          cidade:
+            options?.forcarPreenchimento
+              ? (data.city ?? prev.cidade)
+              : prev.cidade.trim()
+                ? prev.cidade
+                : (data.city ?? prev.cidade),
+        }));
+      }
+
+      const cidadeCep = data.city ?? cliente.cidade;
+      const atendeCidade =
+        normalizarTexto(cidadeCep) === normalizarTexto(CIDADE_ATENDIDA);
+
+      if (!atendeCidade) {
+        setDistanciaKm(null);
+        setTaxaEntrega(0);
+        setMsgTaxa(
+          "Entrega somente em Navegantes. Outras localidades: verificar disponibilidade.",
+        );
+        return;
+      }
+
+      const latitude = String(data.lat || "").trim();
+      const longitude = String(data.lng || "").trim();
+      if (latitude && longitude) {
+        const latitudeNumero = Number(latitude);
+        const longitudeNumero = Number(longitude);
+        if (!Number.isFinite(latitudeNumero) || !Number.isFinite(longitudeNumero)) {
+          setDistanciaKm(null);
+          setTaxaEntrega(0);
+          setMsgTaxa("Não foi possível calcular o frete por este endereço.");
+          return;
+        }
+
+        const distReal = calcularDistanciaKm(latitudeNumero, longitudeNumero);
+        setDistanciaKm(distReal);
+
+        const taxasOrdenadas = taxas
+          .map((t) => {
+            const match = t.bairro.match(/\d+/);
+            return {
+              ...t,
+              kmLimite: match ? Number.parseInt(match[0], 10) : 999,
+            };
+          })
+          .sort((a, b) => a.kmLimite - b.kmLimite);
+
+        const encontrada = taxasOrdenadas.find((t) => distReal <= t.kmLimite);
+
+        if (encontrada) {
+          const valorTaxa = Number(encontrada.taxa) || 0;
+          setTaxaEntrega(valorTaxa);
+          setMsgTaxa(
+            `Entrega: R$ ${valorTaxa.toFixed(2)} (${distReal.toFixed(1)} km)`,
+          );
+        } else {
+          setTaxaEntrega(0);
+          setMsgTaxa(`Distância: ${distReal.toFixed(1)} km. Consultar taxa.`);
+        }
+        return;
+      }
+
+      setDistanciaKm(null);
+      setTaxaEntrega(0);
+      setMsgTaxa("Não foi possível calcular o frete por este endereço.");
+    },
+    [cliente.cidade, taxas],
+  );
+
   const executarBuscaCep = useCallback(
-    async (valor: string, options?: { forcarPreenchimento?: boolean }) => {
+    async (
+      valor: string,
+      options?: { forcarPreenchimento?: boolean },
+    ): Promise<"applied" | "ignored" | "failed"> => {
       const cepLimpo = normalizarNumero(valor).slice(0, 8);
       setCliente((prev) => ({ ...prev, cep: cepLimpo }));
 
-      if (cepLimpo.length !== 8) return;
+      if (cepLimpo.length !== 8) return "failed";
+
+      const requestId = ++buscaCepRequestIdRef.current;
+      const versaoEnderecoInicial = versaoEnderecoRef.current;
+      const buscaAindaValida = () =>
+        requestId === buscaCepRequestIdRef.current &&
+        versaoEnderecoInicial === versaoEnderecoRef.current;
 
       setBuscandoCep(true);
       try {
-        const res = await fetch(`/api/public/cep?cep=${encodeURIComponent(cepLimpo)}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/public/cep?cep=${encodeURIComponent(cepLimpo)}`,
+          {
+            cache: "no-store",
+          },
+        );
         const json = (await res.json().catch(() => ({}))) as {
           ok?: boolean;
           data?: CepApiResponse;
@@ -1251,90 +1368,38 @@ function ClientePageContent() {
           throw new Error(json.error || "Falha ao consultar CEP");
         }
 
+        if (!buscaAindaValida()) return "ignored";
+
         const data = (json.data || {}) as CepApiResponse;
-        const cepRetornado = normalizarNumero(String(data.cep || cepLimpo)).slice(0, 8);
-
-        if (data.address || data.district || data.city) {
-          setCliente((prev) => ({
-            ...prev,
-            cep: cepRetornado || prev.cep,
-            endereco:
-              options?.forcarPreenchimento
-                ? (data.address ?? prev.endereco)
-                : prev.endereco.trim()
-                  ? prev.endereco
-                  : (data.address ?? prev.endereco),
-            bairro:
-              options?.forcarPreenchimento
-                ? (data.district ?? prev.bairro)
-                : prev.bairro.trim()
-                  ? prev.bairro
-                  : (data.district ?? prev.bairro),
-            cidade:
-              options?.forcarPreenchimento
-                ? (data.city ?? prev.cidade)
-                : prev.cidade.trim()
-                  ? prev.cidade
-                  : (data.city ?? prev.cidade),
-          }));
-        }
-
-        const cidadeCep = data.city ?? cliente.cidade;
-        const atendeCidade =
-          normalizarTexto(cidadeCep) === normalizarTexto(CIDADE_ATENDIDA);
-
-        if (!atendeCidade) {
-          setDistanciaKm(null);
-          setTaxaEntrega(0);
-          setMsgTaxa("Entrega somente em Navegantes. Outras localidades: verificar disponibilidade.");
-          return;
-        }
-
-        if (data.lat && data.lng) {
-          const distReal = calcularDistanciaKm(Number(data.lat), Number(data.lng));
-          setDistanciaKm(distReal);
-
-          const taxasOrdenadas = taxas
-            .map((t) => {
-              const match = t.bairro.match(/\d+/);
-              return { ...t, kmLimite: match ? Number.parseInt(match[0], 10) : 999 };
-            })
-            .sort((a, b) => a.kmLimite - b.kmLimite);
-
-          const encontrada = taxasOrdenadas.find((t) => distReal <= t.kmLimite);
-
-          if (encontrada) {
-            const valorTaxa = Number(encontrada.taxa) || 0;
-            setTaxaEntrega(valorTaxa);
-            setMsgTaxa(`Entrega: R$ ${valorTaxa.toFixed(2)} (${distReal.toFixed(1)} km)`);
-          } else {
-            setTaxaEntrega(0);
-            setMsgTaxa(`Distância: ${distReal.toFixed(1)} km. Consultar taxa.`);
-          }
-        } else {
-          setDistanciaKm(null);
-          setTaxaEntrega(0);
-          setMsgTaxa("Não foi possível calcular o frete por este CEP.");
-        }
+        aplicarResultadoCep(data, {
+          ...options,
+          cepFallback: cepLimpo,
+        });
+        return "applied";
       } catch {
+        if (!buscaAindaValida()) return "ignored";
         setDistanciaKm(null);
         setTaxaEntrega(0);
         setMsgTaxa("Erro ao calcular frete.");
+        return "failed";
       } finally {
-        setBuscandoCep(false);
+        if (requestId === buscaCepRequestIdRef.current) {
+          setBuscandoCep(false);
+        }
       }
     },
-    [cliente.cidade, taxas],
+    [aplicarResultadoCep],
   );
 
   const atualizarCepDigitado = useCallback((valor: string) => {
-    cadastroManualRef.current = true;
+    marcarEdicaoManualEndereco();
     const cepLimpo = normalizarNumero(valor).slice(0, 8);
     setCliente((prev) => ({ ...prev, cep: cepLimpo }));
-  }, []);
+  }, [marcarEdicaoManualEndereco]);
 
   const buscarCepPorEndereco = useCallback(async () => {
     const rua = String(cliente.endereco || "").trim();
+    const numeroAtual = String(cliente.numero || "").trim();
     const bairroAtual = normalizarTexto(String(cliente.bairro || ""));
     const cidadeAtual = String(cliente.cidade || DEFAULT_CITY).trim() || DEFAULT_CITY;
 
@@ -1343,11 +1408,22 @@ function ClientePageContent() {
       return;
     }
 
+    if (!numeroAtual) {
+      alert("Informe o número para localizar o CEP com mais precisão.");
+      return;
+    }
+
+    const requestId = ++buscaCepRequestIdRef.current;
+    const versaoEnderecoInicial = versaoEnderecoRef.current;
+    const buscaAindaValida = () =>
+      requestId === buscaCepRequestIdRef.current &&
+      versaoEnderecoInicial === versaoEnderecoRef.current;
+
     setBuscandoCep(true);
     try {
       const params = new URLSearchParams({
         street: rua,
-        number: String(cliente.numero || "").trim(),
+        number: numeroAtual,
         city: cidadeAtual,
         state: "SC",
       });
@@ -1368,21 +1444,39 @@ function ClientePageContent() {
         throw new Error(json.error || "Falha ao buscar CEP pelo endereço.");
       }
 
-      const cepEncontrado = normalizarNumero(String(json.data?.cep || "")).slice(0, 8);
+      if (!buscaAindaValida()) return;
+
+      const data = (json.data || {}) as CepApiResponse;
+      const cepEncontrado = normalizarNumero(String(data.cep || "")).slice(0, 8);
       if (cepEncontrado.length !== 8) {
         throw new Error("CEP não encontrado para esse endereço.");
       }
 
-      await executarBuscaCep(cepEncontrado, { forcarPreenchimento: true });
+      aplicarResultadoCep(data, {
+        forcarPreenchimento: true,
+        cepFallback: cepEncontrado,
+      });
     } catch (error) {
+      if (!buscaAindaValida()) return;
       setDistanciaKm(null);
       setTaxaEntrega(0);
       setMsgTaxa("Não foi possível localizar o CEP pelo endereço.");
-      alert(obterMensagemErro(error) || "Não foi possível localizar o CEP pelo endereço.");
+      alert(
+        obterMensagemErro(error) ||
+          "Não foi possível localizar o CEP pelo endereço.",
+      );
     } finally {
-      setBuscandoCep(false);
+      if (requestId === buscaCepRequestIdRef.current) {
+        setBuscandoCep(false);
+      }
     }
-  }, [cliente.bairro, cliente.cidade, cliente.endereco, executarBuscaCep]);
+  }, [
+    aplicarResultadoCep,
+    cliente.bairro,
+    cliente.cidade,
+    cliente.endereco,
+    cliente.numero,
+  ]);
 
   const executarBuscaCliente = useCallback(
     async (zap: string, options?: { forcarAplicacao?: boolean }) => {
@@ -1415,8 +1509,11 @@ function ClientePageContent() {
         const enderecoFinal = limparEnderecoDePontoReferencia(enderecoBruto);
         const aniversarioRaw = String(clienteEncontradoDb.data_aniversario ?? "").trim();
         const aniversarioNormalizado = aniversarioRaw ? aniversarioRaw.slice(0, 10) : "";
+        const podeAplicarEndereco =
+          Boolean(options?.forcarAplicacao) || !cadastroManualRef.current;
 
-        if (options?.forcarAplicacao || !cadastroManualRef.current) {
+        if (podeAplicarEndereco) {
+          registrarMudancaEndereco();
           setCliente((prev) => ({
             ...prev,
             nome: String(clienteEncontradoDb.nome ?? ""),
@@ -1445,13 +1542,22 @@ function ClientePageContent() {
             data_aniversario: aniversarioNormalizado,
           }),
         );
-        if (options?.forcarAplicacao || !cadastroManualRef.current) {
+        if (podeAplicarEndereco) {
           setModoEnderecoEntrega("saved");
         }
         setClienteEncontrado(true);
 
-        if (!aplicarTaxaUltimoPedido(clienteEncontradoDb.ultima_taxa_entrega) && cepNormalizado.length === 8) {
-          await executarBuscaCep(cepNormalizado, { forcarPreenchimento: Boolean(options?.forcarAplicacao) });
+        if (podeAplicarEndereco && cepNormalizado.length === 8) {
+          const resultadoBuscaCep = await executarBuscaCep(cepNormalizado, {
+            forcarPreenchimento: Boolean(options?.forcarAplicacao),
+          });
+          if (resultadoBuscaCep !== "failed") {
+            return;
+          }
+        }
+
+        if (podeAplicarEndereco) {
+          aplicarTaxaUltimoPedido(clienteEncontradoDb.ultima_taxa_entrega);
         }
       } catch {
         setClienteEncontrado(false);
@@ -1460,7 +1566,7 @@ function ClientePageContent() {
         setBuscandoCliente(false);
       }
     },
-    [aplicarTaxaUltimoPedido, executarBuscaCep],
+    [aplicarTaxaUltimoPedido, executarBuscaCep, registrarMudancaEndereco],
   );
 
   useEffect(() => {
@@ -1564,7 +1670,10 @@ function ClientePageContent() {
 
       const dados = json.data;
       setSessaoCliente(dados);
-      if (options?.forcarAplicacao || !cadastroManualRef.current) {
+      const podeAplicarEndereco =
+        Boolean(options?.forcarAplicacao) || !cadastroManualRef.current;
+      if (podeAplicarEndereco) {
+        registrarMudancaEndereco();
         setCliente((prev) => ({
           ...prev,
           nome: dados.nome || prev.nome,
@@ -1593,11 +1702,22 @@ function ClientePageContent() {
       });
       if (clienteTemEnderecoSalvo(clienteSessao)) {
         setEnderecoSalvoCliente(clienteSessao);
-        if (options?.forcarAplicacao || !cadastroManualRef.current) {
+        if (podeAplicarEndereco) {
           setModoEnderecoEntrega("saved");
         }
-        if (!aplicarTaxaUltimoPedido(dados.ultima_taxa_entrega) && dados.cep) {
-          await executarBuscaCep(dados.cep, { forcarPreenchimento: Boolean(options?.forcarAplicacao) });
+        if (podeAplicarEndereco && dados.cep) {
+          const resultadoBuscaCep = await executarBuscaCep(dados.cep, {
+            forcarPreenchimento: Boolean(options?.forcarAplicacao),
+          });
+          if (resultadoBuscaCep !== "failed") {
+            setAuthWhatsapp(dados.whatsapp || "");
+            setAuthEmail(dados.email || "");
+            await verificarDisponibilidadeAcompanhamento(dados.whatsapp || "");
+            return;
+          }
+        }
+        if (podeAplicarEndereco) {
+          aplicarTaxaUltimoPedido(dados.ultima_taxa_entrega);
         }
       } else {
         setEnderecoSalvoCliente(null);
@@ -1613,7 +1733,7 @@ function ClientePageContent() {
       setPodeAcompanharPedido(false);
       setUltimaTaxaEntregaSalva(null);
     }
-  }, [aplicarTaxaUltimoPedido, executarBuscaCep]);
+  }, [aplicarTaxaUltimoPedido, executarBuscaCep, registrarMudancaEndereco]);
 
   useEffect(() => {
     void carregarSessaoCliente();
@@ -1701,6 +1821,7 @@ function ClientePageContent() {
 
   const aplicarEnderecoSalvo = useCallback((base: Cliente) => {
     cadastroManualRef.current = false;
+    registrarMudancaEndereco();
     const pontoFinal = String(base.ponto_referencia || "").trim() || extrairPontoReferenciaDeEndereco(base.endereco);
     const enderecoFinal = limparEnderecoDePontoReferencia(base.endereco);
     setCliente((prev) => ({
@@ -1716,7 +1837,7 @@ function ClientePageContent() {
       observacao: base.observacao,
       data_aniversario: base.data_aniversario || prev.data_aniversario,
     }));
-  }, []);
+  }, [registrarMudancaEndereco]);
 
   const resetarFluxoCheckout = useCallback((baseCliente?: Cliente | null) => {
     if (baseCliente) {
@@ -1737,6 +1858,7 @@ function ClientePageContent() {
 
   const restaurarRascunhoMercadoPago = useCallback((draft: MercadoPagoRedirectDraft) => {
     cadastroManualRef.current = true;
+    registrarMudancaEndereco();
     setCarrinho(draft.carrinho);
     setCliente(draft.cliente);
     setTipoEntrega(draft.tipoEntrega);
@@ -1757,10 +1879,10 @@ function ClientePageContent() {
     setPodeAcompanharPedido(false);
     setAbaCarrinho(draft.carrinho.length > 0);
     setPasso(draft.carrinho.length > 0 ? 3 : 1);
-  }, []);
+  }, [registrarMudancaEndereco]);
 
   const prepararNovoEndereco = useCallback(() => {
-    cadastroManualRef.current = true;
+    marcarEdicaoManualEndereco();
     setCliente((prev) => ({
       ...prev,
       cep: "",
@@ -1774,7 +1896,7 @@ function ClientePageContent() {
     setDistanciaKm(null);
     setTaxaEntrega(0);
     setMsgTaxa("Aguardando endereço...");
-  }, []);
+  }, [marcarEdicaoManualEndereco]);
 
   const selecionarEnderecoSalvo = useCallback(
     async (base: Cliente) => {
@@ -1787,7 +1909,11 @@ function ClientePageContent() {
 
       const cepSalvo = normalizarNumero(base.cep).slice(0, 8);
       if (cepSalvo.length === 8) {
-        await executarBuscaCep(cepSalvo);
+        const resultadoBuscaCep = await executarBuscaCep(cepSalvo);
+        if (resultadoBuscaCep !== "failed") return;
+      }
+
+      if (aplicarTaxaUltimoPedido(ultimaTaxaEntregaSalva)) {
         return;
       }
 
@@ -1810,11 +1936,12 @@ function ClientePageContent() {
       }
 
       const cepAtual = normalizarNumero(cliente.cep).slice(0, 8);
-      if (modoEnderecoEntrega === "saved" && aplicarTaxaUltimoPedido(ultimaTaxaEntregaSalva)) {
-        return;
-      }
       if (cepAtual.length === 8) {
         void executarBuscaCep(cepAtual);
+        return;
+      }
+
+      if (modoEnderecoEntrega === "saved" && aplicarTaxaUltimoPedido(ultimaTaxaEntregaSalva)) {
         return;
       }
 
@@ -4117,10 +4244,14 @@ function ClientePageContent() {
                     <button
                       type="button"
                       onClick={() => void buscarCepPorEndereco()}
-                      disabled={buscandoCep || !cliente.endereco.trim()}
+                      disabled={
+                        buscandoCep ||
+                        !cliente.endereco.trim() ||
+                        !cliente.numero.trim()
+                      }
                       className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all disabled:opacity-50"
                     >
-                      Não sei o CEP, localizar pelo endereço
+                      Buscar CEP pelo endereço e número
                     </button>
 
                     <div className="grid grid-cols-4 gap-3">
@@ -4131,7 +4262,7 @@ function ClientePageContent() {
                         value={cliente.endereco}
                         className="col-span-3 w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                         onChange={(e) => {
-                          cadastroManualRef.current = true;
+                          marcarEdicaoManualEndereco();
                           setCliente((prev) => ({ ...prev, endereco: e.target.value }));
                         }}
                       />
@@ -4142,7 +4273,7 @@ function ClientePageContent() {
                         value={cliente.numero}
                         className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold text-center"
                         onChange={(e) => {
-                          cadastroManualRef.current = true;
+                          marcarEdicaoManualEndereco();
                           setCliente((prev) => ({ ...prev, numero: e.target.value }));
                         }}
                       />
@@ -4155,7 +4286,7 @@ function ClientePageContent() {
                       value={cliente.bairro}
                       className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                       onChange={(e) => {
-                        cadastroManualRef.current = true;
+                        marcarEdicaoManualEndereco();
                         setCliente((prev) => ({ ...prev, bairro: e.target.value }));
                       }}
                     />
@@ -4167,7 +4298,7 @@ function ClientePageContent() {
                       value={cliente.ponto_referencia}
                       className="w-full p-5 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-pink-200 focus:bg-white focus:outline-none font-bold"
                       onChange={(e) => {
-                        cadastroManualRef.current = true;
+                        marcarEdicaoManualEndereco();
                         setCliente((prev) => ({ ...prev, ponto_referencia: e.target.value }));
                       }}
                     />

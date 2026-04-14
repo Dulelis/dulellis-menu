@@ -147,7 +147,6 @@ const ADMIN_TABS = [
   "estoque",
   "promocoes",
   "propagandas",
-  "horario",
   "clientes",
   "taxas",
   "entregadores",
@@ -314,6 +313,7 @@ function normalizarAlarmeSomId(valor: string | null): AlarmeSomId {
 }
 
 function normalizarAdminTab(valor: string | null): AdminTab {
+  if (valor === "horario") return "painel";
   return ADMIN_TABS.includes(valor as AdminTab)
     ? (valor as AdminTab)
     : "estoque";
@@ -4595,13 +4595,6 @@ function AdminPageContent() {
             <Megaphone size={20} /> Propaganda{" "}
           </button>
           <button
-            onClick={() => setActiveTab("horario")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "horario" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <Clock3 size={20} /> Horário{" "}
-          </button>
-          <button
             onClick={() => setActiveTab("clientes")}
             className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "clientes" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
           >
@@ -4639,7 +4632,6 @@ function AdminPageContent() {
             {activeTab === "estoque" && "Produtos"}
             {activeTab === "promocoes" && "Promoções"}
             {activeTab === "propagandas" && "Propaganda"}
-            {activeTab === "horario" && "Horário de Funcionamento"}
             {activeTab === "clientes" && "Clientes"}
             {activeTab === "taxas" && "Raio de Entrega (km)"}
             {activeTab === "entregadores" && "Entregadores"}
@@ -4891,6 +4883,122 @@ function AdminPageContent() {
                   navegador.
                 </p>
               ) : null}
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <form
+                onSubmit={salvarHorarioFuncionamento}
+                className="space-y-5"
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                      Painel Geral
+                    </p>
+                    <h2 className="mt-2 text-2xl font-black text-slate-800">
+                      Horário de Funcionamento
+                    </h2>
+                    <p className="mt-2 text-sm font-bold leading-6 text-slate-500">
+                      A vitrine exibirá status de aberto/fechado e alerta nos
+                      últimos 5 minutos antes de fechar.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-start gap-2 sm:items-end">
+                    <span
+                      className={`text-xs font-black uppercase tracking-wide ${horarioFuncionamento.ativo ? "text-green-600" : "text-red-600"}`}
+                    >
+                      {horarioFuncionamento.ativo
+                        ? "Loja Aberta"
+                        : "Loja Fechada"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void alternarStatusLoja()}
+                      className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wide text-white ${horarioFuncionamento.ativo ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}`}
+                    >
+                      {horarioFuncionamento.ativo
+                        ? "Finalizar Loja"
+                        : "Iniciar Loja"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Abre às
+                    </label>
+                    <input
+                      type="time"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500"
+                      value={horarioFuncionamento.hora_abertura}
+                      onChange={(e) =>
+                        setHorarioFuncionamento((prev) => ({
+                          ...prev,
+                          hora_abertura: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Fecha às
+                    </label>
+                    <input
+                      type="time"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500"
+                      value={horarioFuncionamento.hora_fechamento}
+                      onChange={(e) =>
+                        setHorarioFuncionamento((prev) => ({
+                          ...prev,
+                          hora_fechamento: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    Dias da Semana
+                  </label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {DIAS_SEMANA.map((dia) => {
+                      const ativo = horarioFuncionamento.dias_semana.includes(
+                        dia.key,
+                      );
+                      return (
+                        <button
+                          key={dia.key}
+                          type="button"
+                          onClick={() => alternarDiaFuncionamento(dia.key)}
+                          className={`rounded-xl border px-3 py-2 text-xs font-black uppercase tracking-wide transition-colors ${
+                            ativo
+                              ? "border-pink-600 bg-pink-600 text-white"
+                              : "border-slate-200 bg-slate-50 text-slate-500"
+                          }`}
+                        >
+                          {dia.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="submit"
+                    className="rounded-2xl bg-pink-600 px-6 py-3 font-bold text-white shadow-lg transition-all hover:bg-pink-700"
+                  >
+                    Salvar Horário
+                  </button>
+                  <p className="text-sm font-medium text-slate-500">
+                    Essa configuração agora fica centralizada no Painel Geral.
+                  </p>
+                </div>
+              </form>
             </div>
 
             <div className="rounded-[2rem] border border-red-200 bg-red-50 p-6 shadow-sm">
@@ -5905,119 +6013,6 @@ function AdminPageContent() {
                 </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {activeTab === "horario" && (
-          <div className="max-w-2xl">
-            <form
-              onSubmit={salvarHorarioFuncionamento}
-              className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-5"
-            >
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                    Controle da Vitrine
-                  </p>
-                  <h3 className="text-xl font-black text-slate-800 mt-1">
-                    Horário de Funcionamento
-                  </h3>
-                  <p className="text-sm text-slate-500 mt-1">
-                    A vitrine exibirá status de aberto/fechado e alerta nos
-                    últimos 5 minutos antes de fechar.
-                  </p>
-                </div>
-                <div className="flex flex-col items-start gap-2 sm:items-end">
-                  <span
-                    className={`text-xs font-black uppercase tracking-wide ${horarioFuncionamento.ativo ? "text-green-600" : "text-red-600"}`}
-                  >
-                    {horarioFuncionamento.ativo
-                      ? "Loja Aberta"
-                      : "Loja Fechada"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void alternarStatusLoja()}
-                    className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wide text-white ${horarioFuncionamento.ativo ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}`}
-                  >
-                    {horarioFuncionamento.ativo
-                      ? "Finalizar Loja"
-                      : "Iniciar Loja"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">
-                    Abre as
-                  </label>
-                  <input
-                    type="time"
-                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
-                    value={horarioFuncionamento.hora_abertura}
-                    onChange={(e) =>
-                      setHorarioFuncionamento((prev) => ({
-                        ...prev,
-                        hora_abertura: e.target.value,
-                      }))
-                    }
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">
-                    Fecha as
-                  </label>
-                  <input
-                    type="time"
-                    className="w-full p-4 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-pink-500 font-medium text-slate-700"
-                    value={horarioFuncionamento.hora_fechamento}
-                    onChange={(e) =>
-                      setHorarioFuncionamento((prev) => ({
-                        ...prev,
-                        hora_fechamento: e.target.value,
-                      }))
-                    }
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">
-                  Dias da Semana
-                </label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {DIAS_SEMANA.map((dia) => {
-                    const ativo = horarioFuncionamento.dias_semana.includes(
-                      dia.key,
-                    );
-                    return (
-                      <button
-                        key={dia.key}
-                        type="button"
-                        onClick={() => alternarDiaFuncionamento(dia.key)}
-                        className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wide border transition-colors ${
-                          ativo
-                            ? "bg-pink-600 border-pink-600 text-white"
-                            : "bg-slate-50 border-slate-200 text-slate-500"
-                        }`}
-                      >
-                        {dia.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg hover:bg-pink-700 transition-all"
-              >
-                Salvar Horário
-              </button>
-            </form>
           </div>
         )}
 

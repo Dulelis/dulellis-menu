@@ -203,6 +203,45 @@ async function geocodificarEndereco(query: string, cityHint = ""): Promise<CepLo
   }
 }
 
+function pontuarFaixaNumericaComplemento(
+  complemento: string,
+  numeroBusca: number,
+): number {
+  const texto = normalizarTexto(complemento);
+  if (!texto || !Number.isFinite(numeroBusca)) return 0;
+
+  const numerosFaixa = Array.from(texto.matchAll(/\d+/g))
+    .map((match) => Number.parseInt(match[0], 10))
+    .filter((value) => Number.isFinite(value));
+
+  let score = 0;
+
+  if (texto.includes("lado par")) {
+    score += numeroBusca % 2 === 0 ? 3 : -5;
+  }
+  if (texto.includes("lado impar")) {
+    score += numeroBusca % 2 !== 0 ? 3 : -5;
+  }
+
+  if (/\bde\b/.test(texto) && /\ba\b/.test(texto) && numerosFaixa.length >= 2) {
+    const menor = Math.min(...numerosFaixa);
+    const maior = Math.max(...numerosFaixa);
+    score += numeroBusca >= menor && numeroBusca <= maior ? 10 : -6;
+    return score;
+  }
+
+  if ((texto.includes("ao fim") || texto.includes("em diante")) && numerosFaixa.length > 0) {
+    score += numeroBusca >= Math.min(...numerosFaixa) ? 10 : -6;
+    return score;
+  }
+
+  if (texto.includes("ate") && numerosFaixa.length > 0) {
+    score += numeroBusca <= Math.max(...numerosFaixa) ? 10 : -6;
+  }
+
+  return score;
+}
+
 function pontuarResultadoEndereco(
   item: CepLookupResponse,
   street: string,
@@ -235,21 +274,10 @@ function pontuarResultadoEndereco(
   if (cityBusca && cityItem === cityBusca) score += 2;
 
   if (Number.isFinite(numeroBusca)) {
-    const complemento = normalizarTexto(String(item.complement || ""));
-    const numerosFaixa = Array.from(complemento.matchAll(/\d+/g))
-      .map((match) => Number.parseInt(match[0], 10))
-      .filter((value) => Number.isFinite(value));
-
-    if (complemento.includes("ate") && numerosFaixa.length > 0) {
-      if (numeroBusca <= Math.max(...numerosFaixa)) score += 8;
-      else score -= 4;
-    } else if (
-      (complemento.includes("ao fim") || complemento.includes("em diante")) &&
-      numerosFaixa.length > 0
-    ) {
-      if (numeroBusca >= Math.min(...numerosFaixa)) score += 8;
-      else score -= 4;
-    }
+    score += pontuarFaixaNumericaComplemento(
+      String(item.complement || ""),
+      numeroBusca,
+    );
   }
 
   return score;
@@ -316,6 +344,7 @@ async function consultarPorEndereco(
   state: string,
 ): Promise<CepLookupResponse | null> {
   const queryCompleta = [street, number, district, city, state, DEFAULT_COUNTRY].filter(Boolean).join(", ");
+  const geocodificadoEnderecoCompleto = await geocodificarEndereco(queryCompleta, city);
 
   const candidatos = await buscarViaCepPorEndereco(street, city, state);
   const melhorViaCep = [...candidatos].sort(
@@ -329,11 +358,26 @@ async function consultarPorEndereco(
     return {
       ...melhorViaCep,
       ...detalhado,
+      lat: geocodificadoEnderecoCompleto?.lat || detalhado?.lat,
+      lng: geocodificadoEnderecoCompleto?.lng || detalhado?.lng,
+      address:
+        geocodificadoEnderecoCompleto?.address ||
+        detalhado?.address ||
+        melhorViaCep.address,
+      district:
+        geocodificadoEnderecoCompleto?.district ||
+        detalhado?.district ||
+        melhorViaCep.district,
+      city: geocodificadoEnderecoCompleto?.city || detalhado?.city || melhorViaCep.city,
+      state:
+        geocodificadoEnderecoCompleto?.state ||
+        detalhado?.state ||
+        melhorViaCep.state,
       cep: detalhado?.cep || melhorViaCep.cep,
     };
   }
 
-  const geocodificado = await geocodificarEndereco(queryCompleta, city);
+  const geocodificado = geocodificadoEnderecoCompleto;
   const cepGeocodificado = normalizarNumero(String(geocodificado?.cep || "")).slice(0, 8);
   if (cepGeocodificado.length !== 8) return null;
 
