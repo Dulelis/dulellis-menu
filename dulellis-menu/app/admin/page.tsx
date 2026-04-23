@@ -104,6 +104,20 @@ type QzGlobal = {
     isActive?: () => boolean;
     connect?: () => Promise<void>;
   };
+  security?: {
+    setCertificatePromise?: (
+      promiseHandler:
+        | (() => Promise<string>)
+        | ((resolve: (value: string) => void, reject: (reason?: unknown) => void) => void),
+      options?: { rejectOnFailure?: boolean },
+    ) => void;
+    setSignatureAlgorithm?: (algorithm: string) => void;
+    setSignaturePromise?: (
+      promiseFactory:
+        | ((toSign: string) => Promise<string>)
+        | ((toSign: string) => (resolve: (value: string) => void, reject: (reason?: unknown) => void) => void),
+    ) => void;
+  };
   configs?: {
     create?: (printer: QzPrinterTarget | null) => unknown;
   };
@@ -675,10 +689,65 @@ function AdminPageContent() {
     [],
   );
 
+  const qzSegurancaConfiguradaRef = useRef(false);
+
+  const obterCertificadoQz = useCallback(async () => {
+    try {
+      const response = await fetch("/api/admin/qz/certificate", {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!response.ok) return "";
+      return (await response.text()).trim();
+    } catch (error) {
+      console.warn("Nao foi possivel carregar o certificado do QZ Tray.", error);
+      return "";
+    }
+  }, []);
+
+  const obterAssinaturaQz = useCallback(async (requestToSign: string) => {
+    try {
+      const response = await fetch("/api/admin/qz/sign", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request: requestToSign }),
+      });
+      if (!response.ok) return "";
+      return (await response.text()).trim();
+    } catch (error) {
+      console.warn("Nao foi possivel assinar a requisicao do QZ Tray.", error);
+      return "";
+    }
+  }, []);
+
+  const configurarSegurancaQz = useCallback(() => {
+    const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
+    const security = qzGlobal?.security;
+    if (!security) return false;
+    if (qzSegurancaConfiguradaRef.current) return true;
+    if (
+      !security.setCertificatePromise ||
+      !security.setSignaturePromise ||
+      !security.setSignatureAlgorithm
+    ) {
+      return false;
+    }
+
+    security.setCertificatePromise(obterCertificadoQz);
+    security.setSignatureAlgorithm("SHA512");
+    security.setSignaturePromise(obterAssinaturaQz);
+    qzSegurancaConfiguradaRef.current = true;
+    return true;
+  }, [obterAssinaturaQz, obterCertificadoQz]);
+
   const garantirQzPronto = useCallback(async () => {
     if (!QZ_PRINTER_TARGET) return false;
 
     const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
+    configurarSegurancaQz();
     const websocket = qzGlobal?.websocket;
     if (!websocket?.connect || !websocket?.isActive) return false;
     if (websocket.isActive()) return true;
@@ -699,7 +768,7 @@ function AdminPageContent() {
 
     await qzConectandoRef.current;
     return Boolean(websocket.isActive());
-  }, []);
+  }, [configurarSegurancaQz]);
 
   const prepararAudioAlarme = useCallback(async () => {
     if (typeof window === "undefined") return null;
@@ -5428,7 +5497,7 @@ function AdminPageContent() {
                       alt={propaganda.titulo || "Propaganda"}
                       className="absolute inset-0"
                       paddingClassName="p-1.5"
-                      fitMode="cover"
+                      fitMode="contain"
                       imageClassName="drop-shadow-[0_8px_16px_rgba(15,23,42,0.2)]"
                       sizes="(max-width: 640px) 100vw, (max-width: 1024px) 288px, 320px"
                     />
