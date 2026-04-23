@@ -2398,7 +2398,7 @@ function AdminPageContent() {
       const observacao = limparObservacaoTroco(
         String(pedidoCompleto?.observacao || "").trim(),
       );
-      const larguraLinha = 22;
+      const larguraLinha = 32;
 
       const quebrarLinha = (texto: string, largura = larguraLinha) => {
         const bruto = String(texto || "").trim();
@@ -2463,13 +2463,14 @@ function AdminPageContent() {
         : "Itens nao informados";
 
       const iniciar = "\x1b\x40";
+      const selecionarFonteCompacta = "\x1b\x4d\x01";
       const negritoOn = "\x1b\x45\x01";
       const negritoOff = "\x1b\x45\x00";
       const alinharCentro = "\x1b\x61\x01";
       const alinharEsquerda = "\x1b\x61\x00";
       const fonteNormal = "\x1d\x21\x00";
-      const fonteDobro = "\x1d\x21\x11";
-      const divisor = "----------------------\n";
+      const fonteLarguraDupla = "\x1d\x21\x01";
+      const divisor = `${"-".repeat(larguraLinha)}\n`;
       const blocoQrMaps = linkAceiteEntrega
         ? alinharCentro +
           negritoOn +
@@ -2483,14 +2484,16 @@ function AdminPageContent() {
 
       return (
         iniciar +
+        selecionarFonteCompacta +
         alinharCentro +
         negritoOn +
-        fonteDobro +
+        fonteLarguraDupla +
         "DULELIS\n" +
         "CONFEITARIA\n" +
         "\n" +
+        negritoOff +
+        fonteNormal +
         alinharEsquerda +
-        fonteDobro +
         `${linhasMeta}\n` +
         divisor +
         `${linhasItens}\n` +
@@ -2499,8 +2502,9 @@ function AdminPageContent() {
         `ENTREGA: ${formatarValor(taxaEntrega)}\n` +
         `DESCONTO: ${formatarValor(descontoAplicado)}\n` +
         negritoOn +
-        fonteDobro +
+        fonteLarguraDupla +
         `TOTAL: ${formatarValor(valorTotal)}\n` +
+        fonteNormal +
         (troco.exibir && troco.valor !== null
           ? `TROCO P/: ${formatarValor(troco.valor)}\n`
           : "") +
