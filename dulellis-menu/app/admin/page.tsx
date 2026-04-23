@@ -2482,14 +2482,11 @@ function AdminPageContent() {
   const imprimirPedidoAceito = useCallback(
     async (pedido: any, options?: ImpressaoPedidoAceitoOptions) => {
       const visualizar = Boolean(options?.visualizar);
-      const popup =
-        options?.popupExistente ||
-        window.open(
-          "",
-          "_blank",
-          visualizar ? "width=520,height=820" : "width=420,height=760",
-        );
-      prepararPopupImpressao(popup, Number(pedido?.id || 0));
+      let popup = options?.popupExistente || null;
+      if (visualizar && (!popup || popup.closed)) {
+        popup = window.open("", "_blank", "width=520,height=820");
+        prepararPopupImpressao(popup, Number(pedido?.id || 0));
+      }
       const pedidoCompleto = completarPedidoComCliente(pedido);
       const pagamento = obterResumoPagamento(pedidoCompleto);
       const taxaEntrega = Math.max(
@@ -2605,6 +2602,10 @@ function AdminPageContent() {
             "Falha ao imprimir via QZ Tray no admin. Usando popup:",
             error,
           );
+          if (!popup || popup.closed) {
+            popup = window.open("", "_blank", "width=420,height=760");
+            prepararPopupImpressao(popup, Number(pedido?.id || 0));
+          }
           if (popup && !popup.closed) {
             popup.focus();
           }
@@ -2808,12 +2809,6 @@ function AdminPageContent() {
     proximoStatus: string,
   ) => {
     setPedidoAtualizandoId(pedidoId);
-    const vaiImprimirAoAceitar =
-      Boolean(pedidos.find((item) => Number(item.id) === Number(pedidoId))) &&
-      proximoStatus === "recebido";
-    const popupImpressao = vaiImprimirAoAceitar
-      ? window.open("", "_blank", "width=420,height=760")
-      : null;
     try {
       const pedidoAtual =
         pedidos.find((item) => Number(item.id) === Number(pedidoId)) || null;
@@ -2829,16 +2824,13 @@ function AdminPageContent() {
         proximoStatus === "recebido"
       ) {
         void carregarDados();
-        await imprimirPedidoAceito(
-          { ...pedidoAtual, status_pedido: proximoStatus },
-          { popupExistente: popupImpressao },
-        );
+        await imprimirPedidoAceito({
+          ...pedidoAtual,
+          status_pedido: proximoStatus,
+        });
       }
       await carregarDados();
     } catch (error: any) {
-      if (popupImpressao && !popupImpressao.closed) {
-        popupImpressao.close();
-      }
       const mensagem = String(error?.message || "");
       if (
         mensagem.toLowerCase().includes("column") ||
