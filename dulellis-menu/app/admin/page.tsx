@@ -2483,6 +2483,7 @@ function AdminPageContent() {
     async (pedido: any, options?: ImpressaoPedidoAceitoOptions) => {
       const visualizar = Boolean(options?.visualizar);
       let popup = options?.popupExistente || null;
+      let motivoFalhaQz = "";
       if (visualizar && (!popup || popup.closed)) {
         popup = window.open("", "_blank", "width=520,height=820");
         prepararPopupImpressao(popup, Number(pedido?.id || 0));
@@ -2598,6 +2599,7 @@ function AdminPageContent() {
           }
           throw new Error("QZ Tray indisponivel no navegador.");
         } catch (error) {
+          motivoFalhaQz = obterMensagemErro(error);
           console.error(
             "Falha ao imprimir via QZ Tray no admin. Usando popup:",
             error,
@@ -2605,6 +2607,10 @@ function AdminPageContent() {
           if (!popup || popup.closed) {
             popup = window.open("", "_blank", "width=420,height=760");
             prepararPopupImpressao(popup, Number(pedido?.id || 0));
+          }
+          if (!popup || popup.closed) {
+            alert(`Falha ao imprimir via QZ Tray: ${motivoFalhaQz}`);
+            return;
           }
           if (popup && !popup.closed) {
             popup.focus();
@@ -6032,9 +6038,20 @@ function AdminPageContent() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    void imprimirPedidoAceito(entrega.pedido)
-                                  }
+                                  onClick={() => {
+                                    const popup = window.open(
+                                      "",
+                                      "_blank",
+                                      "width=420,height=760",
+                                    );
+                                    prepararPopupImpressao(
+                                      popup,
+                                      Number(entrega?.pedido?.id || 0),
+                                    );
+                                    void imprimirPedidoAceito(entrega.pedido, {
+                                      popupExistente: popup,
+                                    });
+                                  }}
                                   className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors text-xs font-black uppercase"
                                 >
                                   Reimprimir cupom
@@ -6674,7 +6691,20 @@ function AdminPageContent() {
                             )}
                             <button
                               type="button"
-                              onClick={() => void imprimirPedidoAceito(pedidoCompleto)}
+                              onClick={() => {
+                                const popup = window.open(
+                                  "",
+                                  "_blank",
+                                  "width=420,height=760",
+                                );
+                                prepararPopupImpressao(
+                                  popup,
+                                  Number(pedidoCompleto?.id || 0),
+                                );
+                                void imprimirPedidoAceito(pedidoCompleto, {
+                                  popupExistente: popup,
+                                });
+                              }}
                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
                             >
                               Imprimir
