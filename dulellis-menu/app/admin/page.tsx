@@ -49,7 +49,21 @@ import {
 } from "lucide-react";
 
 const QZ_TRAY_SCRIPT_URL = "https://unpkg.com/qz-tray@2.2.4/qz-tray.js";
-const QZ_PRINTER_NAME = process.env.NEXT_PUBLIC_QZ_PRINTER || null;
+const QZ_PRINTER_NAME =
+  String(process.env.NEXT_PUBLIC_QZ_PRINTER || "").trim() || null;
+const QZ_PRINTER_HOST =
+  String(process.env.NEXT_PUBLIC_QZ_PRINTER_HOST || "").trim() || null;
+const QZ_PRINTER_PORT_RAW = Number.parseInt(
+  String(process.env.NEXT_PUBLIC_QZ_PRINTER_PORT || "").trim(),
+  10,
+);
+const QZ_PRINTER_PORT =
+  Number.isFinite(QZ_PRINTER_PORT_RAW) && QZ_PRINTER_PORT_RAW > 0
+    ? QZ_PRINTER_PORT_RAW
+    : 9100;
+const QZ_PRINTER_TARGET = QZ_PRINTER_HOST
+  ? { host: QZ_PRINTER_HOST, port: QZ_PRINTER_PORT }
+  : QZ_PRINTER_NAME;
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
 const ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY = "dulellis.admin.order-alarm.sound";
 const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
@@ -70,13 +84,15 @@ const STATUSS_PEDIDO_FLUXO_OPERACIONAL_ADMIN = [
   "saiu_entrega",
 ] as const;
 
+type QzPrinterTarget = string | { host: string; port: number };
+
 type QzGlobal = {
   websocket?: {
     isActive?: () => boolean;
     connect?: () => Promise<void>;
   };
   configs?: {
-    create?: (printer: string | null) => unknown;
+    create?: (printer: QzPrinterTarget | null) => unknown;
   };
   print?: (
     config: unknown,
@@ -628,7 +644,7 @@ function AdminPageContent() {
   );
 
   const garantirQzPronto = useCallback(async () => {
-    if (!QZ_PRINTER_NAME) return false;
+    if (!QZ_PRINTER_TARGET) return false;
 
     const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
     const websocket = qzGlobal?.websocket;
@@ -1131,7 +1147,7 @@ function AdminPageContent() {
   }, [carregarDados, monitorarPedidosNovos, registrarPedidosMonitorados]);
 
   useEffect(() => {
-    if (!QZ_PRINTER_NAME) return;
+    if (!QZ_PRINTER_TARGET) return;
 
     const aquecer = () => {
       void garantirQzPronto();
@@ -2516,8 +2532,10 @@ function AdminPageContent() {
       if (!visualizar) {
         try {
           const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
-          if (!QZ_PRINTER_NAME) {
-            throw new Error("NEXT_PUBLIC_QZ_PRINTER nao configurado.");
+          if (!QZ_PRINTER_TARGET) {
+            throw new Error(
+              "NEXT_PUBLIC_QZ_PRINTER ou NEXT_PUBLIC_QZ_PRINTER_HOST nao configurado.",
+            );
           }
           await garantirQzPronto();
           if (qzGlobal?.websocket && qzGlobal?.configs && qzGlobal?.print) {
@@ -2527,7 +2545,7 @@ function AdminPageContent() {
             if (websocket.connect && configs.create && websocket.isActive) {
               if (!websocket.isActive())
                 throw new Error("QZ Tray nao conectado.");
-              const config = configs.create(QZ_PRINTER_NAME);
+              const config = configs.create(QZ_PRINTER_TARGET);
               await print(config, [
                 {
                   type: "raw",
