@@ -87,19 +87,16 @@ type QzPrinterTargetConfig = {
   label: string;
 };
 
-const QZ_PRINTER_TARGETS: QzPrinterTargetConfig[] = [
-  ...(QZ_PRINTER_HOST
-    ? [
-        {
-          target: { host: QZ_PRINTER_HOST, port: QZ_PRINTER_PORT },
-          label: `${QZ_PRINTER_HOST}:${QZ_PRINTER_PORT}`,
-        },
-      ]
-    : []),
-  ...(QZ_PRINTER_NAME
+const QZ_PRINTER_TARGETS: QzPrinterTargetConfig[] = QZ_PRINTER_HOST
+  ? [
+      {
+        target: { host: QZ_PRINTER_HOST, port: QZ_PRINTER_PORT },
+        label: `${QZ_PRINTER_HOST}:${QZ_PRINTER_PORT}`,
+      },
+    ]
+  : QZ_PRINTER_NAME
     ? [{ target: QZ_PRINTER_NAME, label: QZ_PRINTER_NAME }]
-    : []),
-];
+    : [];
 const QZ_PRINTER_TARGET = QZ_PRINTER_TARGETS[0]?.target || null;
 
 type QzGlobal = {
@@ -119,6 +116,20 @@ type QzGlobal = {
 function obterMensagemErro(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
   return String(error || "Erro desconhecido");
+}
+
+function normalizarMensagemQz(error: unknown) {
+  const mensagem = obterMensagemErro(error).trim();
+  const mensagemNormalizada = mensagem.toLowerCase();
+
+  if (
+    mensagemNormalizada.includes("qz tray nao conectado") ||
+    mensagemNormalizada.includes("qz tray indisponivel no navegador")
+  ) {
+    return "QZ Tray nao esta instalado ou aberto nesta maquina. Instale/abra o QZ Tray e tente novamente.";
+  }
+
+  return mensagem;
 }
 
 type ImpressaoPedidoAceitoOptions = {
@@ -2453,8 +2464,12 @@ function AdminPageContent() {
   const prepararPopupImpressao = (
     popup: Window | null | undefined,
     pedidoId?: number,
+    aguardandoQz = false,
   ) => {
     if (!popup || popup.closed) return;
+    const tituloPopup = aguardandoQz
+      ? "Aguardando autorizacao do QZ Tray"
+      : "Preparando impressao";
     popup.document.open();
     popup.document.write(`
       <!doctype html>
@@ -2467,6 +2482,7 @@ function AdminPageContent() {
             .box { text-align:center; padding:24px; }
             h1 { font-size:18px; margin:0 0 8px; }
             p { margin:0; color:#475569; font-weight:700; }
+            .hint { margin-top:12px; max-width:280px; color:#64748b; font-size:13px; line-height:1.45; font-weight:600; }
           </style>
         </head>
         <body>
@@ -2478,6 +2494,20 @@ function AdminPageContent() {
       </html>
     `);
     popup.document.close();
+    const tituloElemento = popup.document.querySelector("h1");
+    if (tituloElemento) {
+      tituloElemento.textContent = tituloPopup;
+    }
+    if (aguardandoQz) {
+      const box = popup.document.querySelector(".box");
+      if (box && !popup.document.querySelector(".hint")) {
+        const hint = popup.document.createElement("div");
+        hint.className = "hint";
+        hint.innerHTML =
+          'Se o QZ Tray abrir um aviso de seguranca, clique em <strong>Allow</strong> para liberar a impressao.';
+        box.appendChild(hint);
+      }
+    }
   };
   const imprimirPedidoAceito = useCallback(
     async (pedido: any, options?: ImpressaoPedidoAceitoOptions) => {
@@ -2599,7 +2629,7 @@ function AdminPageContent() {
           }
           throw new Error("QZ Tray indisponivel no navegador.");
         } catch (error) {
-          motivoFalhaQz = obterMensagemErro(error);
+          motivoFalhaQz = normalizarMensagemQz(error);
           console.error(
             "Falha ao imprimir via QZ Tray no admin. Usando popup:",
             error,
@@ -6047,6 +6077,7 @@ function AdminPageContent() {
                                     prepararPopupImpressao(
                                       popup,
                                       Number(entrega?.pedido?.id || 0),
+                                      true,
                                     );
                                     void imprimirPedidoAceito(entrega.pedido, {
                                       popupExistente: popup,
@@ -6700,6 +6731,7 @@ function AdminPageContent() {
                                 prepararPopupImpressao(
                                   popup,
                                   Number(pedidoCompleto?.id || 0),
+                                  true,
                                 );
                                 void imprimirPedidoAceito(pedidoCompleto, {
                                   popupExistente: popup,
