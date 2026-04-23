@@ -61,9 +61,6 @@ const QZ_PRINTER_PORT =
   Number.isFinite(QZ_PRINTER_PORT_RAW) && QZ_PRINTER_PORT_RAW > 0
     ? QZ_PRINTER_PORT_RAW
     : 9100;
-const QZ_PRINTER_TARGET = QZ_PRINTER_HOST
-  ? { host: QZ_PRINTER_HOST, port: QZ_PRINTER_PORT }
-  : QZ_PRINTER_NAME;
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
 const ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY = "dulellis.admin.order-alarm.sound";
 const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
@@ -85,6 +82,25 @@ const STATUSS_PEDIDO_FLUXO_OPERACIONAL_ADMIN = [
 ] as const;
 
 type QzPrinterTarget = string | { host: string; port: number };
+type QzPrinterTargetConfig = {
+  target: QzPrinterTarget;
+  label: string;
+};
+
+const QZ_PRINTER_TARGETS: QzPrinterTargetConfig[] = [
+  ...(QZ_PRINTER_HOST
+    ? [
+        {
+          target: { host: QZ_PRINTER_HOST, port: QZ_PRINTER_PORT },
+          label: `${QZ_PRINTER_HOST}:${QZ_PRINTER_PORT}`,
+        },
+      ]
+    : []),
+  ...(QZ_PRINTER_NAME
+    ? [{ target: QZ_PRINTER_NAME, label: QZ_PRINTER_NAME }]
+    : []),
+];
+const QZ_PRINTER_TARGET = QZ_PRINTER_TARGETS[0]?.target || null;
 
 type QzGlobal = {
   websocket?: {
@@ -99,6 +115,11 @@ type QzGlobal = {
     data: Array<{ type: string; format: string; data: string }>,
   ) => Promise<void>;
 };
+
+function obterMensagemErro(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error || "Erro desconhecido");
+}
 
 type ImpressaoPedidoAceitoOptions = {
   popupExistente?: Window | null;
@@ -2545,16 +2566,37 @@ function AdminPageContent() {
             if (websocket.connect && configs.create && websocket.isActive) {
               if (!websocket.isActive())
                 throw new Error("QZ Tray nao conectado.");
-              const config = configs.create(QZ_PRINTER_TARGET);
-              await print(config, [
+              const payload = [
                 {
                   type: "raw",
                   format: "command",
                   data: montarCupomPedido(pedido),
                 },
-              ]);
-              if (popup && !popup.closed) popup.close();
-              return;
+              ];
+              const errosImpressao: string[] = [];
+
+              for (const printerTarget of QZ_PRINTER_TARGETS) {
+                try {
+                  const config = configs.create(printerTarget.target);
+                  await print(config, payload);
+                  if (popup && !popup.closed) popup.close();
+                  return;
+                } catch (error) {
+                  console.warn(
+                    `Falha ao imprimir no destino ${printerTarget.label}.`,
+                    error,
+                  );
+                  errosImpressao.push(
+                    `${printerTarget.label}: ${obterMensagemErro(error)}`,
+                  );
+                }
+              }
+
+              throw new Error(
+                errosImpressao.length
+                  ? `Nenhum destino de impressao respondeu. ${errosImpressao.join(" | ")}`
+                  : "Nenhum destino de impressao respondeu.",
+              );
             }
           }
           throw new Error("QZ Tray indisponivel no navegador.");
