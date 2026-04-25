@@ -15,6 +15,18 @@ import { useSearchParams } from "next/navigation";
 import { PropagandaFrame } from "@/components/PropagandaFrame";
 import { parseOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { supabase } from "@/lib/supabase";
+import {
+  ADMIN_QZ_ENABLED,
+  QZ_PRINTER_TARGET,
+  QZ_PRINTER_TARGETS,
+  QZ_TRAY_SCRIPT_URL,
+  type QzPrinterTarget,
+} from "@/lib/admin-print-config";
+import {
+  renderOrderPrintLoadingHtml,
+  renderOrderReceiptHtml,
+  writePopupHtml,
+} from "@/lib/admin-order-print";
 import { openSpreadsheetReport } from "@/lib/admin-report-print";
 import {
   Package,
@@ -48,19 +60,6 @@ import {
   BellOff,
 } from "lucide-react";
 
-const QZ_TRAY_SCRIPT_URL = "https://unpkg.com/qz-tray@2.2.4/qz-tray.js";
-const QZ_PRINTER_NAME =
-  String(process.env.NEXT_PUBLIC_QZ_PRINTER || "").trim() || null;
-const QZ_PRINTER_HOST =
-  String(process.env.NEXT_PUBLIC_QZ_PRINTER_HOST || "").trim() || null;
-const QZ_PRINTER_PORT_RAW = Number.parseInt(
-  String(process.env.NEXT_PUBLIC_QZ_PRINTER_PORT || "").trim(),
-  10,
-);
-const QZ_PRINTER_PORT =
-  Number.isFinite(QZ_PRINTER_PORT_RAW) && QZ_PRINTER_PORT_RAW > 0
-    ? QZ_PRINTER_PORT_RAW
-    : 9100;
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
 const ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY = "dulellis.admin.order-alarm.sound";
 const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
@@ -80,24 +79,6 @@ const STATUSS_PEDIDO_FLUXO_OPERACIONAL_ADMIN = [
   "em_preparo",
   "saiu_entrega",
 ] as const;
-
-type QzPrinterTarget = string | { host: string; port: number };
-type QzPrinterTargetConfig = {
-  target: QzPrinterTarget;
-  label: string;
-};
-
-const QZ_PRINTER_TARGETS: QzPrinterTargetConfig[] = QZ_PRINTER_HOST
-  ? [
-      {
-        target: { host: QZ_PRINTER_HOST, port: QZ_PRINTER_PORT },
-        label: `${QZ_PRINTER_HOST}:${QZ_PRINTER_PORT}`,
-      },
-    ]
-  : QZ_PRINTER_NAME
-    ? [{ target: QZ_PRINTER_NAME, label: QZ_PRINTER_NAME }]
-    : [];
-const QZ_PRINTER_TARGET = QZ_PRINTER_TARGETS[0]?.target || null;
 
 type QzGlobal = {
   websocket?: {
@@ -1248,7 +1229,7 @@ function AdminPageContent() {
   }, [carregarDados, monitorarPedidosNovos, registrarPedidosMonitorados]);
 
   useEffect(() => {
-    if (!QZ_PRINTER_TARGET) return;
+    if (!ADMIN_QZ_ENABLED || !QZ_PRINTER_TARGET) return;
 
     const aquecer = () => {
       void garantirQzPronto();
@@ -2398,7 +2379,7 @@ function AdminPageContent() {
       const observacao = limparObservacaoTroco(
         String(pedidoCompleto?.observacao || "").trim(),
       );
-      const larguraLinha = 32;
+      const larguraLinha = 42;
 
       const quebrarLinha = (texto: string, largura = larguraLinha) => {
         const bruto = String(texto || "").trim();
@@ -2464,12 +2445,12 @@ function AdminPageContent() {
 
       const iniciar = "\x1b\x40";
       const selecionarFonteCompacta = "\x1b\x4d\x01";
+      const selecionarModoCompacto = "\x1b\x21\x01";
       const negritoOn = "\x1b\x45\x01";
       const negritoOff = "\x1b\x45\x00";
       const alinharCentro = "\x1b\x61\x01";
       const alinharEsquerda = "\x1b\x61\x00";
       const fonteNormal = "\x1d\x21\x00";
-      const fonteLarguraDupla = "\x1d\x21\x01";
       const divisor = `${"-".repeat(larguraLinha)}\n`;
       const blocoQrMaps = linkAceiteEntrega
         ? alinharCentro +
@@ -2485,9 +2466,10 @@ function AdminPageContent() {
       return (
         iniciar +
         selecionarFonteCompacta +
+        selecionarModoCompacto +
+        fonteNormal +
         alinharCentro +
         negritoOn +
-        fonteLarguraDupla +
         "DULELIS\n" +
         "CONFEITARIA\n" +
         "\n" +
@@ -2502,7 +2484,6 @@ function AdminPageContent() {
         `ENTREGA: ${formatarValor(taxaEntrega)}\n` +
         `DESCONTO: ${formatarValor(descontoAplicado)}\n` +
         negritoOn +
-        fonteLarguraDupla +
         `TOTAL: ${formatarValor(valorTotal)}\n` +
         fonteNormal +
         (troco.exibir && troco.valor !== null
@@ -2539,6 +2520,16 @@ function AdminPageContent() {
     pedidoId?: number,
     aguardandoQz = false,
   ) => {
+    if (popup && !popup.closed) {
+      writePopupHtml(
+        popup,
+        renderOrderPrintLoadingHtml({
+          orderId: pedidoId,
+          waitingForQz: aguardandoQz && ADMIN_QZ_ENABLED,
+        }),
+      );
+      return;
+    }
     if (!popup || popup.closed) return;
     const tituloPopup = aguardandoQz
       ? "Aguardando autorizacao do QZ Tray"
@@ -2619,6 +2610,7 @@ function AdminPageContent() {
         String(pedidoCompleto?.observacao || "").trim(),
       );
       const itens = parseItensPedido(pedidoCompleto);
+      const formatarValor = (valor: number) => `R$ ${valor.toFixed(2)}`;
       const itensHtml = itens.length
         ? itens
             .map(
@@ -2651,12 +2643,12 @@ function AdminPageContent() {
           `
         : "";
 
-      if (!visualizar) {
+      if (!visualizar && ADMIN_QZ_ENABLED) {
         try {
           const qzGlobal = (window as unknown as { qz?: QzGlobal }).qz;
           if (!QZ_PRINTER_TARGET) {
             throw new Error(
-              "NEXT_PUBLIC_QZ_PRINTER ou NEXT_PUBLIC_QZ_PRINTER_HOST nao configurado.",
+              "Modo QZ ativado, mas nenhuma impressora foi configurada.",
             );
           }
           await garantirQzPronto();
@@ -2719,6 +2711,69 @@ function AdminPageContent() {
             popup.focus();
           }
         }
+      }
+
+      if (!popup || popup.closed) {
+        popup = window.open("", "_blank", "width=420,height=760");
+        prepararPopupImpressao(popup, Number(pedido?.id || 0));
+      }
+
+      if (!popup || popup.closed) {
+        alert("Nao foi possivel abrir a janela de impressao.");
+        return;
+      }
+
+      if (popup && !popup.closed) {
+        writePopupHtml(
+          popup,
+          renderOrderReceiptHtml(
+            {
+              orderId: pedidoCompleto?.id ?? "",
+              createdAt: pedidoCompleto?.created_at
+                ? new Date(pedidoCompleto.created_at).toLocaleString("pt-BR")
+                : "Nao informada",
+              customerName: String(pedidoCompleto?.cliente_nome || "Cliente"),
+              whatsapp: String(pedidoCompleto?.whatsapp || "Nao informado"),
+              address: enderecoCompleto || "Nao informado",
+              neighborhood: bairro || "Nao informado",
+              city: cidade || "Nao informado",
+              cep: cep || "Nao informado",
+              referencePoint: pontoReferencia || "Nao informado",
+              observation: observacao || null,
+              paymentTitle: pagamento.titulo,
+              paymentStatus: pagamento.situacao,
+              paymentDetail: pagamento.detalhe,
+              changeRequested:
+                troco.exibir && troco.valor !== null
+                  ? formatarValor(troco.valor)
+                  : null,
+              changeDue: troco.exibir
+                ? troco.precisaTroco
+                  ? trocoCalculado !== null
+                    ? formatarValor(trocoCalculado)
+                    : "Sim"
+                  : "Nao precisa"
+                : null,
+              subtotal: formatarValor(subtotal),
+              deliveryFee: formatarValor(taxaEntrega),
+              discount: formatarValor(descontoAplicado),
+              total: formatarValor(Number(pedidoCompleto?.total || 0)),
+              qrCodeUrl: qrCodeImageUrl || null,
+              items: itens.map((item: any) => ({
+                quantity: Number(item.qtd || 1),
+                name: String(item.nome || "Item"),
+                total: formatarValor(
+                  Number(item.preco || 0) * Number(item.qtd || 0),
+                ),
+              })),
+            },
+            { visualize: visualizar },
+          ),
+        );
+        if (visualizar) {
+          popup.focus();
+        }
+        return;
       }
 
       if (!popup) {
@@ -4721,7 +4776,9 @@ function AdminPageContent() {
 
   return (
     <div className="admin-app-shell flex min-h-[100dvh] flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
-      <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
+      {ADMIN_QZ_ENABLED ? (
+        <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
+      ) : null}
       <aside className="admin-app-sidebar w-full bg-slate-900 text-white p-4 lg:w-64 lg:p-6 print:hidden">
         <h2 className="text-xl font-black text-pink-500 italic mb-4 text-center tracking-tighter lg:text-2xl lg:mb-10">
           DULELIS
@@ -6150,7 +6207,7 @@ function AdminPageContent() {
                                     prepararPopupImpressao(
                                       popup,
                                       Number(entrega?.pedido?.id || 0),
-                                      true,
+                                      ADMIN_QZ_ENABLED,
                                     );
                                     void imprimirPedidoAceito(entrega.pedido, {
                                       popupExistente: popup,
@@ -6804,7 +6861,7 @@ function AdminPageContent() {
                                 prepararPopupImpressao(
                                   popup,
                                   Number(pedidoCompleto?.id || 0),
-                                  true,
+                                  ADMIN_QZ_ENABLED,
                                 );
                                 void imprimirPedidoAceito(pedidoCompleto, {
                                   popupExistente: popup,
