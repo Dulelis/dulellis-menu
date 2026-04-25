@@ -26,11 +26,16 @@ const QZ_PRINTER_PORT =
   Number.isFinite(QZ_PRINTER_PORT_RAW) && QZ_PRINTER_PORT_RAW > 0
     ? QZ_PRINTER_PORT_RAW
     : 9100;
+const HAS_QZ_TARGET = Boolean(QZ_PRINTER_HOST || QZ_PRINTER_NAME);
 
 export const QZ_TRAY_SCRIPT_URL = "https://unpkg.com/qz-tray@2.2.4/qz-tray.js";
 
 export const ADMIN_PRINT_MODE: AdminPrintMode =
-  PRINT_MODE_RAW === "qz" || QZ_ENABLED_VALUES.has(QZ_ENABLED_RAW)
+  PRINT_MODE_RAW === "browser"
+    ? "browser"
+    : PRINT_MODE_RAW === "qz" ||
+        QZ_ENABLED_VALUES.has(QZ_ENABLED_RAW) ||
+        HAS_QZ_TARGET
     ? "qz"
     : "browser";
 
