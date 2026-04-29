@@ -132,6 +132,21 @@ type ImpressaoPedidoAceitoOptions = {
   visualizar?: boolean;
 };
 
+type AtualizacaoStatusPedidoOptions = {
+  popupExistente?: Window | null;
+};
+
+type AbrirPopupImpressaoOptions = {
+  aguardandoQz?: boolean;
+  visualizacao?: boolean;
+};
+
+type NavigatorWithUserAgentData = Navigator & {
+  userAgentData?: {
+    mobile?: boolean;
+  };
+};
+
 const DIAS_SEMANA = [
   { key: "domingo", label: "Domingo" },
   { key: "segunda", label: "Segunda" },
@@ -508,6 +523,7 @@ function AdminPageContent() {
   const [alarmeSonoroLiberado, setAlarmeSonoroLiberado] = useState(false);
   const [alertaNovoPedido, setAlertaNovoPedido] = useState("");
   const [alertaEntregaAceita, setAlertaEntregaAceita] = useState("");
+  const [impressaoMovelAtiva, setImpressaoMovelAtiva] = useState(false);
 
   // Agora o padrão começa em 2km
   const [novaTaxa, setNovaTaxa] = useState({ bairro: "Até 2km", taxa: 0 });
@@ -1958,6 +1974,24 @@ function AdminPageContent() {
     [],
   );
   const normalizarStatusPedido = normalizarStatusPedidoAdmin;
+  const detectarAmbienteImpressaoMovel = useCallback(() => {
+    if (typeof window === "undefined") return false;
+
+    const navigatorAtual = window.navigator as NavigatorWithUserAgentData;
+    if (navigatorAtual.userAgentData?.mobile) return true;
+
+    const userAgent = String(navigatorAtual.userAgent || "");
+    const platform = String(navigatorAtual.platform || "");
+
+    return (
+      /android|iphone|ipad|ipod|windows phone/i.test(userAgent) ||
+      (platform === "MacIntel" && navigatorAtual.maxTouchPoints > 1)
+    );
+  }, []);
+  const deveUsarVisualizacaoManualImpressao = useCallback(
+    () => detectarAmbienteImpressaoMovel(),
+    [detectarAmbienteImpressaoMovel],
+  );
   const gerarAssinaturaPedido = (pedido: any) =>
     [
       String(pedido?.forma_pagamento || "")
@@ -2573,14 +2607,50 @@ function AdminPageContent() {
       }
     }
   };
+  const abrirPopupImpressaoPedido = useCallback(
+    (
+      pedidoId?: number,
+      options: AbrirPopupImpressaoOptions = {},
+    ): Window | null => {
+      if (typeof window === "undefined") return null;
+
+      const popupFeatures = detectarAmbienteImpressaoMovel()
+        ? undefined
+        : options.visualizacao
+          ? "width=520,height=820"
+          : "width=420,height=760";
+      const popup = popupFeatures
+        ? window.open("", "_blank", popupFeatures)
+        : window.open("", "_blank");
+
+      prepararPopupImpressao(
+        popup,
+        pedidoId,
+        options.aguardandoQz ??
+          (ADMIN_QZ_ENABLED &&
+            Boolean(QZ_PRINTER_TARGET) &&
+            !deveUsarVisualizacaoManualImpressao()),
+      );
+
+      return popup;
+    },
+    [
+      detectarAmbienteImpressaoMovel,
+      deveUsarVisualizacaoManualImpressao,
+    ],
+  );
   const imprimirPedidoAceito = useCallback(
     async (pedido: any, options?: ImpressaoPedidoAceitoOptions) => {
-      const visualizar = Boolean(options?.visualizar);
+      const visualizar =
+        Boolean(options?.visualizar) ||
+        deveUsarVisualizacaoManualImpressao();
       let popup = options?.popupExistente || null;
       let motivoFalhaQz = "";
       if (visualizar && (!popup || popup.closed)) {
-        popup = window.open("", "_blank", "width=520,height=820");
-        prepararPopupImpressao(popup, Number(pedido?.id || 0));
+        popup = abrirPopupImpressaoPedido(Number(pedido?.id || 0), {
+          aguardandoQz: false,
+          visualizacao: true,
+        });
       }
       const pedidoCompleto = completarPedidoComCliente(pedido);
       const pagamento = obterResumoPagamento(pedidoCompleto);
@@ -2700,8 +2770,9 @@ function AdminPageContent() {
             error,
           );
           if (!popup || popup.closed) {
-            popup = window.open("", "_blank", "width=420,height=760");
-            prepararPopupImpressao(popup, Number(pedido?.id || 0));
+            popup = abrirPopupImpressaoPedido(Number(pedido?.id || 0), {
+              aguardandoQz: false,
+            });
           }
           if (!popup || popup.closed) {
             alert(`Falha ao imprimir via QZ Tray: ${motivoFalhaQz}`);
@@ -2714,8 +2785,9 @@ function AdminPageContent() {
       }
 
       if (!popup || popup.closed) {
-        popup = window.open("", "_blank", "width=420,height=760");
-        prepararPopupImpressao(popup, Number(pedido?.id || 0));
+        popup = abrirPopupImpressaoPedido(Number(pedido?.id || 0), {
+          aguardandoQz: false,
+        });
       }
 
       if (!popup || popup.closed) {
@@ -2946,7 +3018,9 @@ function AdminPageContent() {
       }
     },
     [
+      abrirPopupImpressaoPedido,
       completarPedidoComCliente,
+      deveUsarVisualizacaoManualImpressao,
       garantirQzPronto,
       limparObservacaoTroco,
       montarCupomPedido,
@@ -2961,6 +3035,10 @@ function AdminPageContent() {
     imprimirPedidoAceitoRef.current = imprimirPedidoAceito;
   }, [imprimirPedidoAceito]);
 
+  useEffect(() => {
+    setImpressaoMovelAtiva(detectarAmbienteImpressaoMovel());
+  }, [detectarAmbienteImpressaoMovel]);
+
   const irParaCadastroCliente = (whatsapp?: string, nome?: string) => {
     const zap = normalizarNumero(String(whatsapp || ""));
     const nomeCliente = String(nome || "").trim();
@@ -2971,6 +3049,7 @@ function AdminPageContent() {
   const atualizarStatusPedido = async (
     pedidoId: number,
     proximoStatus: string,
+    options?: AtualizacaoStatusPedidoOptions,
   ) => {
     setPedidoAtualizandoId(pedidoId);
     try {
@@ -2991,10 +3070,15 @@ function AdminPageContent() {
         await imprimirPedidoAceito({
           ...pedidoAtual,
           status_pedido: proximoStatus,
+        }, {
+          popupExistente: options?.popupExistente || null,
         });
       }
       await carregarDados();
     } catch (error: any) {
+      if (options?.popupExistente && !options.popupExistente.closed) {
+        options.popupExistente.close();
+      }
       const mensagem = String(error?.message || "");
       if (
         mensagem.toLowerCase().includes("column") ||
@@ -4965,6 +5049,20 @@ function AdminPageContent() {
           </div>
         </header>
 
+        {impressaoMovelAtiva ? (
+          <div className="mb-6 rounded-[1.75rem] border border-sky-200 bg-sky-50 px-4 py-4 print:hidden">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-700">
+              Impressao no celular
+            </p>
+            <p className="mt-1 text-sm font-bold leading-6 text-slate-700">
+              No celular, ao aceitar ou reimprimir um pedido, o cupom abre em
+              visualizacao para voce tocar em Imprimir no navegador. No
+              computador, a impressao automatica via QZ continua funcionando
+              quando estiver configurada.
+            </p>
+          </div>
+        ) : null}
+
         {alertaNovoPedido ? (
           <div className="mb-6 rounded-[1.75rem] border border-violet-200 bg-violet-50 px-4 py-4 text-sm font-black text-violet-700 shadow-sm">
             <div className="flex items-center gap-3">
@@ -6199,15 +6297,8 @@ function AdminPageContent() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const popup = window.open(
-                                      "",
-                                      "_blank",
-                                      "width=420,height=760",
-                                    );
-                                    prepararPopupImpressao(
-                                      popup,
+                                    const popup = abrirPopupImpressaoPedido(
                                       Number(entrega?.pedido?.id || 0),
-                                      ADMIN_QZ_ENABLED,
                                     );
                                     void imprimirPedidoAceito(entrega.pedido, {
                                       popupExistente: popup,
@@ -6832,12 +6923,23 @@ function AdminPageContent() {
                             {proximoFluxo ? (
                               <button
                                 type="button"
-                                onClick={() =>
+                                onClick={() => {
+                                  const proximoStatus =
+                                    proximoFluxo.proximo || "recebido";
+                                  const popup =
+                                    normalizarStatusPedido(pedido) ===
+                                      "aguardando_aceite" &&
+                                    proximoStatus === "recebido"
+                                      ? abrirPopupImpressaoPedido(
+                                          Number(pedidoCompleto?.id || 0),
+                                        )
+                                      : null;
                                   void atualizarStatusPedido(
                                     pedido.id,
-                                    proximoFluxo.proximo || "recebido",
-                                  )
-                                }
+                                    proximoStatus,
+                                    { popupExistente: popup },
+                                  );
+                                }}
                                 disabled={pedidoAtualizandoId === pedido.id}
                                 className="w-full rounded-xl bg-emerald-600 px-3 py-3 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                               >
@@ -6853,15 +6955,8 @@ function AdminPageContent() {
                             <button
                               type="button"
                               onClick={() => {
-                                const popup = window.open(
-                                  "",
-                                  "_blank",
-                                  "width=420,height=760",
-                                );
-                                prepararPopupImpressao(
-                                  popup,
+                                const popup = abrirPopupImpressaoPedido(
                                   Number(pedidoCompleto?.id || 0),
-                                  ADMIN_QZ_ENABLED,
                                 );
                                 void imprimirPedidoAceito(pedidoCompleto, {
                                   popupExistente: popup,
