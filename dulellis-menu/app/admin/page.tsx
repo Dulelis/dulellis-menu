@@ -16,14 +16,17 @@ import { PropagandaFrame } from "@/components/PropagandaFrame";
 import { parseOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { supabase } from "@/lib/supabase";
 import {
+  ADMIN_RAWBT_ENABLED,
   ADMIN_QZ_ENABLED,
   QZ_PRINTER_TARGET,
   QZ_PRINTER_TARGETS,
   QZ_TRAY_SCRIPT_URL,
+  RAWBT_PACKAGE_NAME,
   type QzPrinterTarget,
 } from "@/lib/admin-print-config";
 import {
   renderOrderPrintLoadingHtml,
+  renderOrderRawbtLaunchHtml,
   renderOrderReceiptHtml,
   writePopupHtml,
 } from "@/lib/admin-order-print";
@@ -58,6 +61,10 @@ import {
   Bike,
   BellRing,
   BellOff,
+  Calculator,
+  Link2,
+  Save,
+  Settings,
 } from "lucide-react";
 
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
@@ -127,6 +134,38 @@ function normalizarMensagemQz(error: unknown) {
   return mensagem;
 }
 
+function bytesParaBase64(bytes: Uint8Array) {
+  let binario = "";
+  const tamanhoBloco = 0x8000;
+
+  for (let indice = 0; indice < bytes.length; indice += tamanhoBloco) {
+    const bloco = bytes.subarray(indice, indice + tamanhoBloco);
+    binario += String.fromCharCode(...bloco);
+  }
+
+  return btoa(binario);
+}
+
+function serializarEscPosParaRawbtBase64(cupomEscPos: string) {
+  const bytes = new Uint8Array(cupomEscPos.length);
+
+  for (let indice = 0; indice < cupomEscPos.length; indice += 1) {
+    const codigo = cupomEscPos.charCodeAt(indice);
+    bytes[indice] = codigo <= 0xff ? codigo : 0x3f;
+  }
+
+  return bytesParaBase64(bytes);
+}
+
+function montarLinksRawbt(cupomEscPos: string) {
+  const base64 = serializarEscPosParaRawbtBase64(cupomEscPos);
+
+  return {
+    intentUrl: `intent:base64,${base64}#Intent;scheme=rawbt;package=${RAWBT_PACKAGE_NAME};end;`,
+    schemeUrl: `rawbt:base64,${base64}`,
+  };
+}
+
 type ImpressaoPedidoAceitoOptions = {
   popupExistente?: Window | null;
   visualizar?: boolean;
@@ -134,6 +173,7 @@ type ImpressaoPedidoAceitoOptions = {
 
 type AtualizacaoStatusPedidoOptions = {
   popupExistente?: Window | null;
+  visualizarImpressao?: boolean;
 };
 
 type AbrirPopupImpressaoOptions = {
@@ -209,9 +249,11 @@ const ADMIN_TABS = [
   "taxas",
   "entregadores",
   "vendas",
+  "controle",
   "relatorios",
 ] as const;
 type AdminTab = (typeof ADMIN_TABS)[number];
+type ControleAdminAba = "precificacao";
 type AlarmeSomId = "classico" | "campainha" | "suave" | "urgente";
 type AlarmeSomPreset = {
   label: string;
@@ -405,6 +447,21 @@ function formatarMoedaAdmin(valor: unknown) {
   return `R$ ${Number(valor || 0).toFixed(2)}`;
 }
 
+function calcularCustoPrecificacao(item: any) {
+  return (
+    Number(item?.custo_ingredientes || 0) +
+    Number(item?.custo_embalagem || 0) +
+    Number(item?.custo_mao_obra || 0) +
+    Number(item?.custo_operacional || 0)
+  );
+}
+
+function calcularPrecoSugeridoPrecificacao(item: any) {
+  const custoTotal = calcularCustoPrecificacao(item);
+  const margem = Math.max(0, Number(item?.margem_percentual || 0));
+  return custoTotal * (1 + margem / 100);
+}
+
 function pedidoEhPixAdmin(pedido: any) {
   const forma = String(pedido?.forma_pagamento || "")
     .trim()
@@ -488,8 +545,10 @@ function AdminPageContent() {
   const [taxas, setTaxas] = useState<any[]>([]);
   const [promocoes, setPromocoes] = useState<any[]>([]);
   const [propagandas, setPropagandas] = useState<any[]>([]);
+  const [precificacoes, setPrecificacoes] = useState<any[]>([]);
   const [entregadores, setEntregadores] = useState<any[]>([]);
   const [entregas, setEntregas] = useState<any[]>([]);
+  const [controleAdminAba] = useState<ControleAdminAba>("precificacao");
   const [horarioFuncionamento, setHorarioFuncionamento] = useState({
     id: null as number | null,
     hora_abertura: "08:00",
@@ -511,6 +570,9 @@ function AdminPageContent() {
   );
   const [mostrarModalPropaganda, setMostrarModalPropaganda] = useState(false);
   const [editandoPropagandaId, setEditandoPropagandaId] = useState<
+    number | null
+  >(null);
+  const [editandoPrecificacaoId, setEditandoPrecificacaoId] = useState<
     number | null
   >(null);
   const [mostrarModalEntregador, setMostrarModalEntregador] = useState(false);
@@ -555,6 +617,19 @@ function AdminPageContent() {
     descricao: "",
     imagem_url: "",
     categoria: "Doces",
+  });
+  const [novaPrecificacao, setNovaPrecificacao] = useState({
+    nome: "",
+    estoque_id: "",
+    unidade_rendimento: "",
+    custo_ingredientes: 0,
+    custo_embalagem: 0,
+    custo_mao_obra: 0,
+    custo_operacional: 0,
+    margem_percentual: 60,
+    preco_venda: 0,
+    ativo_vitrine: false,
+    observacoes: "",
   });
   const [novaPropaganda, setNovaPropaganda] = useState({
     titulo: "",
@@ -950,6 +1025,7 @@ function AdminPageContent() {
         taxas?: any[];
         promocoes?: any[];
         propagandas?: any[];
+        precificacoes?: any[];
         entregadores?: any[];
         entregas?: any[];
         horario?: {
@@ -978,6 +1054,7 @@ function AdminPageContent() {
     setTaxas(json.data?.taxas || []);
     setPromocoes(json.data?.promocoes || []);
     setPropagandas(json.data?.propagandas || []);
+    setPrecificacoes(json.data?.precificacoes || []);
     setEntregadores(json.data?.entregadores || []);
     setEntregas(json.data?.entregas || []);
     if (json.data?.horario) {
@@ -1221,6 +1298,11 @@ function AdminPageContent() {
       )
       .on(
         "postgres_changes",
+        { event: "*", schema: "public", table: "precificacao_produtos" },
+        agendarRecarga,
+      )
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "configuracoes_loja" },
         agendarRecarga,
       )
@@ -1349,6 +1431,113 @@ function AdminPageContent() {
       table: "estoque",
       payload: { quantidade: Math.max(0, atual + mudanca) },
       eq: { column: "id", value: id },
+    });
+    carregarDados();
+  };
+
+  const fecharFormularioPrecificacao = () => {
+    setEditandoPrecificacaoId(null);
+    setNovaPrecificacao({
+      nome: "",
+      estoque_id: "",
+      unidade_rendimento: "",
+      custo_ingredientes: 0,
+      custo_embalagem: 0,
+      custo_mao_obra: 0,
+      custo_operacional: 0,
+      margem_percentual: 60,
+      preco_venda: 0,
+      ativo_vitrine: false,
+      observacoes: "",
+    });
+  };
+
+  const abrirEdicaoPrecificacao = (item: any) => {
+    setEditandoPrecificacaoId(Number(item.id));
+    setNovaPrecificacao({
+      nome: String(item.nome || ""),
+      estoque_id: item.estoque_id ? String(item.estoque_id) : "",
+      unidade_rendimento: String(item.unidade_rendimento || ""),
+      custo_ingredientes: Number(item.custo_ingredientes || 0),
+      custo_embalagem: Number(item.custo_embalagem || 0),
+      custo_mao_obra: Number(item.custo_mao_obra || 0),
+      custo_operacional: Number(item.custo_operacional || 0),
+      margem_percentual: Number(item.margem_percentual || 0),
+      preco_venda: Number(item.preco_venda || 0),
+      ativo_vitrine: item.ativo_vitrine === true,
+      observacoes: String(item.observacoes || ""),
+    });
+  };
+
+  const salvarPrecificacao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const precoSugerido = calcularPrecoSugeridoPrecificacao(novaPrecificacao);
+    const payload = {
+      nome: novaPrecificacao.nome.trim(),
+      estoque_id: novaPrecificacao.estoque_id
+        ? Number(novaPrecificacao.estoque_id)
+        : null,
+      unidade_rendimento: novaPrecificacao.unidade_rendimento.trim() || null,
+      custo_ingredientes: Number(novaPrecificacao.custo_ingredientes) || 0,
+      custo_embalagem: Number(novaPrecificacao.custo_embalagem) || 0,
+      custo_mao_obra: Number(novaPrecificacao.custo_mao_obra) || 0,
+      custo_operacional: Number(novaPrecificacao.custo_operacional) || 0,
+      margem_percentual: Number(novaPrecificacao.margem_percentual) || 0,
+      preco_sugerido: Number(precoSugerido.toFixed(2)),
+      preco_venda:
+        Number(novaPrecificacao.preco_venda) > 0
+          ? Number(novaPrecificacao.preco_venda)
+          : Number(precoSugerido.toFixed(2)),
+      ativo_vitrine: novaPrecificacao.ativo_vitrine,
+      observacoes: novaPrecificacao.observacoes.trim() || null,
+    };
+
+    try {
+      if (editandoPrecificacaoId) {
+        await adminDb({
+          action: "update_eq",
+          table: "precificacao_produtos",
+          payload,
+          eq: { column: "id", value: editandoPrecificacaoId },
+        });
+      } else {
+        await adminDb({
+          action: "insert",
+          table: "precificacao_produtos",
+          values: [payload],
+        });
+      }
+      fecharFormularioPrecificacao();
+      carregarDados();
+    } catch (error: any) {
+      alert(
+        `Erro ao salvar precificacao: ${error.message || "verifique se o SQL da tabela foi executado."}`,
+      );
+    }
+  };
+
+  const aplicarPrecoPrecificacaoNaVitrine = async (item: any) => {
+    const estoqueId = Number(item.estoque_id || 0);
+    const preco = Number(item.preco_venda || item.preco_sugerido || 0);
+    if (!estoqueId) {
+      alert("Vincule esta precificacao a um produto do estoque antes de aplicar na vitrine.");
+      return;
+    }
+    if (!Number.isFinite(preco) || preco <= 0) {
+      alert("Informe um preco de venda maior que zero.");
+      return;
+    }
+    await adminDb({
+      action: "update_eq",
+      table: "estoque",
+      payload: { preco },
+      eq: { column: "id", value: estoqueId },
+    });
+    await adminDb({
+      action: "update_eq",
+      table: "precificacao_produtos",
+      payload: { ativo_vitrine: true, preco_venda: preco },
+      eq: { column: "id", value: item.id },
     });
     carregarDados();
   };
@@ -1982,14 +2171,23 @@ function AdminPageContent() {
 
     const userAgent = String(navigatorAtual.userAgent || "");
     const platform = String(navigatorAtual.platform || "");
+    const possuiToque = Number(navigatorAtual.maxTouchPoints || 0) > 0;
+    const ponteiroGrosseiro =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: coarse)").matches;
 
     return (
       /android|iphone|ipad|ipod|windows phone/i.test(userAgent) ||
-      (platform === "MacIntel" && navigatorAtual.maxTouchPoints > 1)
+      (platform === "MacIntel" && Number(navigatorAtual.maxTouchPoints || 0) > 1) ||
+      (possuiToque && ponteiroGrosseiro)
     );
   }, []);
+  const deveUsarRawbtNoCelular = useCallback(
+    () => ADMIN_RAWBT_ENABLED && detectarAmbienteImpressaoMovel(),
+    [detectarAmbienteImpressaoMovel],
+  );
   const deveUsarVisualizacaoManualImpressao = useCallback(
-    () => detectarAmbienteImpressaoMovel(),
+    () => detectarAmbienteImpressaoMovel() && !ADMIN_RAWBT_ENABLED,
     [detectarAmbienteImpressaoMovel],
   );
   const gerarAssinaturaPedido = (pedido: any) =>
@@ -2458,7 +2656,7 @@ function AdminPageContent() {
                   ? trocoCalculado !== null
                     ? formatarValor(trocoCalculado)
                     : "SIM"
-                  : "NAO PRECISA"
+                  : "NÃO PRECISA"
               }`,
             ]
           : []),
@@ -2475,7 +2673,7 @@ function AdminPageContent() {
               ).join("\n");
             })
             .join("\n")
-        : "Itens nao informados";
+        : "Itens não informados";
 
       const iniciar = "\x1b\x40";
       const selecionarFonteCompacta = "\x1b\x4d\x01";
@@ -2529,7 +2727,7 @@ function AdminPageContent() {
                 ? trocoCalculado !== null
                   ? formatarValor(trocoCalculado)
                   : "SIM"
-                : "NAO PRECISA"
+                : "NÃO PRECISA"
             }\n`
           : "") +
         "\n\n" +
@@ -2641,15 +2839,17 @@ function AdminPageContent() {
   );
   const imprimirPedidoAceito = useCallback(
     async (pedido: any, options?: ImpressaoPedidoAceitoOptions) => {
+      const ambienteImpressaoMovel = detectarAmbienteImpressaoMovel();
+      const usarRawbtMovel = deveUsarRawbtNoCelular();
       const visualizar =
         Boolean(options?.visualizar) ||
-        deveUsarVisualizacaoManualImpressao();
+        (ambienteImpressaoMovel && !usarRawbtMovel);
       let popup = options?.popupExistente || null;
       let motivoFalhaQz = "";
       if (visualizar && (!popup || popup.closed)) {
         popup = abrirPopupImpressaoPedido(Number(pedido?.id || 0), {
           aguardandoQz: false,
-          visualizacao: true,
+          visualizacao: ambienteImpressaoMovel,
         });
       }
       const pedidoCompleto = completarPedidoComCliente(pedido);
@@ -2688,13 +2888,13 @@ function AdminPageContent() {
                 `<tr><td>${Number(item.qtd || 1)}x ${String(item.nome || "Item")}</td><td style="text-align:right">R$ ${(Number(item.preco || 0) * Number(item.qtd || 0)).toFixed(2)}</td></tr>`,
             )
             .join("")
-        : "<tr><td>Itens nao informados</td><td></td></tr>";
+        : "<tr><td>Itens não informados</td><td></td></tr>";
       const qrCodeImageUrl = linkAceiteEntrega
         ? `https://quickchart.io/qr?size=160&margin=1&text=${encodeURIComponent(linkAceiteEntrega)}`
         : "";
       const qrCodeImageUrlSerializado = JSON.stringify(qrCodeImageUrl);
       const trocoHtml = troco.exibir
-        ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Troco:</strong> ${troco.precisaTroco ? troco.valor !== null ? `Troco para R$ ${troco.valor.toFixed(2)}${trocoCalculado !== null ? ` | Troco: R$ ${trocoCalculado.toFixed(2)}` : ""}` : "Sim" : "Nao precisa"}</div>`
+        ? `<div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Troco:</strong> ${troco.precisaTroco ? troco.valor !== null ? `Troco para R$ ${troco.valor.toFixed(2)}${trocoCalculado !== null ? ` | Troco: R$ ${trocoCalculado.toFixed(2)}` : ""}` : "Sim" : "Não precisa"}</div>`
         : "";
       const trocoResumoHtml = troco.exibir
         ? `
@@ -2708,10 +2908,39 @@ function AdminPageContent() {
                 ? trocoCalculado !== null
                   ? `R$ ${trocoCalculado.toFixed(2)}`
                   : "Sim"
-                : "Nao precisa"
+                : "Não precisa"
             }</div>
           `
         : "";
+      const cupomEscPos = montarCupomPedido(pedido);
+      const rawbtLinks = usarRawbtMovel
+        ? montarLinksRawbt(cupomEscPos)
+        : null;
+
+      if (!visualizar && rawbtLinks) {
+        if (!popup || popup.closed) {
+          popup = abrirPopupImpressaoPedido(Number(pedido?.id || 0), {
+            aguardandoQz: false,
+            visualizacao: false,
+          });
+        }
+
+        if (popup && !popup.closed) {
+          writePopupHtml(
+            popup,
+            renderOrderRawbtLaunchHtml({
+              orderId: pedidoCompleto?.id ?? "",
+              intentUrl: rawbtLinks.intentUrl,
+              schemeUrl: rawbtLinks.schemeUrl,
+            }),
+          );
+          popup.focus();
+          return;
+        }
+
+        window.location.href = rawbtLinks.intentUrl;
+        return;
+      }
 
       if (!visualizar && ADMIN_QZ_ENABLED) {
         try {
@@ -2733,7 +2962,7 @@ function AdminPageContent() {
                 {
                   type: "raw",
                   format: "command",
-                  data: montarCupomPedido(pedido),
+                  data: cupomEscPos,
                 },
               ];
               const errosImpressao: string[] = [];
@@ -2803,14 +3032,14 @@ function AdminPageContent() {
               orderId: pedidoCompleto?.id ?? "",
               createdAt: pedidoCompleto?.created_at
                 ? new Date(pedidoCompleto.created_at).toLocaleString("pt-BR")
-                : "Nao informada",
+                : "Não informada",
               customerName: String(pedidoCompleto?.cliente_nome || "Cliente"),
-              whatsapp: String(pedidoCompleto?.whatsapp || "Nao informado"),
-              address: enderecoCompleto || "Nao informado",
-              neighborhood: bairro || "Nao informado",
-              city: cidade || "Nao informado",
-              cep: cep || "Nao informado",
-              referencePoint: pontoReferencia || "Nao informado",
+              whatsapp: String(pedidoCompleto?.whatsapp || "Não informado"),
+              address: enderecoCompleto || "Não informado",
+              neighborhood: bairro || "Não informado",
+              city: cidade || "Não informado",
+              cep: cep || "Não informado",
+              referencePoint: pontoReferencia || "Não informado",
               observation: observacao || null,
               paymentTitle: pagamento.titulo,
               paymentStatus: pagamento.situacao,
@@ -2824,7 +3053,7 @@ function AdminPageContent() {
                   ? trocoCalculado !== null
                     ? formatarValor(trocoCalculado)
                     : "Sim"
-                  : "Nao precisa"
+                  : "Não precisa"
                 : null,
               subtotal: formatarValor(subtotal),
               deliveryFee: formatarValor(taxaEntrega),
@@ -2839,7 +3068,12 @@ function AdminPageContent() {
                 ),
               })),
             },
-            { visualize: visualizar },
+            {
+              visualize: visualizar,
+              mobilePreview: ambienteImpressaoMovel,
+              rawbtIntentUrl: rawbtLinks?.intentUrl || null,
+              rawbtSchemeUrl: rawbtLinks?.schemeUrl || null,
+            },
           ),
         );
         if (visualizar) {
@@ -3020,7 +3254,8 @@ function AdminPageContent() {
     [
       abrirPopupImpressaoPedido,
       completarPedidoComCliente,
-      deveUsarVisualizacaoManualImpressao,
+      detectarAmbienteImpressaoMovel,
+      deveUsarRawbtNoCelular,
       garantirQzPronto,
       limparObservacaoTroco,
       montarCupomPedido,
@@ -3072,6 +3307,7 @@ function AdminPageContent() {
           status_pedido: proximoStatus,
         }, {
           popupExistente: options?.popupExistente || null,
+          visualizar: Boolean(options?.visualizarImpressao),
         });
       }
       await carregarDados();
@@ -4857,6 +5093,18 @@ function AdminPageContent() {
       valorAReceber: 0,
     },
   );
+  const custoPrecificacaoAtual = calcularCustoPrecificacao(novaPrecificacao);
+  const precoSugeridoPrecificacaoAtual =
+    calcularPrecoSugeridoPrecificacao(novaPrecificacao);
+  const precoVendaPrecificacaoAtual =
+    Number(novaPrecificacao.preco_venda) > 0
+      ? Number(novaPrecificacao.preco_venda)
+      : precoSugeridoPrecificacaoAtual;
+  const lucroPrecificacaoAtual =
+    precoVendaPrecificacaoAtual - custoPrecificacaoAtual;
+  const precificacoesLigadas = precificacoes.filter(
+    (item) => item.ativo_vitrine === true,
+  ).length;
 
   return (
     <div className="admin-app-shell flex min-h-[100dvh] flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
@@ -4924,6 +5172,13 @@ function AdminPageContent() {
             {" "}
             <ShoppingBag size={20} /> Vendas{" "}
           </button>
+          <button
+            onClick={() => setActiveTab("controle")}
+            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "controle" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
+          >
+            {" "}
+            <Settings size={20} /> Controle Admin{" "}
+          </button>
         </nav>
       </aside>
 
@@ -4938,6 +5193,7 @@ function AdminPageContent() {
             {activeTab === "taxas" && "Raio de Entrega (km)"}
             {activeTab === "entregadores" && "Entregadores"}
             {activeTab === "vendas" && "Vendas"}
+            {activeTab === "controle" && "Controle administrativo"}
             {activeTab === "relatorios" && "Relatórios"}
           </h1>
 
@@ -5055,10 +5311,9 @@ function AdminPageContent() {
               Impressao no celular
             </p>
             <p className="mt-1 text-sm font-bold leading-6 text-slate-700">
-              No celular, ao aceitar ou reimprimir um pedido, o cupom abre em
-              visualizacao para voce tocar em Imprimir no navegador. No
-              computador, a impressao automatica via QZ continua funcionando
-              quando estiver configurada.
+              {ADMIN_RAWBT_ENABLED
+                ? "No celular, ao aceitar ou reimprimir um pedido, o admin envia o cupom direto para o RawBT. O corte de papel e a largura ficam nas configuracoes da impressora dentro do proprio RawBT."
+                : "No celular, ao aceitar ou reimprimir um pedido, o cupom abre em visualizacao para voce tocar em Imprimir no navegador. No computador, a impressao automatica via QZ continua funcionando quando estiver configurada."}
             </p>
           </div>
         ) : null}
@@ -5581,6 +5836,379 @@ function AdminPageContent() {
                   ))}
                 </div>
               </section>
+            )}
+          </div>
+        )}
+
+        {activeTab === "controle" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-100 bg-white p-2 shadow-sm">
+              <button
+                type="button"
+                className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-black transition-all ${controleAdminAba === "precificacao" ? "bg-pink-600 text-white shadow-sm" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
+              >
+                <Calculator size={18} />
+                Precificacao
+              </button>
+            </div>
+
+            {controleAdminAba === "precificacao" && (
+              <div className="grid gap-6 xl:grid-cols-[minmax(360px,420px)_1fr]">
+                <form
+                  onSubmit={salvarPrecificacao}
+                  className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm"
+                >
+                  <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Planilha de custos
+                      </p>
+                      <h2 className="mt-1 text-xl font-black text-slate-800">
+                        {editandoPrecificacaoId ? "Editar item" : "Novo item"}
+                      </h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={fecharFormularioPrecificacao}
+                      className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black uppercase text-slate-500 hover:bg-slate-200"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <input
+                      placeholder="Nome do item"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500"
+                      required
+                      value={novaPrecificacao.nome}
+                      onChange={(e) =>
+                        setNovaPrecificacao({
+                          ...novaPrecificacao,
+                          nome: e.target.value,
+                        })
+                      }
+                    />
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Produto na vitrine
+                        </label>
+                        <select
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-pink-500"
+                          value={novaPrecificacao.estoque_id}
+                          onChange={(e) => {
+                            const produto = estoque.find(
+                              (item) => String(item.id) === e.target.value,
+                            );
+                            setNovaPrecificacao({
+                              ...novaPrecificacao,
+                              estoque_id: e.target.value,
+                              nome:
+                                novaPrecificacao.nome || produto?.nome
+                                  ? String(produto?.nome || novaPrecificacao.nome)
+                                  : "",
+                              preco_venda: produto?.preco
+                                ? Number(produto.preco)
+                                : novaPrecificacao.preco_venda,
+                            });
+                          }}
+                        >
+                          <option value="">Ainda nao vinculado</option>
+                          {estoque.map((item) => (
+                            <option key={item.id} value={String(item.id)}>
+                              {item.nome}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Rendimento
+                        </label>
+                        <input
+                          placeholder="Ex: 20 unidades"
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500"
+                          value={novaPrecificacao.unidade_rendimento}
+                          onChange={(e) =>
+                            setNovaPrecificacao({
+                              ...novaPrecificacao,
+                              unidade_rendimento: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {[
+                        ["custo_ingredientes", "Ingredientes"],
+                        ["custo_embalagem", "Embalagem"],
+                        ["custo_mao_obra", "Mao de obra"],
+                        ["custo_operacional", "Operacional"],
+                      ].map(([campo, label]) => (
+                        <div key={campo} className="space-y-1">
+                          <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            {label} R$
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500"
+                            value={(novaPrecificacao as any)[campo]}
+                            onChange={(e) =>
+                              setNovaPrecificacao({
+                                ...novaPrecificacao,
+                                [campo]: Number(e.target.value),
+                              } as any)
+                            }
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Margem %
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500"
+                          value={novaPrecificacao.margem_percentual}
+                          onChange={(e) =>
+                            setNovaPrecificacao({
+                              ...novaPrecificacao,
+                              margem_percentual: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Preco venda R$
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500"
+                          value={novaPrecificacao.preco_venda}
+                          onChange={(e) =>
+                            setNovaPrecificacao({
+                              ...novaPrecificacao,
+                              preco_venda: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-600">
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5 accent-pink-600"
+                        checked={novaPrecificacao.ativo_vitrine}
+                        onChange={(e) =>
+                          setNovaPrecificacao({
+                            ...novaPrecificacao,
+                            ativo_vitrine: e.target.checked,
+                          })
+                        }
+                      />
+                      Item ligado para vitrine
+                    </label>
+
+                    <textarea
+                      placeholder="Observacoes internas"
+                      rows={2}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500"
+                      value={novaPrecificacao.observacoes}
+                      onChange={(e) =>
+                        setNovaPrecificacao({
+                          ...novaPrecificacao,
+                          observacoes: e.target.value,
+                        })
+                      }
+                    />
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Custo
+                        </p>
+                        <p className="mt-1 text-lg font-black text-slate-800">
+                          {formatarMoedaAdmin(custoPrecificacaoAtual)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-pink-50 p-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-pink-500">
+                          Sugerido
+                        </p>
+                        <p className="mt-1 text-lg font-black text-pink-700">
+                          {formatarMoedaAdmin(precoSugeridoPrecificacaoAtual)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-emerald-50 p-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                          Lucro
+                        </p>
+                        <p className="mt-1 text-lg font-black text-emerald-700">
+                          {formatarMoedaAdmin(lucroPrecificacaoAtual)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="flex w-full items-center justify-center gap-2 rounded-[2rem] bg-pink-600 p-5 font-black uppercase text-white shadow-lg shadow-pink-100 transition-transform active:scale-95"
+                    >
+                      <Save size={18} />
+                      Salvar precificacao
+                    </button>
+                  </div>
+                </form>
+
+                <div className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Itens precificados
+                      </p>
+                      <p className="mt-2 text-2xl font-black text-slate-800">
+                        {precificacoes.length}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Ligados
+                      </p>
+                      <p className="mt-2 text-2xl font-black text-slate-800">
+                        {precificacoesLigadas}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Na vitrine
+                      </p>
+                      <p className="mt-2 text-2xl font-black text-slate-800">
+                        {estoque.length}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-[2rem] border border-slate-100 bg-white shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[980px] w-full text-left text-sm">
+                        <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          <tr>
+                            <th className="px-4 py-3">Item</th>
+                            <th className="px-4 py-3">Custo</th>
+                            <th className="px-4 py-3">Margem</th>
+                            <th className="px-4 py-3">Sugerido</th>
+                            <th className="px-4 py-3">Venda</th>
+                            <th className="px-4 py-3">Vitrine</th>
+                            <th className="px-4 py-3 text-right">Acoes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {precificacoes.map((item) => {
+                            const produto = estoque.find(
+                              (produtoEstoque) =>
+                                Number(produtoEstoque.id) ===
+                                Number(item.estoque_id),
+                            );
+                            const custo = calcularCustoPrecificacao(item);
+                            const sugerido =
+                              Number(item.preco_sugerido || 0) ||
+                              calcularPrecoSugeridoPrecificacao(item);
+                            return (
+                              <tr key={item.id} className="align-top">
+                                <td className="px-4 py-4">
+                                  <p className="font-black text-slate-800">
+                                    {item.nome}
+                                  </p>
+                                  <p className="mt-1 text-xs font-bold text-slate-400">
+                                    {item.unidade_rendimento || "Rendimento nao informado"}
+                                  </p>
+                                  {produto ? (
+                                    <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-500">
+                                      <Link2 size={12} />
+                                      {produto.nome}
+                                    </p>
+                                  ) : null}
+                                </td>
+                                <td className="px-4 py-4 font-bold text-slate-700">
+                                  {formatarMoedaAdmin(custo)}
+                                </td>
+                                <td className="px-4 py-4 font-bold text-slate-700">
+                                  {Number(item.margem_percentual || 0).toFixed(2)}%
+                                </td>
+                                <td className="px-4 py-4 font-black text-pink-600">
+                                  {formatarMoedaAdmin(sugerido)}
+                                </td>
+                                <td className="px-4 py-4 font-black text-emerald-700">
+                                  {formatarMoedaAdmin(item.preco_venda || sugerido)}
+                                </td>
+                                <td className="px-4 py-4">
+                                  <span
+                                    className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${item.ativo_vitrine ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
+                                  >
+                                    {item.ativo_vitrine ? "Ligado" : "Interno"}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => abrirEdicaoPrecificacao(item)}
+                                      className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                                    >
+                                      Editar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        aplicarPrecoPrecificacaoNaVitrine(item)
+                                      }
+                                      className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+                                    >
+                                      Aplicar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        excluir("precificacao_produtos", item.id)
+                                      }
+                                      className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100"
+                                    >
+                                      Excluir
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {precificacoes.length === 0 && (
+                            <tr>
+                              <td
+                                colSpan={7}
+                                className="px-4 py-10 text-center text-sm font-bold text-slate-400"
+                              >
+                                Nenhuma precificacao cadastrada ainda.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -6297,16 +6925,25 @@ function AdminPageContent() {
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    const usarVisualizacaoMovel =
+                                      deveUsarVisualizacaoManualImpressao();
                                     const popup = abrirPopupImpressaoPedido(
                                       Number(entrega?.pedido?.id || 0),
+                                      {
+                                        visualizacao:
+                                          usarVisualizacaoMovel,
+                                      },
                                     );
                                     void imprimirPedidoAceito(entrega.pedido, {
                                       popupExistente: popup,
+                                      visualizar: usarVisualizacaoMovel,
                                     });
                                   }}
                                   className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors text-xs font-black uppercase"
                                 >
-                                  Reimprimir cupom
+                                  {impressaoMovelAtiva && ADMIN_RAWBT_ENABLED
+                                    ? "Reimprimir no RawBT"
+                                    : "Reimprimir cupom"}
                                 </button>
                               </>
                             ) : null}
@@ -6924,6 +7561,8 @@ function AdminPageContent() {
                               <button
                                 type="button"
                                 onClick={() => {
+                                  const usarVisualizacaoMovel =
+                                    deveUsarVisualizacaoManualImpressao();
                                   const proximoStatus =
                                     proximoFluxo.proximo || "recebido";
                                   const popup =
@@ -6932,12 +7571,20 @@ function AdminPageContent() {
                                     proximoStatus === "recebido"
                                       ? abrirPopupImpressaoPedido(
                                           Number(pedidoCompleto?.id || 0),
+                                          {
+                                            visualizacao:
+                                              usarVisualizacaoMovel,
+                                          },
                                         )
                                       : null;
                                   void atualizarStatusPedido(
                                     pedido.id,
                                     proximoStatus,
-                                    { popupExistente: popup },
+                                    {
+                                      popupExistente: popup,
+                                      visualizarImpressao:
+                                        usarVisualizacaoMovel,
+                                    },
                                   );
                                 }}
                                 disabled={pedidoAtualizandoId === pedido.id}
@@ -6955,16 +7602,24 @@ function AdminPageContent() {
                             <button
                               type="button"
                               onClick={() => {
+                                const usarVisualizacaoMovel =
+                                  deveUsarVisualizacaoManualImpressao();
                                 const popup = abrirPopupImpressaoPedido(
                                   Number(pedidoCompleto?.id || 0),
+                                  {
+                                    visualizacao: usarVisualizacaoMovel,
+                                  },
                                 );
                                 void imprimirPedidoAceito(pedidoCompleto, {
                                   popupExistente: popup,
+                                  visualizar: usarVisualizacaoMovel,
                                 });
                               }}
                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-colors hover:bg-slate-100"
                             >
-                              Imprimir
+                              {impressaoMovelAtiva && ADMIN_RAWBT_ENABLED
+                                ? "Imprimir no RawBT"
+                                : "Imprimir"}
                             </button>
                             <button
                               type="button"

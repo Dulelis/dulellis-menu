@@ -12,6 +12,7 @@ const TABELAS_PERMITIDAS = new Set([
   "clientes",
   "entregadores",
   "entregas",
+  "precificacao_produtos",
 ]);
 
 type AdminDbBody = {

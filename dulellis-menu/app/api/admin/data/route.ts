@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
-  const [resEst, resCli, resPed, resTaxas, resProm, resPropagandas, resHorario, resEntregadores, resEntregas] = await Promise.all([
+  const [resEst, resCli, resPed, resTaxas, resProm, resPropagandas, resHorario, resEntregadores, resEntregas, resPrecificacoes] = await Promise.all([
     supabase.from("estoque").select("*").order("nome"),
     supabase.from("clientes").select("*").order("created_at", { ascending: false }),
     supabase.from("pedidos").select("*").order("created_at", { ascending: false }),
@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle(),
     supabase.from("entregadores").select("*").order("nome"),
     supabase.from("entregas").select("*").order("aceito_em", { ascending: false }),
+    supabase.from("precificacao_produtos").select("*").order("updated_at", { ascending: false }),
   ]);
 
   const erro =
@@ -50,10 +51,11 @@ export async function GET(request: NextRequest) {
 
   const erroEntregadores = tabelaAusente(resEntregadores.error) ? null : resEntregadores.error;
   const erroEntregas = tabelaAusente(resEntregas.error) ? null : resEntregas.error;
+  const erroPrecificacoes = tabelaAusente(resPrecificacoes.error) ? null : resPrecificacoes.error;
 
-  if (erro || erroEntregadores || erroEntregas) {
+  if (erro || erroEntregadores || erroEntregas || erroPrecificacoes) {
     return NextResponse.json(
-      { ok: false, error: erro?.message || erroEntregadores?.message || erroEntregas?.message },
+      { ok: false, error: erro?.message || erroEntregadores?.message || erroEntregas?.message || erroPrecificacoes?.message },
       { status: 500 },
     );
   }
@@ -70,6 +72,7 @@ export async function GET(request: NextRequest) {
       horario: resHorario.data || null,
       entregadores: resEntregadores.data || [],
       entregas: resEntregas.data || [],
+      precificacoes: tabelaAusente(resPrecificacoes.error) ? [] : resPrecificacoes.data || [],
     },
   });
 }
