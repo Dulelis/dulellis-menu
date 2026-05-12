@@ -30,11 +30,20 @@ export type OrderReceiptData = {
 
 type RenderOrderReceiptOptions = {
   visualize?: boolean;
+  mobilePreview?: boolean;
+  rawbtIntentUrl?: string | null;
+  rawbtSchemeUrl?: string | null;
 };
 
 type RenderOrderLoadingOptions = {
   orderId?: number | string;
   waitingForQz?: boolean;
+};
+
+type RenderOrderRawbtLaunchOptions = {
+  orderId?: number | string;
+  intentUrl: string;
+  schemeUrl?: string | null;
 };
 
 function escapeHtml(value: unknown) {
@@ -81,12 +90,12 @@ export function renderOrderPrintLoadingHtml(
       ? ""
       : String(options.orderId);
   const title = options.waitingForQz
-    ? "Aguardando autorizacao do QZ Tray"
-    : "Preparando impressao";
+    ? "Aguardando autorização do QZ Tray"
+    : "Preparando impressão";
   const hint = options.waitingForQz
     ? `
       <div class="hint">
-        Se o QZ Tray abrir um aviso de seguranca, clique em <strong>Allow</strong> para liberar a impressao.
+        Se o QZ Tray abrir um aviso de segurança, clique em <strong>Allow</strong> para liberar a impressão.
       </div>
     `
     : "";
@@ -140,23 +149,157 @@ export function renderOrderPrintLoadingHtml(
   `;
 }
 
+export function renderOrderRawbtLaunchHtml(
+  options: RenderOrderRawbtLaunchOptions,
+) {
+  const orderId =
+    options.orderId === undefined || options.orderId === null
+      ? ""
+      : String(options.orderId);
+  const intentUrl = String(options.intentUrl || "");
+  const schemeUrl = String(options.schemeUrl || "");
+  const primaryUrl = intentUrl || schemeUrl;
+  const hasDirectFallback =
+    Boolean(intentUrl) && Boolean(schemeUrl) && intentUrl !== schemeUrl;
+
+  return `
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Abrindo RawBT</title>
+        <style>
+          * { box-sizing: border-box; }
+          html, body { margin: 0; min-height: 100%; }
+          body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: #f8fafc;
+            color: #0f172a;
+            font-family: Arial, sans-serif;
+          }
+          .box {
+            width: min(100%, 420px);
+            padding: 28px 24px;
+            border-radius: 24px;
+            background: #ffffff;
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.1);
+            text-align: center;
+          }
+          h1 { margin: 0 0 8px; font-size: 20px; line-height: 1.2; }
+          p { margin: 0; color: #475569; font-weight: 700; }
+          .hint {
+            margin-top: 16px;
+            color: #64748b;
+            font-size: 13px;
+            line-height: 1.55;
+            font-weight: 600;
+          }
+          .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 20px;
+          }
+          .actions a,
+          .actions button {
+            border: none;
+            border-radius: 999px;
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+          }
+          .actions a.primary {
+            background: #0f172a;
+            color: #f8fafc;
+          }
+          .actions a.secondary {
+            background: #e2e8f0;
+            color: #0f172a;
+          }
+          .actions button {
+            background: transparent;
+            color: #475569;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="box">
+          <h1>Abrindo RawBT</h1>
+          <p>Pedido #${renderText(orderId)}</p>
+          <div class="hint">
+            Se o RawBT nao abrir sozinho, toque no botao abaixo. O corte de papel e a largura do cupom ficam sob as configuracoes da impressora dentro do proprio RawBT.
+          </div>
+          <div class="actions">
+            <a id="rawbt-open" class="primary" href="${escapeHtml(primaryUrl)}">Abrir no RawBT</a>
+            ${
+              hasDirectFallback
+                ? `<a class="secondary" href="${escapeHtml(schemeUrl)}">Tentar link direto</a>`
+                : ""
+            }
+            <button type="button" onclick="window.close()">Fechar</button>
+          </div>
+        </div>
+        <script>
+          window.addEventListener("load", () => {
+            const anchor = document.getElementById("rawbt-open");
+            if (anchor instanceof HTMLAnchorElement) {
+              window.setTimeout(() => {
+                anchor.click();
+              }, 80);
+            }
+          });
+        </script>
+      </body>
+    </html>
+  `;
+}
+
 export function renderOrderReceiptHtml(
   data: OrderReceiptData,
   options: RenderOrderReceiptOptions = {},
 ) {
   const visualize = Boolean(options.visualize);
+  const mobilePreview = Boolean(options.mobilePreview);
+  const rawbtIntentUrl = String(options.rawbtIntentUrl || "");
+  const rawbtSchemeUrl = String(options.rawbtSchemeUrl || "");
+  const rawbtEnabled = Boolean(rawbtIntentUrl || rawbtSchemeUrl);
+  const primaryActionLabel = rawbtEnabled
+    ? "Abrir no RawBT"
+    : mobilePreview
+      ? "Abrir impressao do Android"
+      : "Imprimir";
+  const mobileHintHtml = rawbtEnabled
+    ? `
+      <div class="preview-mobile-hint">
+        Ao tocar no botao, o RawBT abre para imprimir o cupom ESC/POS direto. Ajuste corte e largura no perfil da impressora dentro do RawBT.
+      </div>
+    `
+    : mobilePreview
+    ? `
+      <div class="preview-mobile-hint">
+        Ao tocar no botao, o Android abre a tela de impressao do aparelho. A disponibilidade depende da impressora configurada no celular.
+      </div>
+    `
+    : "";
   const toolbarHtml = visualize
     ? `
       <div class="preview-toolbar">
         <div>
-          <div class="preview-title">Visualizar impressao</div>
+          <div class="preview-title">Visualizar impressão</div>
           <div class="preview-subtitle">Pedido #${renderText(data.orderId)}</div>
         </div>
         <div class="preview-actions">
-          <button type="button" onclick="window.print()">Imprimir</button>
+          <button type="button" onclick="window.__orderReceiptPrimaryAction ? window.__orderReceiptPrimaryAction() : window.print()">${primaryActionLabel}</button>
           <button type="button" class="secondary" onclick="window.close()">Fechar</button>
         </div>
       </div>
+      ${mobileHintHtml}
       <div class="preview-shell">
         <div class="preview-frame">
     `
@@ -182,7 +325,7 @@ export function renderOrderReceiptHtml(
         .join("")
     : `
       <tr>
-        <td colspan="3" class="empty">Itens nao informados</td>
+        <td colspan="3" class="empty">Itens não informados</td>
       </tr>
     `;
 
@@ -197,11 +340,23 @@ export function renderOrderReceiptHtml(
     : "";
 
   const qrCodeUrlSerialized = JSON.stringify(data.qrCodeUrl || "");
+  const rawbtIntentUrlSerialized = JSON.stringify(rawbtIntentUrl);
+  const rawbtSchemeUrlSerialized = JSON.stringify(rawbtSchemeUrl);
   const initializationScript = visualize
     ? `
       window.addEventListener("load", () => {
         const qrCodeImageUrl = ${qrCodeUrlSerialized};
+        const rawbtIntentUrl = ${rawbtIntentUrlSerialized};
+        const rawbtSchemeUrl = ${rawbtSchemeUrlSerialized};
         const qrImage = document.getElementById("maps-qrcode");
+        window.__orderReceiptPrimaryAction = () => {
+          const targetUrl = rawbtIntentUrl || rawbtSchemeUrl;
+          if (targetUrl) {
+            window.location.href = targetUrl;
+            return;
+          }
+          window.print();
+        };
         if (qrCodeImageUrl && qrImage instanceof HTMLImageElement) {
           qrImage.src = qrCodeImageUrl;
         }
@@ -290,6 +445,17 @@ export function renderOrderReceiptHtml(
             color: #f8fafc;
           }
           .preview-shell { padding: 18px; }
+          .preview-mobile-hint {
+            margin: 0 18px;
+            border-radius: 18px;
+            background: #fff7ed;
+            color: #9a3412;
+            padding: 12px 14px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.45;
+          }
           .preview-frame {
             width: fit-content;
             margin: 0 auto;
@@ -428,6 +594,7 @@ export function renderOrderReceiptHtml(
           @media print {
             html, body { background: #ffffff !important; }
             .preview-toolbar { display: none !important; }
+            .preview-mobile-hint { display: none !important; }
             .preview-shell { padding: 0 !important; }
             .preview-frame {
               border-radius: 0 !important;
@@ -449,12 +616,12 @@ export function renderOrderReceiptHtml(
             ${renderInfoLine("Data", data.createdAt)}
             ${renderInfoLine("Cliente", data.customerName)}
             ${renderInfoLine("WhatsApp", data.whatsapp)}
-            ${renderInfoLine("Endereco", data.address)}
+            ${renderInfoLine("Endereço", data.address)}
             ${renderInfoLine("Bairro", data.neighborhood)}
             ${renderInfoLine("Cidade", data.city)}
             ${renderInfoLine("CEP", data.cep)}
             ${renderInfoLine("Ponto", data.referencePoint)}
-            ${renderInfoLine("Observacao", data.observation)}
+            ${renderInfoLine("Observação", data.observation)}
           </section>
 
           <section class="receipt-section">
