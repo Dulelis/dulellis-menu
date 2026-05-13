@@ -13,6 +13,7 @@ import React, {
 import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 import { PropagandaFrame } from "@/components/PropagandaFrame";
+import { PRECIFICACAO_PLANILHA_DADOS } from "@/lib/admin-pricing-workbook";
 import { parseOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { supabase } from "@/lib/supabase";
 import {
@@ -553,6 +554,9 @@ function AdminPageContent() {
   const [entregadores, setEntregadores] = useState<any[]>([]);
   const [entregas, setEntregas] = useState<any[]>([]);
   const [controleAdminAba] = useState<ControleAdminAba>("precificacao");
+  const [receitaPlanilhaSelecionada, setReceitaPlanilhaSelecionada] = useState<string>(
+    PRECIFICACAO_PLANILHA_DADOS.receitas[0]?.nome || "",
+  );
   const [horarioFuncionamento, setHorarioFuncionamento] = useState({
     id: null as number | null,
     hora_abertura: "08:00",
@@ -1544,6 +1548,30 @@ function AdminPageContent() {
       eq: { column: "id", value: item.id },
     });
     carregarDados();
+  };
+
+  const usarReceitaPlanilhaNaPrecificacao = (receita: any) => {
+    const custoInsumos = Number(receita?.custoTotalInsumos || 0);
+    const custoProducao = Number(receita?.subtotalProducao || 0);
+    const embalagem = Number(receita?.embalagemDescartaveis || 0);
+    const precoFinal = Number(receita?.precoFinalSugerido || 0);
+    const margemTaxa = Number(receita?.margemLucroTaxa || 0);
+    const margemPercentual = margemTaxa > 0 ? margemTaxa * 100 : 60;
+
+    setNovaPrecificacao({
+      nome: String(receita?.nome || ""),
+      estoque_id: "",
+      unidade_rendimento: "1 kg",
+      custo_ingredientes: Number(custoInsumos.toFixed(2)),
+      custo_embalagem: Number(embalagem.toFixed(2)),
+      custo_mao_obra: Number(Math.max(0, custoProducao - custoInsumos).toFixed(2)),
+      custo_operacional: 0,
+      margem_percentual: Number(margemPercentual.toFixed(2)),
+      preco_venda: Number(precoFinal.toFixed(2)),
+      ativo_vitrine: false,
+      observacoes: "Importado da planilha Calculadora Precificacao Confeitaria.",
+    });
+    setEditandoPrecificacaoId(null);
   };
 
   const excluir = async (tabela: string, id: number) => {
@@ -5109,6 +5137,12 @@ function AdminPageContent() {
   const precificacoesLigadas = precificacoes.filter(
     (item) => item.ativo_vitrine === true,
   ).length;
+  const receitaPlanilhaAtiva =
+    PRECIFICACAO_PLANILHA_DADOS.receitas.find(
+      (receita) => receita.nome === receitaPlanilhaSelecionada,
+    ) || PRECIFICACAO_PLANILHA_DADOS.receitas[0];
+  const totalInsumosPlanilha = PRECIFICACAO_PLANILHA_DADOS.insumos.length;
+  const totalReceitasPlanilha = PRECIFICACAO_PLANILHA_DADOS.receitas.length;
 
   return (
     <div className="admin-app-shell flex min-h-[100dvh] flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
@@ -5895,6 +5929,158 @@ function AdminPageContent() {
                         Baixar arquivo
                       </a>
                     </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]">
+                  <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Cadastro de insumos
+                        </p>
+                        <h2 className="mt-1 text-lg font-black text-slate-800">
+                          {totalInsumosPlanilha} itens da planilha
+                        </h2>
+                      </div>
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase text-emerald-700">
+                        XLSX
+                      </span>
+                    </div>
+                    <div className="max-h-[420px] overflow-y-auto pr-1">
+                      <div className="grid gap-2">
+                        {PRECIFICACAO_PLANILHA_DADOS.insumos.map((insumo) => (
+                          <div
+                            key={`${insumo.nome}-${insumo.marca}`}
+                            className="rounded-2xl border border-slate-100 bg-slate-50 p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-black text-slate-800">
+                                  {insumo.nome}
+                                </p>
+                                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                                  {insumo.marca || "Sem marca"} | {insumo.unidade}
+                                </p>
+                              </div>
+                              <p className="text-right text-sm font-black text-pink-600">
+                                {formatarMoedaAdmin(insumo.custoUnitario)}
+                              </p>
+                            </div>
+                            <p className="mt-2 text-xs font-bold text-slate-500">
+                              Embalagem: {Number(insumo.quantidadeEmbalagem).toLocaleString("pt-BR")} | Compra: {formatarMoedaAdmin(insumo.precoCompra)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
+                    <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Ficha tecnica
+                        </p>
+                        <h2 className="mt-1 text-lg font-black text-slate-800">
+                          {totalReceitasPlanilha} receitas precificadas
+                        </h2>
+                      </div>
+                      <select
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-black text-slate-700 outline-none focus:ring-2 focus:ring-pink-500 lg:w-[360px]"
+                        value={receitaPlanilhaAtiva?.nome || ""}
+                        onChange={(e) => setReceitaPlanilhaSelecionada(e.target.value)}
+                      >
+                        {PRECIFICACAO_PLANILHA_DADOS.receitas.map((receita) => (
+                          <option key={receita.nome} value={receita.nome}>
+                            {receita.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {receitaPlanilhaAtiva ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-3 md:grid-cols-4">
+                          <div className="rounded-2xl bg-slate-50 p-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                              Insumos
+                            </p>
+                            <p className="mt-1 text-xl font-black text-slate-800">
+                              {formatarMoedaAdmin(receitaPlanilhaAtiva.custoTotalInsumos)}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl bg-amber-50 p-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">
+                              Producao
+                            </p>
+                            <p className="mt-1 text-xl font-black text-amber-800">
+                              {formatarMoedaAdmin(receitaPlanilhaAtiva.subtotalProducao)}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl bg-sky-50 p-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
+                              Embalagem
+                            </p>
+                            <p className="mt-1 text-xl font-black text-sky-800">
+                              {formatarMoedaAdmin(receitaPlanilhaAtiva.embalagemDescartaveis)}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl bg-pink-50 p-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-pink-600">
+                              Venda sugerida
+                            </p>
+                            <p className="mt-1 text-xl font-black text-pink-700">
+                              {formatarMoedaAdmin(receitaPlanilhaAtiva.precoFinalSugerido)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="overflow-hidden rounded-2xl border border-slate-100">
+                          <div className="overflow-x-auto">
+                            <table className="min-w-[720px] w-full text-left text-sm">
+                              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                <tr>
+                                  <th className="px-4 py-3">Ingrediente</th>
+                                  <th className="px-4 py-3">Qtd</th>
+                                  <th className="px-4 py-3">Custo unit.</th>
+                                  <th className="px-4 py-3 text-right">Subtotal</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {receitaPlanilhaAtiva.ingredientes.map((ingrediente) => (
+                                  <tr key={`${receitaPlanilhaAtiva.nome}-${ingrediente.nome}`}>
+                                    <td className="px-4 py-3 font-bold text-slate-700">
+                                      {ingrediente.nome}
+                                    </td>
+                                    <td className="px-4 py-3 font-bold text-slate-500">
+                                      {Number(ingrediente.quantidade).toLocaleString("pt-BR")}
+                                    </td>
+                                    <td className="px-4 py-3 font-bold text-slate-500">
+                                      {formatarMoedaAdmin(ingrediente.custoUnitario)}
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-black text-slate-800">
+                                      {formatarMoedaAdmin(ingrediente.subtotal)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            usarReceitaPlanilhaNaPrecificacao(receitaPlanilhaAtiva)
+                          }
+                          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-sm font-black text-white shadow-lg shadow-pink-100 hover:bg-pink-700 md:w-auto"
+                        >
+                          <Calculator size={18} />
+                          Usar esta receita no formulario
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
