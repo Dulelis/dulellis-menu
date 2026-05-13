@@ -63,9 +63,6 @@ import {
   BellRing,
   BellOff,
   Calculator,
-  Download,
-  FileSpreadsheet,
-  Link2,
   Save,
   Settings,
 } from "lucide-react";
@@ -74,8 +71,6 @@ const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
 const ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY = "dulellis.admin.order-alarm.sound";
 const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
 const ADMIN_ALARME_PEDIDOS_REPETICAO_MS = 10000;
-const PRECIFICACAO_PLANILHA_PATH =
-  "/admin/precificacao/Calculadora_Precificacao_Confeitaria.xlsx";
 const LOJA_ENDERECO_RETIRADA_ADMIN = "Rua Manoel Felício Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
@@ -468,21 +463,6 @@ function formatarMoedaAdmin(valor: unknown) {
   return `R$ ${Number(valor || 0).toFixed(2)}`;
 }
 
-function calcularCustoPrecificacao(item: any) {
-  return (
-    Number(item?.custo_ingredientes || 0) +
-    Number(item?.custo_embalagem || 0) +
-    Number(item?.custo_mao_obra || 0) +
-    Number(item?.custo_operacional || 0)
-  );
-}
-
-function calcularPrecoSugeridoPrecificacao(item: any) {
-  const custoTotal = calcularCustoPrecificacao(item);
-  const margem = Math.max(0, Number(item?.margem_percentual || 0));
-  return custoTotal * (1 + margem / 100);
-}
-
 function criarReceitaPlanilhaEditavel(receita: any): ReceitaPlanilhaEditavel {
   const ingredientes = Array.isArray(receita?.ingredientes)
     ? receita.ingredientes.map((ingrediente: any) => ({
@@ -628,7 +608,6 @@ function AdminPageContent() {
   const [taxas, setTaxas] = useState<any[]>([]);
   const [promocoes, setPromocoes] = useState<any[]>([]);
   const [propagandas, setPropagandas] = useState<any[]>([]);
-  const [precificacoes, setPrecificacoes] = useState<any[]>([]);
   const [entregadores, setEntregadores] = useState<any[]>([]);
   const [entregas, setEntregas] = useState<any[]>([]);
   const [controleAdminAba] = useState<ControleAdminAba>("precificacao");
@@ -1104,7 +1083,6 @@ function AdminPageContent() {
         taxas?: any[];
         promocoes?: any[];
         propagandas?: any[];
-        precificacoes?: any[];
         entregadores?: any[];
         entregas?: any[];
         horario?: {
@@ -1133,7 +1111,6 @@ function AdminPageContent() {
     setTaxas(json.data?.taxas || []);
     setPromocoes(json.data?.promocoes || []);
     setPropagandas(json.data?.propagandas || []);
-    setPrecificacoes(json.data?.precificacoes || []);
     setEntregadores(json.data?.entregadores || []);
     setEntregas(json.data?.entregas || []);
     if (json.data?.horario) {
@@ -1510,60 +1487,6 @@ function AdminPageContent() {
       table: "estoque",
       payload: { quantidade: Math.max(0, atual + mudanca) },
       eq: { column: "id", value: id },
-    });
-    carregarDados();
-  };
-
-  const abrirEdicaoPrecificacao = (item: any) => {
-    const custoIngredientes = Number(item.custo_ingredientes || 0);
-    const custoEmbalagem = Number(item.custo_embalagem || 0);
-    const custoMaoObra = Number(item.custo_mao_obra || 0);
-    const margemLucroTaxa = Number(item.margem_percentual || 0) / 100;
-
-    setEditandoPrecificacaoId(Number(item.id));
-    setReceitaPlanilhaEditavel({
-      nome: String(item.nome || ""),
-      estoque_id: item.estoque_id ? String(item.estoque_id) : "",
-      ingredientes: [
-        {
-          nome: "Ingredientes",
-          quantidade: 1,
-          custoUnitario: custoIngredientes,
-          subtotal: custoIngredientes,
-        },
-      ],
-      custoTotalInsumos: custoIngredientes,
-      subtotalProducao: custoIngredientes + custoMaoObra,
-      margemLucroTaxa,
-      embalagemDescartaveis: custoEmbalagem,
-      precoFinalSugerido: Number(item.preco_venda || item.preco_sugerido || 0),
-      marcado: item.ativo_vitrine === true,
-    });
-    setReceitaPlanilhaEmEdicao(true);
-  };
-
-  const aplicarPrecoPrecificacaoNaVitrine = async (item: any) => {
-    const estoqueId = Number(item.estoque_id || 0);
-    const preco = Number(item.preco_venda || item.preco_sugerido || 0);
-    if (!estoqueId) {
-      alert("Vincule esta precificacao a um produto do estoque antes de aplicar na vitrine.");
-      return;
-    }
-    if (!Number.isFinite(preco) || preco <= 0) {
-      alert("Informe um preco de venda maior que zero.");
-      return;
-    }
-    await adminDb({
-      action: "update_eq",
-      table: "estoque",
-      payload: { preco },
-      eq: { column: "id", value: estoqueId },
-    });
-    await adminDb({
-      action: "update_eq",
-      table: "precificacao_produtos",
-      payload: { ativo_vitrine: true, preco_venda: preco },
-      eq: { column: "id", value: item.id },
     });
     carregarDados();
   };
@@ -5235,16 +5158,6 @@ function AdminPageContent() {
       valorAReceber: 0,
     },
   );
-  const precificacoesLigadas = precificacoes.filter(
-    (item) => item.ativo_vitrine === true,
-  ).length;
-  const receitaPlanilhaAtiva =
-    PRECIFICACAO_PLANILHA_DADOS.receitas.find(
-      (receita) => receita.nome === receitaPlanilhaSelecionada,
-    ) || PRECIFICACAO_PLANILHA_DADOS.receitas[0];
-  const totalInsumosPlanilha = PRECIFICACAO_PLANILHA_DADOS.insumos.length;
-  const totalReceitasPlanilha = PRECIFICACAO_PLANILHA_DADOS.receitas.length;
-
   return (
     <div className="admin-app-shell flex min-h-[100dvh] flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
       {ADMIN_QZ_ENABLED ? (
@@ -5993,200 +5906,7 @@ function AdminPageContent() {
 
             {controleAdminAba === "precificacao" && (
               <div className="space-y-6">
-                <div className="rounded-[2rem] border border-emerald-100 bg-white p-5 shadow-sm">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex items-start gap-4">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-                        <FileSpreadsheet size={24} />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
-                          Arquivo da precificacao
-                        </p>
-                        <h2 className="mt-1 text-lg font-black text-slate-800">
-                          Calculadora Precificacao Confeitaria
-                        </h2>
-                        <p className="mt-1 text-sm font-bold leading-6 text-slate-500">
-                          Planilha original com Cadastro de Insumos e Ficha Tecnica para consulta no admin.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <a
-                        href={PRECIFICACAO_PLANILHA_PATH}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-black text-white hover:bg-slate-800"
-                      >
-                        <FileSpreadsheet size={18} />
-                        Abrir planilha
-                      </a>
-                      <a
-                        href={PRECIFICACAO_PLANILHA_PATH}
-                        download
-                        className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
-                      >
-                        <Download size={18} />
-                        Baixar arquivo
-                      </a>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-6 xl:grid-cols-[minmax(320px,420px)_1fr]">
-                  <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          Cadastro de insumos
-                        </p>
-                        <h2 className="mt-1 text-lg font-black text-slate-800">
-                          {totalInsumosPlanilha} itens da planilha
-                        </h2>
-                      </div>
-                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase text-emerald-700">
-                        XLSX
-                      </span>
-                    </div>
-                    <div className="max-h-[420px] overflow-y-auto pr-1">
-                      <div className="grid gap-2">
-                        {PRECIFICACAO_PLANILHA_DADOS.insumos.map((insumo) => (
-                          <div
-                            key={`${insumo.nome}-${insumo.marca}`}
-                            className="rounded-2xl border border-slate-100 bg-slate-50 p-3"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-black text-slate-800">
-                                  {insumo.nome}
-                                </p>
-                                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                                  {insumo.marca || "Sem marca"} | {insumo.unidade}
-                                </p>
-                              </div>
-                              <p className="text-right text-sm font-black text-pink-600">
-                                {formatarMoedaAdmin(insumo.custoUnitario)}
-                              </p>
-                            </div>
-                            <p className="mt-2 text-xs font-bold text-slate-500">
-                              Embalagem: {Number(insumo.quantidadeEmbalagem).toLocaleString("pt-BR")} | Compra: {formatarMoedaAdmin(insumo.precoCompra)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
-                    <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          Ficha tecnica
-                        </p>
-                        <h2 className="mt-1 text-lg font-black text-slate-800">
-                          {totalReceitasPlanilha} receitas precificadas
-                        </h2>
-                      </div>
-                      <select
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-black text-slate-700 outline-none focus:ring-2 focus:ring-pink-500 lg:w-[360px]"
-                        value={receitaPlanilhaAtiva?.nome || ""}
-                        onChange={(e) => selecionarReceitaPlanilha(e.target.value)}
-                      >
-                        {PRECIFICACAO_PLANILHA_DADOS.receitas.map((receita) => (
-                          <option key={receita.nome} value={receita.nome}>
-                            {receita.nome}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {receitaPlanilhaAtiva ? (
-                      <div className="space-y-4">
-                        <div className="grid gap-3 md:grid-cols-4">
-                          <div className="rounded-2xl bg-slate-50 p-4">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                              Insumos
-                            </p>
-                            <p className="mt-1 text-xl font-black text-slate-800">
-                              {formatarMoedaAdmin(receitaPlanilhaAtiva.custoTotalInsumos)}
-                            </p>
-                          </div>
-                          <div className="rounded-2xl bg-amber-50 p-4">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">
-                              Producao
-                            </p>
-                            <p className="mt-1 text-xl font-black text-amber-800">
-                              {formatarMoedaAdmin(receitaPlanilhaAtiva.subtotalProducao)}
-                            </p>
-                          </div>
-                          <div className="rounded-2xl bg-sky-50 p-4">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
-                              Embalagem
-                            </p>
-                            <p className="mt-1 text-xl font-black text-sky-800">
-                              {formatarMoedaAdmin(receitaPlanilhaAtiva.embalagemDescartaveis)}
-                            </p>
-                          </div>
-                          <div className="rounded-2xl bg-pink-50 p-4">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-pink-600">
-                              Venda sugerida
-                            </p>
-                            <p className="mt-1 text-xl font-black text-pink-700">
-                              {formatarMoedaAdmin(receitaPlanilhaAtiva.precoFinalSugerido)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="overflow-hidden rounded-2xl border border-slate-100">
-                          <div className="overflow-x-auto">
-                            <table className="min-w-[720px] w-full text-left text-sm">
-                              <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                <tr>
-                                  <th className="px-4 py-3">Ingrediente</th>
-                                  <th className="px-4 py-3">Qtd</th>
-                                  <th className="px-4 py-3">Custo unit.</th>
-                                  <th className="px-4 py-3 text-right">Subtotal</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {receitaPlanilhaAtiva.ingredientes.map((ingrediente) => (
-                                  <tr key={`${receitaPlanilhaAtiva.nome}-${ingrediente.nome}`}>
-                                    <td className="px-4 py-3 font-bold text-slate-700">
-                                      {ingrediente.nome}
-                                    </td>
-                                    <td className="px-4 py-3 font-bold text-slate-500">
-                                      {Number(ingrediente.quantidade).toLocaleString("pt-BR")}
-                                    </td>
-                                    <td className="px-4 py-3 font-bold text-slate-500">
-                                      {formatarMoedaAdmin(ingrediente.custoUnitario)}
-                                    </td>
-                                    <td className="px-4 py-3 text-right font-black text-slate-800">
-                                      {formatarMoedaAdmin(ingrediente.subtotal)}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            selecionarReceitaPlanilha(receitaPlanilhaAtiva.nome);
-                            setReceitaPlanilhaEmEdicao(true);
-                          }}
-                          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-sm font-black text-white shadow-lg shadow-pink-100 hover:bg-pink-700 md:w-auto"
-                        >
-                          <Calculator size={18} />
-                          Editar esta receita
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="grid gap-6 xl:grid-cols-[minmax(360px,420px)_1fr]">
+                <div className="w-full">
                 <form
                   onSubmit={salvarReceitaPlanilhaEditavel}
                   className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm"
@@ -6453,141 +6173,6 @@ function AdminPageContent() {
                   </div>
                 </form>
 
-                <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        Itens precificados
-                      </p>
-                      <p className="mt-2 text-2xl font-black text-slate-800">
-                        {precificacoes.length}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        Ligados
-                      </p>
-                      <p className="mt-2 text-2xl font-black text-slate-800">
-                        {precificacoesLigadas}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        Na vitrine
-                      </p>
-                      <p className="mt-2 text-2xl font-black text-slate-800">
-                        {estoque.length}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="overflow-hidden rounded-[2rem] border border-slate-100 bg-white shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="min-w-[980px] w-full text-left text-sm">
-                        <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          <tr>
-                            <th className="px-4 py-3">Item</th>
-                            <th className="px-4 py-3">Custo</th>
-                            <th className="px-4 py-3">Margem</th>
-                            <th className="px-4 py-3">Sugerido</th>
-                            <th className="px-4 py-3">Venda</th>
-                            <th className="px-4 py-3">Vitrine</th>
-                            <th className="px-4 py-3 text-right">Acoes</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {precificacoes.map((item) => {
-                            const produto = estoque.find(
-                              (produtoEstoque) =>
-                                Number(produtoEstoque.id) ===
-                                Number(item.estoque_id),
-                            );
-                            const custo = calcularCustoPrecificacao(item);
-                            const sugerido =
-                              Number(item.preco_sugerido || 0) ||
-                              calcularPrecoSugeridoPrecificacao(item);
-                            return (
-                              <tr key={item.id} className="align-top">
-                                <td className="px-4 py-4">
-                                  <p className="font-black text-slate-800">
-                                    {item.nome}
-                                  </p>
-                                  <p className="mt-1 text-xs font-bold text-slate-400">
-                                    {item.unidade_rendimento || "Rendimento nao informado"}
-                                  </p>
-                                  {produto ? (
-                                    <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-500">
-                                      <Link2 size={12} />
-                                      {produto.nome}
-                                    </p>
-                                  ) : null}
-                                </td>
-                                <td className="px-4 py-4 font-bold text-slate-700">
-                                  {formatarMoedaAdmin(custo)}
-                                </td>
-                                <td className="px-4 py-4 font-bold text-slate-700">
-                                  {Number(item.margem_percentual || 0).toFixed(2)}%
-                                </td>
-                                <td className="px-4 py-4 font-black text-pink-600">
-                                  {formatarMoedaAdmin(sugerido)}
-                                </td>
-                                <td className="px-4 py-4 font-black text-emerald-700">
-                                  {formatarMoedaAdmin(item.preco_venda || sugerido)}
-                                </td>
-                                <td className="px-4 py-4">
-                                  <span
-                                    className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${item.ativo_vitrine ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
-                                  >
-                                    {item.ativo_vitrine ? "Ligado" : "Interno"}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-4">
-                                  <div className="flex justify-end gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => abrirEdicaoPrecificacao(item)}
-                                      className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500 hover:bg-blue-50 hover:text-blue-600"
-                                    >
-                                      Editar
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        aplicarPrecoPrecificacaoNaVitrine(item)
-                                      }
-                                      className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
-                                    >
-                                      Aplicar
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        excluir("precificacao_produtos", item.id)
-                                      }
-                                      className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100"
-                                    >
-                                      Excluir
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                          {precificacoes.length === 0 && (
-                            <tr>
-                              <td
-                                colSpan={7}
-                                className="px-4 py-10 text-center text-sm font-bold text-slate-400"
-                              >
-                                Nenhuma precificacao cadastrada ainda.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
                 </div>
               </div>
             )}
