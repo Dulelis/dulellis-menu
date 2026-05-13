@@ -62,6 +62,8 @@ import {
   BellRing,
   BellOff,
   Calculator,
+  Download,
+  FileSpreadsheet,
   Link2,
   Save,
   Settings,
@@ -71,6 +73,8 @@ const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
 const ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY = "dulellis.admin.order-alarm.sound";
 const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
 const ADMIN_ALARME_PEDIDOS_REPETICAO_MS = 10000;
+const PRECIFICACAO_PLANILHA_PATH =
+  "/admin/precificacao/Calculadora_Precificacao_Confeitaria.xlsx";
 const LOJA_ENDERECO_RETIRADA_ADMIN = "Rua Manoel Felício Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
@@ -5853,7 +5857,48 @@ function AdminPageContent() {
             </div>
 
             {controleAdminAba === "precificacao" && (
-              <div className="grid gap-6 xl:grid-cols-[minmax(360px,420px)_1fr]">
+              <div className="space-y-6">
+                <div className="rounded-[2rem] border border-emerald-100 bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                        <FileSpreadsheet size={24} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
+                          Arquivo da precificacao
+                        </p>
+                        <h2 className="mt-1 text-lg font-black text-slate-800">
+                          Calculadora Precificacao Confeitaria
+                        </h2>
+                        <p className="mt-1 text-sm font-bold leading-6 text-slate-500">
+                          Planilha original com Cadastro de Insumos e Ficha Tecnica para consulta no admin.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <a
+                        href={PRECIFICACAO_PLANILHA_PATH}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-black text-white hover:bg-slate-800"
+                      >
+                        <FileSpreadsheet size={18} />
+                        Abrir planilha
+                      </a>
+                      <a
+                        href={PRECIFICACAO_PLANILHA_PATH}
+                        download
+                        className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
+                      >
+                        <Download size={18} />
+                        Baixar arquivo
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-6 xl:grid-cols-[minmax(360px,420px)_1fr]">
                 <form
                   onSubmit={salvarPrecificacao}
                   className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm"
@@ -6207,6 +6252,7 @@ function AdminPageContent() {
                       </table>
                     </div>
                   </div>
+                </div>
                 </div>
               </div>
             )}
