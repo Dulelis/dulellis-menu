@@ -9,6 +9,9 @@ const LOOKUP_TIMEOUT_MS = 8_000;
 type DeliveryCustomerAddress = {
   cep: string;
   cidade: string;
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
 };
 
 type AwesomeCepResponse = {
@@ -18,6 +21,20 @@ type AwesomeCepResponse = {
   code?: string;
   status?: number;
 };
+
+type ViaCepResponse = {
+  erro?: boolean;
+  logradouro?: string;
+  bairro?: string;
+  localidade?: string;
+  uf?: string;
+};
+
+type NominatimResponse = Array<{
+  lat?: string;
+  lon?: string;
+  address?: { city?: string; town?: string; municipality?: string };
+}>;
 
 export class DeliveryFeeError extends Error {
   status: number;
@@ -55,27 +72,96 @@ function distanceInKm(latitude: number, longitude: number) {
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine)) * DISTANCE_MULTIPLIER;
 }
 
-async function lookupCoordinatesByCep(cep: string) {
-  let response: Response;
+async function lookupAwesomeCoordinates(cep: string) {
   try {
-    response = await fetch(`https://cep.awesomeapi.com.br/json/${cep}`, {
+    const response = await fetch(`https://cep.awesomeapi.com.br/json/${cep}`, {
       cache: "no-store",
       signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
       headers: { Accept: "application/json" },
     });
+    if (!response.ok) return null;
+    const data = (await response.json().catch(() => ({}))) as AwesomeCepResponse;
+    const latitude = Number(data.lat);
+    const longitude = Number(data.lng);
+    if (data.code || data.status === 404 || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return { latitude, longitude, city: String(data.city || "").trim() };
   } catch {
-    throw new DeliveryFeeError(503, "Nao foi possivel validar a taxa de entrega agora.");
+    return null;
   }
-  if (!response.ok) {
-    throw new DeliveryFeeError(400, "CEP nao encontrado para calcular a entrega.");
+}
+
+async function lookupViaCep(cep: string) {
+  try {
+    const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json().catch(() => ({}))) as ViaCepResponse;
+    if (data.erro) throw new DeliveryFeeError(400, "CEP nao encontrado para calcular a entrega.");
+    return data;
+  } catch (error) {
+    if (error instanceof DeliveryFeeError) throw error;
+    return null;
   }
-  const data = (await response.json().catch(() => ({}))) as AwesomeCepResponse;
-  const latitude = Number(data.lat);
-  const longitude = Number(data.lng);
-  if (data.code || data.status === 404 || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    throw new DeliveryFeeError(400, "Endereco sem coordenadas validas para entrega.");
+}
+
+async function lookupNominatimCoordinates(address: DeliveryCustomerAddress, cep: string, viaCep: ViaCepResponse) {
+  const query = [
+    address.endereco || viaCep.logradouro,
+    address.numero,
+    address.bairro || viaCep.bairro,
+    address.cidade || viaCep.localidade,
+    viaCep.uf || "SC",
+    cep,
+    "Brasil",
+  ].filter(Boolean).join(", ");
+  try {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    url.searchParams.set("q", query);
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("addressdetails", "1");
+    url.searchParams.set("limit", "1");
+    url.searchParams.set("countrycodes", "br");
+    const response = await fetch(url.toString(), {
+      cache: "no-store",
+      signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+        "User-Agent": `Dulelis Delivery (${String(process.env.NEXT_PUBLIC_SITE_URL || "dulelisdelivery.com.br")})`,
+      },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json().catch(() => [])) as NominatimResponse;
+    const result = data[0];
+    const latitude = Number(result?.lat);
+    const longitude = Number(result?.lon);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return {
+      latitude,
+      longitude,
+      city: String(
+        result?.address?.city || result?.address?.town || result?.address?.municipality || viaCep.localidade || address.cidade || "",
+      ).trim(),
+    };
+  } catch {
+    return null;
   }
-  return { latitude, longitude, city: String(data.city || "").trim() };
+}
+
+async function lookupCoordinates(address: DeliveryCustomerAddress, cep: string) {
+  const awesome = await lookupAwesomeCoordinates(cep);
+  if (awesome) return awesome;
+
+  const viaCep = await lookupViaCep(cep);
+  if (!viaCep) {
+    throw new DeliveryFeeError(503, "Nao foi possivel consultar o CEP agora. Tente novamente em instantes.");
+  }
+  const nominatim = await lookupNominatimCoordinates(address, cep, viaCep);
+  if (nominatim) return nominatim;
+  throw new DeliveryFeeError(503, "Nao foi possivel localizar o endereco para calcular a entrega agora.");
 }
 
 export async function calculateServerDeliveryFee(
@@ -86,7 +172,7 @@ export async function calculateServerDeliveryFee(
   if (cep.length !== 8) {
     throw new DeliveryFeeError(400, "Informe um CEP valido para entrega.");
   }
-  const coordinates = await lookupCoordinatesByCep(cep);
+  const coordinates = await lookupCoordinates(address, cep);
   const city = coordinates.city || String(address.cidade || "");
   if (normalizeText(city) !== normalizeText(SERVED_CITY)) {
     throw new DeliveryFeeError(400, "Entrega disponivel somente em Navegantes.");
