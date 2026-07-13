@@ -11,7 +11,7 @@ Este documento acompanha a evolução do projeto para um único app com clientes
 - [x] Etapa 5 — Adaptar pagamentos, acompanhamento e notificações para os dois tipos. **Concluída e verificada em 13/07/2026**
 - [x] Etapa 6 — Criar agenda de produção e filas separadas no painel administrativo. **Concluída e verificada em 13/07/2026**
 - [x] Etapa 7 — Migrar encomendas existentes, se houver fonte de dados disponível. **Concluída sem importação: nenhuma fonte migrável encontrada em 13/07/2026**
-- [ ] Etapa 8 — Testar integralmente, corrigir pendências e preparar publicação.
+- [x] Etapa 8 — Testar integralmente, corrigir pendências e preparar publicação. **Concluída e publicada em 13/07/2026**
 
 ## Decisões de arquitetura
 
@@ -48,4 +48,5 @@ Cada etapa só será marcada como concluída após implementação, verificaçã
 - Etapa 6: teste administrativo confirmou login e HTTP 200 no painel, pedido presente somente na agenda de encomendas e ausente da fila do delivery; dados temporários removidos.
 - Etapa 7: planilhas e arquivos locais candidatos foram auditados sem alterar os originais; havia apenas um registro antigo de 09/02/2026, sem itens e sem dados suficientes para classificá-lo como encomenda. O Supabase não possuía encomendas reais ou futuras para migrar.
 - Etapa 8: TypeScript, ESLint e build otimizado do Next.js passaram; o build gerou com sucesso as 40 rotas da aplicação.
-- Etapa 8: `logo.png` e os oito ícones PWA/Admin foram restaurados do histórico do Git em 13/07/2026; serão mantidos provisoriamente até a revisão visual. A publicação continua pendente de autorização e da confirmação do destino, pois a documentação local indica Hostinger, mas o domínio público ainda aponta para a Vercel.
+- Etapa 8: `logo.png` e os oito ícones PWA/Admin foram restaurados do histórico do Git e serão mantidos provisoriamente até a revisão visual.
+- Etapa 8: integração publicada pela automação ativa do repositório em 13/07/2026; domínio público verificado com HTTP 200 na página inicial, em `/encomendas`, na API pública do catálogo e nos arquivos visuais. A agenda `/admin/encomendas` redireciona visitantes sem sessão para o login, como esperado.
