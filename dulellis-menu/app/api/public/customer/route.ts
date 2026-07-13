@@ -298,33 +298,29 @@ export async function POST(request: NextRequest) {
     payloadClienteLegado,
   ];
 
+  const clienteId = Number(sessao.clienteId || 0);
   const { data: clienteExistente, error: erroBuscaCliente } = await supabase
     .from("clientes")
     .select("id")
-    .eq("whatsapp", whatsapp)
+    .eq("id", clienteId)
     .maybeSingle();
   if (erroBuscaCliente) {
     return NextResponse.json({ ok: false, error: erroBuscaCliente.message }, { status: 500 });
   }
+  if (!clienteExistente) {
+    return NextResponse.json({ ok: false, error: "Cadastro do cliente nao encontrado." }, { status: 404 });
+  }
 
   let ultimoErro: string | null = null;
   for (const payloadTentativa of payloadsClienteTentativa) {
-    if (!clienteExistente) {
-      const { error } = await supabase.from("clientes").insert([payloadTentativa]);
-      if (!error) {
-        return NextResponse.json({ ok: true, data: payloadCliente });
-      }
-      ultimoErro = error.message;
-    } else {
-      const { error } = await supabase
-        .from("clientes")
-        .update(payloadTentativa)
-        .eq("whatsapp", whatsapp);
-      if (!error) {
-        return NextResponse.json({ ok: true, data: payloadCliente });
-      }
-      ultimoErro = error.message;
+    const { error } = await supabase
+      .from("clientes")
+      .update(payloadTentativa)
+      .eq("id", clienteId);
+    if (!error) {
+      return NextResponse.json({ ok: true, data: payloadCliente });
     }
+    ultimoErro = error.message;
   }
 
   return NextResponse.json({ ok: false, error: ultimoErro || "Falha ao salvar cliente." }, { status: 500 });

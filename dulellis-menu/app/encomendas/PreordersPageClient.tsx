@@ -32,6 +32,20 @@ type CustomerSession = {
   bairro: string;
   cidade: string;
   ponto_referencia: string;
+  observacao: string;
+  data_aniversario: string;
+};
+
+type DeliveryAddress = Pick<
+  CustomerSession,
+  "cep" | "endereco" | "numero" | "bairro" | "cidade" | "ponto_referencia"
+>;
+
+type CepLookup = {
+  cep?: string;
+  address?: string;
+  district?: string;
+  city?: string;
 };
 
 type PreorderConfig = {
@@ -173,6 +187,16 @@ export function PreordersPageClient() {
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [receiptType, setReceiptType] = useState<"entrega" | "retirada">("retirada");
+  const [deliveryAddress, setDeliveryAddress] = useState<DeliveryAddress>({
+    cep: "",
+    endereco: "",
+    numero: "",
+    bairro: "",
+    cidade: "",
+    ponto_referencia: "",
+  });
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [addressError, setAddressError] = useState("");
   const [eventName, setEventName] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -234,6 +258,18 @@ export function PreordersPageClient() {
     if (session) void loadMyOrders();
     else setMyOrders([]);
   }, [loadMyOrders, session]);
+
+  useEffect(() => {
+    if (!session) return;
+    setDeliveryAddress({
+      cep: digitsOnly(session.cep).slice(0, 8),
+      endereco: session.endereco || "",
+      numero: session.numero || "",
+      bairro: session.bairro || "",
+      cidade: session.cidade || "",
+      ponto_referencia: session.ponto_referencia || "",
+    });
+  }, [session]);
 
   const config = catalog?.config;
   const categories = useMemo(
@@ -361,6 +397,75 @@ export function PreordersPageClient() {
     }
   }
 
+  async function lookupDeliveryCep(value = deliveryAddress.cep) {
+    const cep = digitsOnly(value).slice(0, 8);
+    setDeliveryAddress((current) => ({ ...current, cep }));
+    setAddressError("");
+    if (cep.length !== 8) {
+      setAddressError("Informe os 8 numeros do CEP.");
+      return false;
+    }
+
+    setAddressLoading(true);
+    try {
+      const response = await fetch(`/api/public/cep?cep=${encodeURIComponent(cep)}`, { cache: "no-store" });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        data?: CepLookup;
+        error?: string;
+      };
+      if (!response.ok || json.ok === false || !json.data) {
+        throw new Error(json.error || "CEP nao encontrado.");
+      }
+      setDeliveryAddress((current) => ({
+        ...current,
+        cep: digitsOnly(json.data?.cep || cep).slice(0, 8),
+        endereco: String(json.data?.address || current.endereco),
+        bairro: String(json.data?.district || current.bairro),
+        cidade: String(json.data?.city || current.cidade),
+      }));
+      return true;
+    } catch (error) {
+      setAddressError(error instanceof Error ? error.message : "Falha ao consultar o CEP.");
+      return false;
+    } finally {
+      setAddressLoading(false);
+    }
+  }
+
+  async function saveDeliveryAddress() {
+    if (!session) throw new Error("Entre na sua conta para informar o endereco.");
+    const normalizedAddress = {
+      ...deliveryAddress,
+      cep: digitsOnly(deliveryAddress.cep).slice(0, 8),
+      endereco: deliveryAddress.endereco.trim(),
+      numero: deliveryAddress.numero.trim(),
+      bairro: deliveryAddress.bairro.trim(),
+      cidade: deliveryAddress.cidade.trim(),
+      ponto_referencia: deliveryAddress.ponto_referencia.trim(),
+    };
+    if (normalizedAddress.cep.length !== 8) throw new Error("Informe um CEP valido para entrega.");
+    if (!normalizedAddress.endereco || !normalizedAddress.numero || !normalizedAddress.bairro || !normalizedAddress.cidade) {
+      throw new Error("Complete rua, numero, bairro e cidade para a entrega.");
+    }
+
+    const response = await fetch("/api/public/customer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nome: session.nome,
+        whatsapp: session.whatsapp,
+        ...normalizedAddress,
+        observacao: session.observacao || "",
+        data_aniversario: session.data_aniversario || "",
+      }),
+    });
+    const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!response.ok || json.ok === false) throw new Error(json.error || "Falha ao salvar o endereco.");
+    setDeliveryAddress(normalizedAddress);
+    setSession((current) => current ? { ...current, ...normalizedAddress } : current);
+  }
+
   async function submitPreorder() {
     if (!session) {
       document.getElementById("acesso-encomendas")?.scrollIntoView({ behavior: "smooth" });
@@ -369,6 +474,7 @@ export function PreordersPageClient() {
     if (!selectedDate || !selectedTime || !cartItems.length) return;
     setSubmitting(true);
     try {
+      if (receiptType === "entrega") await saveDeliveryAddress();
       const response = await fetch("/api/public/preorders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -651,8 +757,53 @@ export function PreordersPageClient() {
               {config?.permite_entrega !== false ? <button type="button" onClick={() => setReceiptType("entrega")} className={`rounded-2xl border-2 p-4 text-xs font-black uppercase ${receiptType === "entrega" ? "border-pink-600 bg-pink-600 text-white" : "border-slate-100 bg-slate-50 text-slate-600"}`}><Truck className="mx-auto mb-2" />Entrega</button> : null}
             </div>
             {receiptType === "entrega" && session ? (
-              <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm font-bold text-blue-800">
-                {[session.endereco, session.numero, session.bairro, session.cidade].filter(Boolean).join(", ") || "Complete seu endereco na pagina do delivery."}
+              <div className="mt-4 space-y-3 rounded-2xl bg-blue-50 p-4">
+                <p className="text-xs font-black uppercase tracking-wider text-blue-800">Endereco da entrega</p>
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <label className="text-xs font-bold text-blue-900">CEP
+                    <input
+                      inputMode="numeric"
+                      maxLength={9}
+                      value={deliveryAddress.cep}
+                      onChange={(event) => {
+                        setAddressError("");
+                        setDeliveryAddress((current) => ({ ...current, cep: digitsOnly(event.target.value).slice(0, 8) }));
+                      }}
+                      onBlur={() => { if (digitsOnly(deliveryAddress.cep).length === 8) void lookupDeliveryCep(); }}
+                      placeholder="00000000"
+                      className="mt-1 w-full rounded-xl border border-blue-100 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-400"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void lookupDeliveryCep()}
+                    disabled={addressLoading || digitsOnly(deliveryAddress.cep).length !== 8}
+                    className="self-end rounded-xl bg-blue-700 px-5 py-3 text-xs font-black uppercase text-white disabled:opacity-50"
+                  >
+                    {addressLoading ? "Buscando..." : "Buscar CEP"}
+                  </button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+                  <label className="text-xs font-bold text-blue-900">Rua
+                    <input value={deliveryAddress.endereco} onChange={(event) => setDeliveryAddress((current) => ({ ...current, endereco: event.target.value }))} className="mt-1 w-full rounded-xl border border-blue-100 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-400" />
+                  </label>
+                  <label className="text-xs font-bold text-blue-900">Numero
+                    <input value={deliveryAddress.numero} onChange={(event) => setDeliveryAddress((current) => ({ ...current, numero: event.target.value }))} className="mt-1 w-full rounded-xl border border-blue-100 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-400" />
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-bold text-blue-900">Bairro
+                    <input value={deliveryAddress.bairro} onChange={(event) => setDeliveryAddress((current) => ({ ...current, bairro: event.target.value }))} className="mt-1 w-full rounded-xl border border-blue-100 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-400" />
+                  </label>
+                  <label className="text-xs font-bold text-blue-900">Cidade
+                    <input value={deliveryAddress.cidade} onChange={(event) => setDeliveryAddress((current) => ({ ...current, cidade: event.target.value }))} className="mt-1 w-full rounded-xl border border-blue-100 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-400" />
+                  </label>
+                </div>
+                <label className="block text-xs font-bold text-blue-900">Ponto de referencia (opcional)
+                  <input value={deliveryAddress.ponto_referencia} onChange={(event) => setDeliveryAddress((current) => ({ ...current, ponto_referencia: event.target.value }))} className="mt-1 w-full rounded-xl border border-blue-100 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-400" />
+                </label>
+                {addressError ? <p className="text-xs font-bold text-red-600">{addressError}</p> : null}
+                <p className="text-[11px] font-bold text-blue-700">Este endereco sera salvo na mesma conta usada no delivery.</p>
               </div>
             ) : null}
             <input value={eventName} onChange={(event) => setEventName(event.target.value)} placeholder="Evento ou ocasiao (opcional)" className="mt-4 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
