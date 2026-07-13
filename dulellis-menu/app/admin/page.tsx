@@ -65,6 +65,7 @@ import {
   Calculator,
   Save,
   Settings,
+  CalendarDays,
 } from "lucide-react";
 
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
@@ -567,6 +568,7 @@ function pedidoContaNoFluxoOperacionalAdmin(pedido: any) {
 }
 
 function pedidoProntoParaConfirmacaoAdmin(pedido: any) {
+  if (String(pedido?.tipo_pedido || "delivery").trim().toLowerCase() === "encomenda") return false;
   if (normalizarStatusPedidoAdmin(pedido) !== "aguardando_aceite") return false;
   return (
     !pedidoTemFluxoPagamentoOnlineAdmin(pedido) || pedidoTemPixAprovadoAdmin(pedido)
@@ -5343,6 +5345,13 @@ function AdminPageContent() {
                 <PlusCircle size={20} /> Novo Entregador
               </button>
             )}
+
+            <a
+              href="/admin/encomendas"
+              className="w-full sm:w-auto bg-pink-50 text-pink-700 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm border border-pink-200 hover:bg-pink-100 transition-all"
+            >
+              <CalendarDays size={18} /> Agenda de encomendas
+            </a>
 
             <button
               type="button"

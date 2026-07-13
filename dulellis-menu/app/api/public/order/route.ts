@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
       supabase,
       body,
       sessionWhatsapp: String(sessao.whatsapp || ""),
+      sessionClienteId: Number(sessao.clienteId || 0),
     });
     await upsertOrderCustomer(supabase, draft.customerPayload);
     const pedidoId = await insertOrderFromSnapshot(supabase, draft.snapshot, {

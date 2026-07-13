@@ -75,6 +75,25 @@ Esses scripts adicionam:
 - `clientes.politica_privacidade_versao`
 - `clientes_password_reset_tokens`
 
+### Integracao entre delivery e encomendas
+
+Depois das migracoes existentes, execute tambem:
+
+1. `sql/upgrade_delivery_encomendas_foundation.sql`
+
+Essa migracao preserva os dados atuais e adiciona:
+
+- vinculo de `pedidos` com a base compartilhada de `clientes`;
+- classificacao entre delivery e encomenda;
+- data agendada, recebimento, sinal, saldo e detalhes da encomenda;
+- configuracao independente de prazos e horarios de encomendas;
+- bloqueios e capacidade da agenda de producao;
+- disponibilidade de produtos por canal;
+- historico estruturado de eventos do pedido.
+- reservas de estoque por cliente, com expiracao automatica para carrinhos abandonados.
+
+O andamento completo esta registrado em `PLANO_INTEGRACAO_ENCOMENDAS.md`.
+
 ## Fluxo implementado
 
 1. Cliente clica em `Esqueci minha senha`.

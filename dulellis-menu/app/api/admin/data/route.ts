@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const [resEst, resCli, resPed, resTaxas, resProm, resPropagandas, resHorario, resEntregadores, resEntregas, resPrecificacoes] = await Promise.all([
     supabase.from("estoque").select("*").order("nome"),
     supabase.from("clientes").select("*").order("created_at", { ascending: false }),
-    supabase.from("pedidos").select("*").order("created_at", { ascending: false }),
+    supabase.from("pedidos").select("*").neq("tipo_pedido", "encomenda").order("created_at", { ascending: false }),
     supabase.from("taxas_entrega").select("*").order("taxa"),
     supabase.from("promocoes").select("*").order("created_at", { ascending: false }),
     supabase.from("propagandas").select("*").order("ordem").order("created_at", { ascending: false }),

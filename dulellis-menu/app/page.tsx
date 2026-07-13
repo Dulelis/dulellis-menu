@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AppBottomNav } from "@/components/AppBottomNav";
+import { PropagandaFrame } from "@/components/PropagandaFrame";
+import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
 import { validateCustomerFullName } from "@/lib/customer-name-policy";
@@ -2237,6 +2239,16 @@ function ClientePageContent() {
     );
   }, []);
 
+  const definirQuantidadeProdutoLocal = useCallback((id: number, quantidade: number) => {
+    setProdutos((prev) =>
+      prev.map((produto) =>
+        produto.id === id
+          ? { ...produto, quantidade: Math.max(0, Number(quantidade || 0)) }
+          : produto,
+      ),
+    );
+  }, []);
+
   const atualizarQuantidadeEstoque = useCallback(
     async (id: number, delta: number) => {
       if (delta === 0) return true;
@@ -2248,18 +2260,23 @@ function ClientePageContent() {
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         updated?: boolean;
+        quantidade?: number;
         error?: string;
       };
       if (!res.ok || json.ok === false) {
         throw new Error(json.error || "Falha ao atualizar estoque.");
       }
       if (json.updated) {
-        ajustarQuantidadeProdutoLocal(id, delta);
+        if (Number.isFinite(Number(json.quantidade))) {
+          definirQuantidadeProdutoLocal(id, Number(json.quantidade));
+        } else {
+          ajustarQuantidadeProdutoLocal(id, delta);
+        }
         return true;
       }
       return false;
     },
-    [ajustarQuantidadeProdutoLocal],
+    [ajustarQuantidadeProdutoLocal, definirQuantidadeProdutoLocal],
   );
 
   const adicionarAoCarrinho = useCallback(
@@ -2729,6 +2746,7 @@ function ClientePageContent() {
             taxa_entrega: retiradaNoBalcao ? 0 : taxaEntrega,
             referencia: referenciaPagamento || undefined,
             tipo_entrega: tipoEntrega,
+            tipo_pedido: "delivery",
             cliente_ja_salvo: clienteJaSalvoNoFluxo,
           }),
         });
@@ -2769,6 +2787,7 @@ function ClientePageContent() {
             taxa_entrega: retiradaNoBalcao ? 0 : taxaEntrega,
             referencia: referenciaPagamento || undefined,
             tipo_entrega: tipoEntrega,
+            tipo_pedido: "delivery",
             troco_para:
               formaPagamento === FORMA_DINHEIRO && trocoParaValor !== null
                 ? trocoParaValor
@@ -3280,6 +3299,9 @@ function ClientePageContent() {
             Acompanhar meu pedido
           </button>
         </div>
+        <div className="mx-auto mt-4 max-w-xl">
+          <ServiceModeSwitcher active="delivery" />
+        </div>
         <PwaInstallPrompt />
       </header>
 
@@ -3389,13 +3411,13 @@ function ClientePageContent() {
               style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
             >
               {slideAtualVitrine?.imagem_url ? (
-                <Image
+                <PropagandaFrame
                   src={slideAtualVitrine.imagem_url}
                   alt={slideAtualVitrine?.titulo || "Banner"}
-                  fill
+                  className="pointer-events-none absolute inset-0"
+                  paddingClassName="p-0"
+                  imageClassName="drop-shadow-[0_12px_24px_rgba(15,23,42,0.22)]"
                   sizes="(max-width: 640px) calc(100vw - 2rem), 640px"
-                  draggable={false}
-                  className="pointer-events-none h-full w-full select-none object-cover"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-pink-100/80">

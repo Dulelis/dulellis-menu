@@ -15,7 +15,8 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("pedidos")
-    .select("id,created_at,status_pedido,forma_pagamento,status_pagamento,observacao,pagamento_id,pagamento_atualizado_em")
+    .select("id,created_at,status_pedido,forma_pagamento,status_pagamento,observacao,pagamento_id,pagamento_atualizado_em,tipo_pedido")
+    .neq("tipo_pedido", "encomenda")
     .order("created_at", { ascending: false })
     .limit(40);
 

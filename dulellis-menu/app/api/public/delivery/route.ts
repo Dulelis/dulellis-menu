@@ -492,7 +492,7 @@ export async function POST(request: NextRequest) {
       .eq("ativo", true)
       .ilike("whatsapp", `%${phoneSuffix}`);
     erroEntregador = error;
-    const candidatos = (entregadoresPorCodigo || []).filter((item) =>
+    const candidatos = ((entregadoresPorCodigo || []) as Array<{ whatsapp?: string | null }>).filter((item) =>
       normalizarNumero(String(item.whatsapp || "")).endsWith(phoneSuffix),
     );
     if (candidatos.length === 1) {

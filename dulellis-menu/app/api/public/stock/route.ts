@@ -3,12 +3,23 @@ import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
 import { enforceSameOriginForWrite, getClientIp } from "@/lib/request-security";
 import { getCustomerSessionFromRequest } from "@/lib/customer-request";
+import { getDeliveryAvailability } from "@/lib/delivery-schedule";
 import type { NextRequest } from "next/server";
 
 type StockBody = {
   id?: number;
   delta?: number;
 };
+
+function reservationRpcMissing(message?: string) {
+  const normalized = String(message || "").toLowerCase();
+  return (
+    normalized.includes("ajustar_reserva_estoque") &&
+    (normalized.includes("could not find") ||
+      normalized.includes("does not exist") ||
+      normalized.includes("schema cache"))
+  );
+}
 
 export async function POST(request: NextRequest) {
   const sessao = getCustomerSessionFromRequest(request);
@@ -45,6 +56,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Parametros invalidos." }, { status: 400 });
   }
 
+  // Devolucoes continuam permitidas depois do fechamento para nao prender
+  // unidades de um carrinho que foi limpo. Novas reservas exigem loja aberta.
+  if (delta < 0) {
+    const availability = await getDeliveryAvailability(supabase);
+    if (!availability.open) {
+      return NextResponse.json(
+        { ok: false, error: availability.message },
+        { status: availability.reason === "configuration_error" ? 503 : 409 },
+      );
+    }
+  }
+
+  const clienteId = Number(sessao.clienteId || 0);
+  if (!Number.isInteger(clienteId) || clienteId <= 0) {
+    return NextResponse.json({ ok: false, error: "Sessao de cliente invalida." }, { status: 401 });
+  }
+
+  const { data: reserva, error: erroReserva } = await supabase.rpc(
+    "ajustar_reserva_estoque",
+    {
+      p_cliente_id: clienteId,
+      p_produto_id: id,
+      p_delta: delta,
+    },
+  );
+  if (!erroReserva) {
+    const result = (reserva || {}) as {
+      updated?: boolean;
+      quantidade?: number;
+      reason?: string;
+    };
+    return NextResponse.json({ ok: true, ...result });
+  }
+  if (!reservationRpcMissing(erroReserva.message)) {
+    return NextResponse.json({ ok: false, error: erroReserva.message }, { status: 500 });
+  }
+
+  // Compatibilidade temporaria enquanto a migracao de reservas nao foi aplicada.
   const tentativasMaximas = 6;
   for (let tentativa = 0; tentativa < tentativasMaximas; tentativa += 1) {
     const { data: itemAtual, error: erroBusca } = await supabase

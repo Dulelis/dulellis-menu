@@ -22,6 +22,7 @@ type CheckoutBody = PublicOrderBody & {
   whatsapp?: string;
   pedido_id?: number;
   cliente_ja_salvo?: boolean;
+  tipo_pagamento_encomenda?: "sinal" | "saldo" | "integral";
   itens?: Array<{
     id?: number;
     qtd?: number;
@@ -307,6 +308,8 @@ export async function POST(request: Request) {
       | undefined;
     let clienteEmail = normalizarEmail(String(clienteCheckout?.email || ""));
     let pedidoId = Number(body.pedido_id || 0);
+    let tipoPagamentoEncomenda = "";
+    let valorTotalEncomenda = 0;
     let itensMetadata: Array<{ nome: string; qtd: number; preco: number }> =
       [];
     let pedidoDraftMetadata: unknown = null;
@@ -320,7 +323,7 @@ export async function POST(request: Request) {
     if (Number.isInteger(pedidoId) && pedidoId > 0) {
       const { data: pedido, error: erroPedido } = await supabase
         .from("pedidos")
-        .select("id,total,cliente_nome,whatsapp,pagamento_referencia,itens,forma_pagamento")
+        .select("id,cliente_id,total,cliente_nome,whatsapp,pagamento_referencia,itens,forma_pagamento,tipo_pedido,valor_sinal,saldo_restante,status_pedido,status_producao")
         .eq("id", pedidoId)
         .maybeSingle();
       if (erroPedido || !pedido) {
@@ -329,8 +332,59 @@ export async function POST(request: Request) {
           { status: 404 },
         );
       }
+      const whatsappPedido = normalizarNumero(String(pedido.whatsapp || ""));
+      const whatsappSessao = normalizarNumero(String(sessao.whatsapp || ""));
+      const clienteIdPedido = Number(pedido.cliente_id || 0);
+      const clienteIdSessao = Number(sessao.clienteId || 0);
+      const pertenceAoCliente = clienteIdPedido > 0
+        ? clienteIdPedido === clienteIdSessao
+        : Boolean(whatsappPedido && whatsappSessao && whatsappPedido === whatsappSessao);
+      if (!pertenceAoCliente) {
+        return NextResponse.json(
+          { error: "Pedido nao pertence ao cliente autenticado." },
+          { status: 403 },
+        );
+      }
       total = Number(pedido.total || 0);
-      referencia = String(pedido.pagamento_referencia || referencia);
+      valorTotalEncomenda = total;
+      if (String(pedido.tipo_pedido || "") === "encomenda") {
+        if (
+          ["cancelado", "cancelada", "recusado"].includes(normalizarTexto(String(pedido.status_pedido || ""))) ||
+          normalizarTexto(String(pedido.status_producao || "")) === "cancelada"
+        ) {
+          return NextResponse.json({ error: "Nao e possivel pagar uma encomenda cancelada." }, { status: 409 });
+        }
+        tipoPagamentoEncomenda = String(body.tipo_pagamento_encomenda || "sinal");
+        if (!["sinal", "saldo", "integral"].includes(tipoPagamentoEncomenda)) {
+          return NextResponse.json({ error: "Tipo de pagamento da encomenda invalido." }, { status: 400 });
+        }
+        const valorSinalAtual = Math.max(0, Number(pedido.valor_sinal || 0));
+        const saldoAtual = Math.max(0, Number(pedido.saldo_restante ?? total - valorSinalAtual));
+        if (saldoAtual <= 0.009) {
+          return NextResponse.json({ error: "Esta encomenda ja esta totalmente paga." }, { status: 409 });
+        }
+        const { data: configPagamento } = await supabase
+          .from("configuracoes_encomendas")
+          .select("percentual_sinal,permite_pagamento_integral")
+          .order("id", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (tipoPagamentoEncomenda === "integral" && configPagamento?.permite_pagamento_integral === false) {
+          return NextResponse.json({ error: "O pagamento integral esta desativado para encomendas." }, { status: 409 });
+        }
+        if (tipoPagamentoEncomenda === "sinal") {
+          if (valorSinalAtual > 0.009) {
+            return NextResponse.json({ error: "O sinal desta encomenda ja foi pago." }, { status: 409 });
+          }
+          const percentual = Math.min(100, Math.max(0, Number(configPagamento?.percentual_sinal ?? 50)));
+          total = Math.min(saldoAtual, Math.max(0.01, valorTotalEncomenda * (percentual / 100)));
+        } else {
+          total = saldoAtual;
+        }
+        referencia = `encomenda-${pedidoId}-${tipoPagamentoEncomenda}-${Date.now()}`;
+      } else {
+        referencia = String(pedido.pagamento_referencia || referencia);
+      }
       clienteNome = String(pedido.cliente_nome || clienteNome);
       whatsapp = String(pedido.whatsapp || whatsapp);
       if (!clienteNome) clienteNome = identidadeCliente.nome;
@@ -350,6 +404,7 @@ export async function POST(request: Request) {
         supabase,
         body,
         sessionWhatsapp: String(sessao.whatsapp || ""),
+        sessionClienteId: Number(sessao.clienteId || 0),
       });
       if (!clienteJaSalvo) {
         await upsertOrderCustomer(supabase, draft.customerPayload);
@@ -405,7 +460,9 @@ export async function POST(request: Request) {
     const payload: Record<string, unknown> = {
       items: [
         {
-          title: "Pedido Dulelis",
+          title: tipoPagamentoEncomenda
+            ? `Encomenda Dulelis - ${tipoPagamentoEncomenda}`
+            : "Pedido Dulelis",
           quantity: 1,
           unit_price: Number(total.toFixed(2)),
           currency_id: "BRL",
@@ -421,6 +478,9 @@ export async function POST(request: Request) {
         pedido_draft: pedidoDraftMetadata,
         forma_pagamento: formaPagamentoCheckout,
         cliente_email: clienteEmail || null,
+        tipo_pagamento_encomenda: tipoPagamentoEncomenda || null,
+        valor_pagamento_encomenda: tipoPagamentoEncomenda ? Number(total.toFixed(2)) : null,
+        valor_total_encomenda: tipoPagamentoEncomenda ? Number(valorTotalEncomenda.toFixed(2)) : null,
       },
       back_urls: {
         success: retornoSuccessUrl.toString(),

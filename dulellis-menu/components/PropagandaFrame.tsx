@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import type { ComponentPropsWithoutRef } from "react";
 
 type PropagandaFrameProps = {
@@ -18,7 +19,7 @@ export function PropagandaFrame({
   imageClassName = "",
   paddingClassName = "p-3",
   fitMode = "contain",
-  sizes: _sizes = "100vw",
+  sizes = "100vw",
   priority = false,
   ...restProps
 }: PropagandaFrameProps) {
@@ -29,7 +30,7 @@ export function PropagandaFrame({
   const imageLoading = priority ? "eager" : "lazy";
 
   return (
-    <div className={rootClassName} {...restProps}>
+    <div className={rootClassName} data-image-sizes={sizes} {...restProps}>
       <img
         src={src}
         alt=""

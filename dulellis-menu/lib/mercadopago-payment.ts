@@ -30,6 +30,9 @@ type MercadoPagoPaymentMetadata = {
   pedido_draft?: unknown;
   cliente_nome?: string;
   forma_pagamento?: string;
+  tipo_pagamento_encomenda?: string;
+  valor_pagamento_encomenda?: number | string;
+  valor_total_encomenda?: number | string;
 };
 
 export type MercadoPagoPayment = {
@@ -84,6 +87,15 @@ function normalizarFormaPagamentoMercadoPago(value?: string) {
   if (forma === "cartao mercado pago") return "Cartão Mercado Pago";
   if (forma === "pix") return "Pix";
   return "";
+}
+
+function registrarPagamentoRpcAusente(message?: string) {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("registrar_pagamento_encomenda") && (
+    normalized.includes("could not find") ||
+    normalized.includes("does not exist") ||
+    normalized.includes("schema cache")
+  );
 }
 
 function extrairDataOrdenacao(payment: MercadoPagoPayment) {
@@ -353,6 +365,9 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
   const formaPagamento = normalizarFormaPagamentoMercadoPago(
     metadata.forma_pagamento,
   );
+  const tipoPagamentoEncomenda = normalizarTexto(
+    String(metadata.tipo_pagamento_encomenda || ""),
+  );
 
   const supabase = getServiceSupabase();
   if (!supabase) {
@@ -394,19 +409,131 @@ export async function sincronizarPedidoComPagamentoMercadoPago(
 
   if (pedidoEncontrado) {
     pedidoId = pedidoEncontrado.id;
-    const payloadStatus: Record<string, unknown> = {
-      ...payloadStatusBase,
-      ...(pagamentoMercadoPagoAprovado(status) &&
-      ["", "pagamento_pendente"].includes(pedidoEncontrado.statusPedido)
-        ? { status_pedido: "aguardando_aceite" }
-        : {}),
-    };
+    if (
+      pagamentoMercadoPagoAprovado(status) &&
+      ["sinal", "saldo", "integral"].includes(tipoPagamentoEncomenda)
+    ) {
+      const { error: erroRegistroAtomico } = await supabase.rpc("registrar_pagamento_encomenda", {
+        p_pedido_id: pedidoEncontrado.id,
+        p_pagamento_id: paymentId,
+        p_referencia: reference,
+        p_tipo_pagamento: tipoPagamentoEncomenda,
+        p_valor_pago: Math.max(0, Number(payment.transaction_amount || metadata.valor_pagamento_encomenda || 0)),
+        p_status: status,
+        p_forma_pagamento: formaPagamento || "Mercado Pago",
+      });
+      if (!erroRegistroAtomico) {
+        updated = true;
+      } else if (!registrarPagamentoRpcAusente(erroRegistroAtomico.message)) {
+        return {
+          updated: false,
+          pedidoId,
+          paymentId,
+          reference,
+          status,
+          statusDetail: String(payment.status_detail || "").trim(),
+          total,
+          error: erroRegistroAtomico.message,
+        };
+      } else {
+      const { data: eventoExistente } = await supabase
+        .from("pedido_eventos")
+        .select("id")
+        .eq("pedido_id", pedidoEncontrado.id)
+        .eq("tipo", "pagamento_encomenda_aprovado")
+        .contains("dados", { pagamento_id: paymentId })
+        .limit(1)
+        .maybeSingle();
+      if (eventoExistente?.id) {
+        updated = true;
+      } else {
+        const { data: pedidoEncomenda, error: erroPedidoEncomenda } = await supabase
+          .from("pedidos")
+          .select("id,tipo_pedido,total,valor_sinal,saldo_restante")
+          .eq("id", pedidoEncontrado.id)
+          .maybeSingle();
+        if (erroPedidoEncomenda || !pedidoEncomenda || String(pedidoEncomenda.tipo_pedido || "") !== "encomenda") {
+          return {
+            updated: false,
+            pedidoId,
+            paymentId,
+            reference,
+            status,
+            statusDetail: String(payment.status_detail || "").trim(),
+            total,
+            error: erroPedidoEncomenda?.message || "Pagamento nao corresponde a uma encomenda.",
+          };
+        }
+        const valorTotalPedido = Math.max(0, Number(pedidoEncomenda.total || metadata.valor_total_encomenda || 0));
+        const sinalAtual = Math.max(0, Number(pedidoEncomenda.valor_sinal || 0));
+        const saldoAtual = Math.max(0, Number(pedidoEncomenda.saldo_restante ?? valorTotalPedido - sinalAtual));
+        const valorPago = Math.min(saldoAtual, Math.max(0, Number(payment.transaction_amount || metadata.valor_pagamento_encomenda || 0)));
+        const novoSinal = tipoPagamentoEncomenda === "sinal"
+          ? Math.min(valorTotalPedido, sinalAtual + valorPago)
+          : sinalAtual;
+        const novoSaldo = Math.max(0, saldoAtual - valorPago);
+        const pagamentoCompleto = novoSaldo <= 0.009;
+        const { error } = await supabase
+          .from("pedidos")
+          .update({
+            ...payloadStatusBase,
+            status_pagamento: pagamentoCompleto ? "approved" : "partial",
+            valor_sinal: novoSinal,
+            saldo_restante: pagamentoCompleto ? 0 : novoSaldo,
+          })
+          .eq("id", pedidoEncontrado.id);
+        if (!error) {
+          await supabase.from("pedido_eventos").insert([{
+            pedido_id: pedidoEncontrado.id,
+            tipo: "pagamento_encomenda_aprovado",
+            descricao: pagamentoCompleto
+              ? "Pagamento integral da encomenda aprovado."
+              : "Sinal da encomenda aprovado.",
+            dados: {
+              pagamento_id: paymentId,
+              referencia: reference,
+              tipo_pagamento: tipoPagamentoEncomenda,
+              valor_pago: valorPago,
+              saldo_restante: pagamentoCompleto ? 0 : novoSaldo,
+            },
+            criado_por: "mercado_pago",
+          }]);
+        }
+        updated = !error;
+      }
+      }
+    } else {
+      let statusPagamentoPreservado = status || null;
+      if (["sinal", "saldo", "integral"].includes(tipoPagamentoEncomenda)) {
+        const { data: estadoEncomenda } = await supabase
+          .from("pedidos")
+          .select("tipo_pedido,total,valor_sinal,saldo_restante")
+          .eq("id", pedidoEncontrado.id)
+          .maybeSingle();
+        if (String(estadoEncomenda?.tipo_pedido || "") === "encomenda") {
+          const totalEncomenda = Math.max(0, Number(estadoEncomenda?.total || 0));
+          const sinalPago = Math.max(0, Number(estadoEncomenda?.valor_sinal || 0));
+          const saldoEncomenda = Math.max(0, Number(estadoEncomenda?.saldo_restante ?? totalEncomenda));
+          if (sinalPago > 0.009 || saldoEncomenda + 0.009 < totalEncomenda) {
+            statusPagamentoPreservado = "partial";
+          }
+        }
+      }
+      const payloadStatus: Record<string, unknown> = {
+        ...payloadStatusBase,
+        status_pagamento: statusPagamentoPreservado,
+        ...(pagamentoMercadoPagoAprovado(status) &&
+        ["", "pagamento_pendente"].includes(pedidoEncontrado.statusPedido)
+          ? { status_pedido: "aguardando_aceite" }
+          : {}),
+      };
 
-    const { error } = await supabase
-      .from("pedidos")
-      .update(payloadStatus)
-      .eq("id", pedidoEncontrado.id);
-    updated = !error;
+      const { error } = await supabase
+        .from("pedidos")
+        .update(payloadStatus)
+        .eq("id", pedidoEncontrado.id);
+      updated = !error;
+    }
   } else if (
     pagamentoMercadoPagoAprovado(status) &&
     options?.allowCreateOrderFromDraft !== false

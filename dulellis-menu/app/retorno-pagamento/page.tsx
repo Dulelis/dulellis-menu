@@ -76,6 +76,7 @@ type PedidoResumo = {
   enderecoCompleto: string;
   pontoReferencia: string;
   retiradaNoBalcao: boolean;
+  tipoPedido: string;
 };
 
 type ClienteEndereco = {
@@ -202,7 +203,7 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
   if (!supabase) return null;
 
   const tentativasSelectPedido = [
-    "id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,observacao,endereco,numero,bairro,cidade,cep,ponto_referencia,created_at",
+    "id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,observacao,endereco,numero,bairro,cidade,cep,ponto_referencia,created_at,tipo_pedido",
     "id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,observacao,endereco,numero,bairro,cidade,ponto_referencia,created_at",
     "id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,observacao,created_at",
     "id,total,cliente_nome,whatsapp,itens,forma_pagamento,pagamento_referencia,created_at",
@@ -312,6 +313,7 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
     enderecoCompleto,
     pontoReferencia,
     retiradaNoBalcao,
+    tipoPedido: String(pedido.tipo_pedido || "delivery"),
   };
 }
 
@@ -414,7 +416,10 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
     ...(transactionId ? { pix_payment_id: transactionId } : {}),
     ...(pedidoResumo?.retiradaNoBalcao ? { pix_retirada: "1" } : {}),
   });
-  const redirectUrl = `/?${retornoHomeParams.toString()}`;
+  const isPreorder = normalizarTexto(String(pedidoResumo?.tipoPedido || "")) === "encomenda" || /^encomenda-/i.test(referencia);
+  const redirectUrl = isPreorder && pedidoIdInicial > 0
+    ? `/encomendas/pedido/${pedidoIdInicial}`
+    : `/?${retornoHomeParams.toString()}`;
 
   return (
     <main className="min-h-screen bg-white text-slate-900 flex items-center justify-center p-6">

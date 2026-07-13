@@ -1,5 +1,7 @@
 import { encodeOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { getServiceSupabase } from "@/lib/server-supabase";
+import { getDeliveryAvailability } from "@/lib/delivery-schedule";
+import { calculateServerDeliveryFee, DeliveryFeeError } from "@/lib/delivery-fee";
 
 export type ItemInput = { id?: number; qtd?: number };
 export type ClienteInput = {
@@ -23,6 +25,7 @@ export type PublicOrderBody = {
   referencia?: string;
   tipo_entrega?: string;
   troco_para?: number | string;
+  tipo_pedido?: string;
 };
 
 export type ServiceSupabaseClient = NonNullable<
@@ -50,6 +53,7 @@ export type OrderItemSnapshot = {
 };
 
 export type OrderDraftSnapshot = {
+  cliente_id: number | null;
   cliente: OrderCustomerPayload;
   cep: string | null;
   endereco: string | null;
@@ -69,6 +73,14 @@ export type OrderDraftSnapshot = {
   pagamento_referencia: string;
   tipo_entrega: string;
   retirada_no_balcao: boolean;
+  tipo_pedido: "delivery" | "encomenda";
+  canal_origem: "app";
+  tipo_recebimento: "entrega" | "retirada";
+  agendado_para: string | null;
+  status_producao: string | null;
+  valor_sinal: number;
+  saldo_restante: number | null;
+  detalhes_encomenda: Record<string, unknown>;
 };
 
 export type PreparedOrderDraft = {
@@ -206,6 +218,16 @@ function schemaError(message: string) {
   return texto.includes("schema cache") || texto.includes("column");
 }
 
+function reservationRpcMissing(message?: string) {
+  const normalized = String(message || "").toLowerCase();
+  return (
+    normalized.includes("consumir_reservas_estoque") &&
+    (normalized.includes("could not find") ||
+      normalized.includes("does not exist") ||
+      normalized.includes("schema cache"))
+  );
+}
+
 function limparEnderecoDePontoReferencia(endereco: string) {
   return String(endereco || "")
     .replace(/\s*-\s*ponto\s+de\s+referencia\s*:.*$/i, "")
@@ -269,6 +291,7 @@ function buildOrderPayloadBase(
 ) {
   const formaPagamento = options?.formaPagamento || snapshot.forma_pagamento;
   return {
+    cliente_id: snapshot.cliente_id,
     cliente_nome: snapshot.cliente.nome,
     whatsapp: snapshot.cliente.whatsapp,
     cep: snapshot.cep,
@@ -290,6 +313,14 @@ function buildOrderPayloadBase(
         formaPagamento,
         snapshot.troco_para,
       ) || null,
+    tipo_pedido: snapshot.tipo_pedido,
+    canal_origem: snapshot.canal_origem,
+    tipo_recebimento: snapshot.tipo_recebimento,
+    agendado_para: snapshot.agendado_para,
+    status_producao: snapshot.status_producao,
+    valor_sinal: snapshot.valor_sinal,
+    saldo_restante: snapshot.saldo_restante,
+    detalhes_encomenda: snapshot.detalhes_encomenda,
   };
 }
 
@@ -521,8 +552,18 @@ export async function prepareOrderDraft(args: {
   supabase: ServiceSupabaseClient;
   body: PublicOrderBody;
   sessionWhatsapp: string;
+  sessionClienteId?: number;
 }) {
-  const { supabase, body, sessionWhatsapp } = args;
+  const { supabase, body, sessionWhatsapp, sessionClienteId } = args;
+  const tipoPedidoNormalizado = normalizarTexto(String(body.tipo_pedido || "delivery"));
+  if (tipoPedidoNormalizado !== "delivery") {
+    throw new OrderDraftError(400, "O fluxo de encomendas ainda nao esta disponivel para finalizacao.");
+  }
+  const disponibilidade = await getDeliveryAvailability(supabase);
+  if (!disponibilidade.open) {
+    const status = disponibilidade.reason === "configuration_error" ? 503 : 409;
+    throw new OrderDraftError(status, disponibilidade.message);
+  }
   const tipoEntrega = String(body.tipo_entrega || "");
   const retiradaNoBalcao = tipoEntregaEhRetirada(tipoEntrega);
   const formaPagamento = String(body.forma_pagamento || "").trim();
@@ -557,7 +598,12 @@ export async function prepareOrderDraft(args: {
     throw new OrderDraftError(500, erroProdutos.message);
   }
 
-  const mapa = new Map((produtosDb || []).map((p) => [Number(p.id), p]));
+  const produtosTipados = (produtosDb || []) as Array<{
+    id?: number | string;
+    nome?: string | null;
+    preco?: number | string | null;
+  }>;
+  const mapa = new Map(produtosTipados.map((produto) => [Number(produto.id), produto]));
   const itensPedido: OrderItemSnapshot[] = [];
   for (const item of itensValidos) {
     const produto = mapa.get(item.id);
@@ -576,10 +622,22 @@ export async function prepareOrderDraft(args: {
   }
 
   const subtotal = itensPedido.reduce((acc, i) => acc + i.preco * i.qtd, 0);
-  const taxaEntrega = retiradaNoBalcao
-    ? 0
-    : Math.max(0, Number(body.taxa_entrega || 0));
   const cliente = body.cliente || {};
+  let taxaEntrega = 0;
+  if (!retiradaNoBalcao) {
+    try {
+      const taxaCalculada = await calculateServerDeliveryFee(supabase, {
+        cep: String(cliente.cep || ""),
+        cidade: String(cliente.cidade || ""),
+      });
+      taxaEntrega = taxaCalculada.fee;
+    } catch (error) {
+      if (error instanceof DeliveryFeeError) {
+        throw new OrderDraftError(error.status, error.message);
+      }
+      throw error;
+    }
+  }
   const aniversarioHoje = aniversarioEhHoje(
     String(cliente.data_aniversario || "").slice(0, 10),
   );
@@ -642,6 +700,10 @@ export async function prepareOrderDraft(args: {
     customerPayload: payloadCliente,
     items: itensPedido,
     snapshot: {
+      cliente_id:
+        Number.isInteger(Number(sessionClienteId)) && Number(sessionClienteId) > 0
+          ? Number(sessionClienteId)
+          : null,
       cliente: payloadCliente,
       cep: retiradaNoBalcao ? null : payloadCliente.cep || null,
       endereco: retiradaNoBalcao
@@ -665,6 +727,14 @@ export async function prepareOrderDraft(args: {
       pagamento_referencia: referencia,
       tipo_entrega: tipoEntrega,
       retirada_no_balcao: retiradaNoBalcao,
+      tipo_pedido: "delivery",
+      canal_origem: "app",
+      tipo_recebimento: retiradaNoBalcao ? "retirada" : "entrega",
+      agendado_para: null,
+      status_producao: null,
+      valor_sinal: 0,
+      saldo_restante: null,
+      detalhes_encomenda: {},
     },
   } satisfies PreparedOrderDraft;
 }
@@ -751,6 +821,23 @@ export async function insertOrderFromSnapshot(
   }
 
   await tentarAtualizarPedidoPosInsert(supabase, pedidoId, snapshot, options);
+
+  if (snapshot.cliente_id && snapshot.tipo_pedido === "delivery") {
+    const { error: reservationError } = await supabase.rpc(
+      "consumir_reservas_estoque",
+      {
+        p_cliente_id: snapshot.cliente_id,
+        p_itens: snapshot.itens.map((item) => ({ id: item.id, qtd: item.qtd })),
+      },
+    );
+    if (reservationError && !reservationRpcMissing(reservationError.message)) {
+      await supabase.from("pedidos").delete().eq("id", pedidoId);
+      throw new OrderDraftError(
+        409,
+        "A reserva de um ou mais itens expirou. Atualize o carrinho e tente novamente.",
+      );
+    }
+  }
   return pedidoId;
 }
 
@@ -818,6 +905,10 @@ export function normalizeOrderDraftSnapshot(
   }
 
   return {
+    cliente_id:
+      Number.isInteger(Number(base.cliente_id)) && Number(base.cliente_id) > 0
+        ? Number(base.cliente_id)
+        : null,
     cliente,
     cep: retiradaNoBalcao
       ? null
@@ -858,5 +949,22 @@ export function normalizeOrderDraftSnapshot(
     pagamento_referencia: referencia,
     tipo_entrega: tipoEntrega,
     retirada_no_balcao: retiradaNoBalcao,
+    tipo_pedido: normalizarTexto(String(base.tipo_pedido || "delivery")) === "encomenda"
+      ? "encomenda"
+      : "delivery",
+    canal_origem: "app",
+    tipo_recebimento: retiradaNoBalcao ? "retirada" : "entrega",
+    agendado_para: String(base.agendado_para || "").trim() || null,
+    status_producao: String(base.status_producao || "").trim() || null,
+    valor_sinal: Math.max(0, Number(base.valor_sinal || 0)),
+    saldo_restante: Number.isFinite(Number(base.saldo_restante))
+      ? Math.max(0, Number(base.saldo_restante))
+      : null,
+    detalhes_encomenda:
+      base.detalhes_encomenda &&
+      typeof base.detalhes_encomenda === "object" &&
+      !Array.isArray(base.detalhes_encomenda)
+        ? (base.detalhes_encomenda as Record<string, unknown>)
+        : {},
   };
 }

@@ -17,6 +17,13 @@ type PedidoStatus = {
   troco_para?: number | string | null;
   observacao?: string | null;
   created_at?: string | null;
+  cliente_id?: number | null;
+  tipo_pedido?: string | null;
+  tipo_recebimento?: string | null;
+  agendado_para?: string | null;
+  status_producao?: string | null;
+  valor_sinal?: number | string | null;
+  saldo_restante?: number | string | null;
 };
 
 function formatarMoedaBR(valor: number) {
@@ -36,6 +43,7 @@ function normalizarTexto(value: string): string {
 }
 
 function pedidoEhRetiradaNoBalcao(pedido: PedidoStatus) {
+  if (normalizarTexto(String(pedido.tipo_recebimento || "")) === "retirada") return true;
   return normalizarTexto(String(pedido.observacao || "")).includes("tipo de entrega: retirar no balcao");
 }
 
@@ -92,6 +100,13 @@ function resumoPagamento(pedido: PedidoStatus) {
         forma: titulo,
         statusTexto: "Aguardando pagamento",
         detalhe: referencia ? `Ref. ${referencia}` : "Pagamento em analise",
+      };
+    }
+    if (["partial", "parcial", "sinal_pago"].includes(statusPagamento)) {
+      return {
+        forma: titulo,
+        statusTexto: "Sinal pago",
+        detalhe: referencia ? `Ref. ${referencia}` : "Saldo restante pendente",
       };
     }
     return {
@@ -185,6 +200,27 @@ function whatsappEquivalente(a: string, b: string): boolean {
 }
 
 function statusResumo(pedido: PedidoStatus) {
+  if (normalizarTexto(String(pedido.tipo_pedido || "")) === "encomenda") {
+    const producao = normalizarTexto(String(pedido.status_producao || ""));
+    if (["aguardando_confirmacao", ""].includes(producao)) {
+      return { chave: "aguardando_aceite", texto: "Encomenda enviada" };
+    }
+    if (["confirmada", "agendada"].includes(producao)) {
+      return { chave: "recebido", texto: "Encomenda confirmada" };
+    }
+    if (["em_producao", "em_preparo"].includes(producao)) {
+      return { chave: "em_preparo", texto: "Em producao" };
+    }
+    if (["pronta", "finalizada"].includes(producao)) {
+      return {
+        chave: "saiu_entrega",
+        texto: pedidoEhRetiradaNoBalcao(pedido) ? "Pronta para retirada" : "Pronta para entrega",
+      };
+    }
+    if (["cancelada", "recusada"].includes(producao)) {
+      return { chave: "recusado", texto: "Encomenda cancelada" };
+    }
+  }
   const statusPedido = String(pedido.status_pedido || "").trim().toLowerCase();
   if (["pagamento_pendente", "aguardando_pagamento"].includes(statusPedido)) {
     return { chave: "pendente", texto: "Aguardando pagamento" };
@@ -269,7 +305,40 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "Sessao sem WhatsApp valido." }, { status: 400 });
   }
 
+  const requestUrl = new URL(request.url);
+  const requestedOrderId = Number(requestUrl.searchParams.get("pedido_id") || 0);
+  let pedidoSolicitado: PedidoStatus | null = null;
+  if (Number.isInteger(requestedOrderId) && requestedOrderId > 0) {
+    const selectsById = [
+      "id,cliente_id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,troco_para,observacao,created_at,tipo_pedido,tipo_recebimento,agendado_para,status_producao,valor_sinal,saldo_restante",
+      "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,troco_para,observacao,created_at",
+      "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,created_at",
+    ];
+    for (const selectCols of selectsById) {
+      const { data, error } = await supabase
+        .from("pedidos")
+        .select(selectCols)
+        .eq("id", requestedOrderId)
+        .maybeSingle();
+      if (error) continue;
+      const candidate = (data || null) as PedidoStatus | null;
+      if (
+        candidate &&
+        (Number(candidate.cliente_id || 0) > 0
+          ? Number(candidate.cliente_id || 0) === Number(sessao.clienteId || 0)
+          : whatsappEquivalente(String(candidate.whatsapp || ""), zap))
+      ) {
+        pedidoSolicitado = candidate;
+      }
+      break;
+    }
+    if (!pedidoSolicitado) {
+      return NextResponse.json({ ok: true, data: null });
+    }
+  }
+
   const tentativasSelect = [
+    "id,cliente_id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,troco_para,observacao,created_at,tipo_pedido,tipo_recebimento,agendado_para,status_producao,valor_sinal,saldo_restante",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,troco_para,observacao,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,created_at",
     "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,created_at",
@@ -292,8 +361,8 @@ export async function GET(request: Request) {
     "id,cliente_nome,whatsapp,total,created_at",
   ];
 
-  let pedidoFinal: PedidoStatus | null = null;
-  for (const selectCols of tentativasSelect) {
+  let pedidoFinal: PedidoStatus | null = pedidoSolicitado;
+  for (const selectCols of pedidoSolicitado ? [] : tentativasSelect) {
     const { data: exato, error: erroExato } = await supabase
       .from("pedidos")
       .select(selectCols)
@@ -331,13 +400,26 @@ export async function GET(request: Request) {
   if (!pedidoFinal) {
     return NextResponse.json({ ok: true, data: null });
   }
-  if (!pedidoEhDoDiaCorrente(String(pedidoFinal.created_at || ""))) {
+  if (
+    normalizarTexto(String(pedidoFinal.tipo_pedido || "delivery")) !== "encomenda" &&
+    !pedidoEhDoDiaCorrente(String(pedidoFinal.created_at || ""))
+  ) {
     return NextResponse.json({ ok: true, data: null });
   }
 
   const resumo = statusResumo(pedidoFinal);
   const pagamento = resumoPagamento(pedidoFinal);
   const troco = resumoTrocoPedido(pedidoFinal);
+  let permitePagamentoIntegral = true;
+  if (normalizarTexto(String(pedidoFinal.tipo_pedido || "")) === "encomenda") {
+    const { data: configPagamento } = await supabase
+      .from("configuracoes_encomendas")
+      .select("permite_pagamento_integral")
+      .order("id", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    permitePagamentoIntegral = configPagamento?.permite_pagamento_integral !== false;
+  }
   return NextResponse.json({
     ok: true,
     data: {
@@ -357,6 +439,13 @@ export async function GET(request: Request) {
       status_chave: resumo.chave,
       status_texto: resumo.texto,
       retiradaNoBalcao: pedidoEhRetiradaNoBalcao(pedidoFinal),
+      tipo_pedido: String(pedidoFinal.tipo_pedido || "delivery"),
+      tipo_recebimento: String(pedidoFinal.tipo_recebimento || ""),
+      agendado_para: String(pedidoFinal.agendado_para || ""),
+      status_producao: String(pedidoFinal.status_producao || ""),
+      valor_sinal: Number(pedidoFinal.valor_sinal || 0),
+      saldo_restante: Number(pedidoFinal.saldo_restante || 0),
+      permite_pagamento_integral: permitePagamentoIntegral,
     },
   });
 }
