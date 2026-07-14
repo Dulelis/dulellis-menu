@@ -8,8 +8,10 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock3,
+  FileImage,
   Loader2,
   LogIn,
+  MessageCircle,
   Minus,
   PackageCheck,
   Pencil,
@@ -22,6 +24,7 @@ import {
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { CUSTOMER_PASSWORD_RULES_TEXT } from "@/lib/customer-password-policy";
+import { buildDulelisWhatsappUrl } from "@/lib/store-contact";
 
 type CustomerSession = {
   id: number;
@@ -150,6 +153,10 @@ function money(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
 }
 
+function quantity(value: number) {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(Number(value || 0));
+}
+
 function timeToMinutes(value?: string) {
   const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
   return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
@@ -241,6 +248,7 @@ export function PreordersPageClient() {
   const [notes, setNotes] = useState("");
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingProductId, setUploadingProductId] = useState<number | null>(null);
   const [confirmation, setConfirmation] = useState<{
     pedido_id: number;
     agendado_para: string;
@@ -388,11 +396,15 @@ export function PreordersPageClient() {
       const limit = Math.max(0, Number(product.limite_por_encomenda || 0));
       const minimum = Math.max(1, Number(product.opcoes_encomenda?.quantidade_minima || 1));
       const increment = Math.max(1, Number(product.opcoes_encomenda?.incremento_quantidade || 1));
-      const nextQuantity = previous.qtd === 0 && delta > 0
-        ? minimum
-        : previous.qtd <= minimum && delta < 0
-          ? 0
-          : Math.max(0, previous.qtd + delta * increment);
+      const unit = normalizedText(product.opcoes_encomenda?.unidade || "");
+      const isCakeByKg = unit === "kg" && normalizedText(product.nome).includes("bolo");
+      let nextQuantity: number;
+      if (previous.qtd === 0 && delta > 0) nextQuantity = minimum;
+      else if (previous.qtd <= minimum && delta < 0) nextQuantity = 0;
+      else if (isCakeByKg && delta > 0 && previous.qtd === 1) nextQuantity = 1.5;
+      else if (isCakeByKg && delta < 0 && previous.qtd === 2) nextQuantity = 1.5;
+      else if (isCakeByKg && previous.qtd === 1.5) nextQuantity = delta > 0 ? 2 : 1;
+      else nextQuantity = Math.max(0, previous.qtd + delta * increment);
       if (limit > 0 && nextQuantity > limit) return current;
       if (nextQuantity === 0) {
         const next = { ...current };
@@ -414,6 +426,31 @@ export function PreordersPageClient() {
         },
       };
     });
+  }
+
+  async function uploadReferencePhoto(productId: number, file?: File) {
+    if (!file) return;
+    if (!session) {
+      window.alert("Entre na sua conta antes de enviar a foto.");
+      return;
+    }
+    if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+      window.alert("Escolha uma foto JPG, PNG ou WEBP de ate 5 MB.");
+      return;
+    }
+    setUploadingProductId(productId);
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      const response = await fetch("/api/public/preorders/reference-image", { method: "POST", body: formData });
+      const json = (await response.json().catch(() => ({}))) as { ok?: boolean; data?: { url?: string }; error?: string };
+      if (!response.ok || json.ok === false || !json.data?.url) throw new Error(json.error || "Falha ao enviar a foto.");
+      setCustomization(productId, "foto_referencia", json.data.url);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Falha ao enviar a foto.");
+    } finally {
+      setUploadingProductId(null);
+    }
   }
 
   async function authenticate() {
@@ -647,6 +684,9 @@ export function PreordersPageClient() {
           <Link href={`/encomendas/pedido/${confirmation.pedido_id}`} className="mt-7 block w-full rounded-3xl bg-emerald-600 px-5 py-4 text-sm font-black uppercase tracking-widest text-white">
             Acompanhar e pagar
           </Link>
+          <a href={buildDulelisWhatsappUrl(`Olá! Fiz a encomenda #${confirmation.pedido_id} e gostaria de finalizar os detalhes pelo WhatsApp.`)} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-3xl bg-green-100 px-5 py-4 text-sm font-black uppercase tracking-widest text-green-800">
+            <MessageCircle size={19} />Finalizar detalhes no WhatsApp
+          </a>
           <button
             type="button"
             onClick={() => setConfirmation(null)}
@@ -822,11 +862,11 @@ export function PreordersPageClient() {
                   <div><p className="text-xl font-black text-pink-600">{money(Number(product.preco || 0))}</p><p className="text-[10px] font-bold uppercase text-slate-400">por {unit}</p></div>
                   <div className="flex items-center gap-3 rounded-2xl bg-slate-900 p-2 text-white">
                     <button type="button" onClick={() => changeQuantity(product, -1)} disabled={!entry?.qtd} className="rounded-xl bg-white/10 p-2 disabled:opacity-30"><Minus size={16} /></button>
-                    <span className="min-w-12 text-center text-sm font-black">{entry?.qtd || 0} {unit === "unidade" ? "" : unit}</span>
+                    <span className="min-w-12 text-center text-sm font-black">{quantity(entry?.qtd || 0)} {unit === "unidade" ? "" : unit}</span>
                     <button type="button" onClick={() => changeQuantity(product, 1)} className="rounded-xl bg-pink-600 p-2"><Plus size={16} /></button>
                   </div>
                 </div>
-                {entry?.qtd && fields.length ? (
+                {entry?.qtd ? (
                   <div className="mt-5 space-y-3 rounded-3xl bg-pink-50 p-4">
                     <p className="text-xs font-black uppercase tracking-widest text-pink-700">Personalize</p>
                     {fields.map((field, index) => {
@@ -849,6 +889,14 @@ export function PreordersPageClient() {
                         </label>
                       );
                     })}
+                    <div className="rounded-2xl border border-dashed border-pink-300 bg-white p-4">
+                      <div className="flex items-center gap-3"><FileImage className="text-pink-600" size={21} /><div><p className="text-xs font-black text-slate-700">Adicione uma foto de referência</p><p className="text-[10px] font-bold text-slate-400">Opcional · JPG, PNG ou WEBP · até 5 MB</p></div></div>
+                      <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl bg-pink-100 p-3 text-xs font-black uppercase text-pink-700">
+                        {uploadingProductId === product.id ? "Enviando foto..." : "Escolher foto"}
+                        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploadingProductId === product.id} onChange={(event) => { void uploadReferencePhoto(product.id, event.target.files?.[0]); event.currentTarget.value = ""; }} className="sr-only" />
+                      </label>
+                      {entry.personalizacoes.foto_referencia ? <div className="mt-3 flex items-center gap-3 rounded-xl bg-emerald-50 p-3"><Image src={entry.personalizacoes.foto_referencia} alt="Foto de referência" width={56} height={56} className="h-14 w-14 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="text-xs font-black text-emerald-800">Foto adicionada</p><button type="button" onClick={() => setCustomization(product.id, "foto_referencia", "")} className="mt-1 text-[10px] font-black uppercase text-rose-600">Remover</button></div></div> : null}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -930,6 +978,10 @@ export function PreordersPageClient() {
                 <p className="text-[11px] font-bold text-blue-700">Este endereco sera salvo na mesma conta usada no delivery.</p>
               </div>
             ) : null}
+            <div className="mt-4 flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">
+              <MessageCircle className="mt-0.5 shrink-0" size={20} />
+              <p>Ao finalizar a encomenda, você poderá conversar pelo WhatsApp para acertar fotos, decoração e outros detalhes com a Dulelis.</p>
+            </div>
             <input value={eventName} onChange={(event) => setEventName(event.target.value)} placeholder="Evento ou ocasiao (opcional)" className="mt-4 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Observacoes gerais da encomenda" className="mt-3 min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
           </section>

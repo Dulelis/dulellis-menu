@@ -342,7 +342,7 @@ export async function POST(request: NextRequest) {
             ? item.personalizacoes
             : {},
       }))
-      .filter((item) => Number.isInteger(item.id) && item.id > 0 && Number.isInteger(item.qtd) && item.qtd > 0);
+      .filter((item) => Number.isInteger(item.id) && item.id > 0 && Number.isFinite(item.qtd) && item.qtd > 0);
     if (!inputs.length) throw new OrderDraftError(400, "Escolha ao menos um produto para a encomenda.");
 
     const ids = Array.from(new Set(inputs.map((item) => item.id)));
@@ -378,7 +378,11 @@ export async function POST(request: NextRequest) {
         : {};
       const minimumQuantity = Math.max(1, Number(productOptions.quantidade_minima || 1));
       const quantityStep = Math.max(1, Number(productOptions.incremento_quantidade || 1));
-      if (input.qtd < minimumQuantity || (input.qtd - minimumQuantity) % quantityStep !== 0) {
+      const unit = normalizeText(String(productOptions.unidade || ""));
+      const isCakeByKg = unit === "kg" && normalizeText(String(product.nome || "")).includes("bolo");
+      const isAllowedOneAndHalfKg = isCakeByKg && Math.abs(input.qtd - 1.5) < 0.0001;
+      const followsRegularStep = Number.isInteger(input.qtd) && Math.abs((input.qtd - minimumQuantity) % quantityStep) < 0.0001;
+      if (input.qtd < minimumQuantity || (!isAllowedOneAndHalfKg && !followsRegularStep)) {
         throw new OrderDraftError(400, `${String(product.nome || "O produto")} exige quantidade minima de ${minimumQuantity}.`);
       }
       const productLead = Math.max(minLeadHours, Number(product.prazo_minimo_encomenda_horas || 0));

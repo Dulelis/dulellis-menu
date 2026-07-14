@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, CheckCircle2, Clock3, Loader2, PackageCheck, WalletCards } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock3, Loader2, MessageCircle, PackageCheck, WalletCards } from "lucide-react";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
+import { buildDulelisWhatsappUrl } from "@/lib/store-contact";
 
 type TrackingOrder = {
   id: number;
@@ -70,6 +71,13 @@ export function PreorderTrackingClient({ orderId }: { orderId: number }) {
   const productionStatus = String(order?.status_producao || "aguardando_confirmacao").toLowerCase();
   const isCanceled = productionStatus === "cancelada" || productionStatus === "recusada";
   const currentStep = Math.max(0, STEPS.findIndex((step) => step.keys.includes(productionStatus)));
+  const paymentStatus = String(order?.status_pagamento_texto || "").toLowerCase();
+  const hasPayment = Boolean(order) && (
+    Number(order?.valor_sinal || 0) > 0.009 ||
+    Number(order?.saldo_restante ?? order?.total ?? 0) + 0.009 < Number(order?.total || 0) ||
+    paymentStatus.includes("pago") ||
+    paymentStatus.includes("pagamento confirmado")
+  );
 
   async function startPayment(type: "sinal" | "saldo" | "integral") {
     setPaymentLoading(type);
@@ -171,6 +179,8 @@ export function PreorderTrackingClient({ orderId }: { orderId: number }) {
                 <p className="mt-4 rounded-2xl bg-emerald-50 p-4 text-center text-xs font-black uppercase tracking-wider text-emerald-700">Encomenda totalmente paga</p>
               ) : null}
             </section>
+
+            {!isCanceled && hasPayment ? <a href={buildDulelisWhatsappUrl(`Olá! Já realizei o pagamento da encomenda #${order.id} e gostaria de conversar sobre os detalhes.`)} target="_blank" rel="noopener noreferrer" className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 p-4 text-xs font-black uppercase tracking-widest text-white shadow-lg"><MessageCircle size={19} />Conversar no WhatsApp</a> : null}
 
             <Link href="/encomendas" className="block rounded-2xl bg-pink-600 p-4 text-center text-xs font-black uppercase tracking-widest text-white">Voltar para a agenda</Link>
           </div>
