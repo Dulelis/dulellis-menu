@@ -7,6 +7,8 @@ import {
   Ban,
   Bell,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Loader2,
   MessageCircle,
@@ -112,6 +114,54 @@ function localInputToIso(value: string) {
   return value ? new Date(`${value}:00-03:00`).toISOString() : "";
 }
 
+const SAO_PAULO_TIME_ZONE = "America/Sao_Paulo";
+
+function dateKey(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SAO_PAULO_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function dateFromKey(key: string) {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day, 12);
+}
+
+function keyFromParts(year: number, monthIndex: number, day: number) {
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function addDays(key: string, amount: number) {
+  const date = dateFromKey(key);
+  date.setDate(date.getDate() + amount);
+  return keyFromParts(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function orderTime(order: Order) {
+  return order.agendado_para
+    ? new Date(order.agendado_para).toLocaleTimeString("pt-BR", {
+      timeZone: SAO_PAULO_TIME_ZONE,
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    : "Sem horario";
+}
+
+function timeToMinutes(value: string) {
+  const [hour, minute] = value.slice(0, 5).split(":").map(Number);
+  return (hour || 0) * 60 + (minute || 0);
+}
+
+function minutesToTime(value: number) {
+  return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+}
+
 function whatsappNotification(order: Order) {
   const digits = String(order.whatsapp || "").replace(/\D/g, "");
   const phone = digits.startsWith("55") ? digits : digits.length === 10 || digits.length === 11 ? `55${digits}` : "";
@@ -167,6 +217,7 @@ export function AdminPreordersClient() {
   const [error, setError] = useState("");
   const [newOrderAlert, setNewOrderAlert] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
   const knownOrderIdsRef = useRef<Set<number> | null>(null);
   const [blockForm, setBlockForm] = useState({ inicio: "", fim: "", motivo: "" });
   const [capacityForm, setCapacityForm] = useState({ data: "", hora_inicio: "08:00", hora_fim: "09:00", capacidade_total: 4, observacao: "" });
@@ -264,16 +315,48 @@ export function AdminPreordersClient() {
     () => (data?.encomendas || []).filter((order) => String(order.status_producao || "") !== "cancelada" && String(order.status_producao || "") !== "finalizada"),
     [data?.encomendas],
   );
-  const grouped = useMemo(() => {
+  const ordersByDay = useMemo(() => {
     const groups = new Map<string, Order[]>();
-    for (const order of upcomingOrders) {
-      const key = order.agendado_para
-        ? new Date(order.agendado_para).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })
-        : "Sem data";
+    for (const order of data?.encomendas || []) {
+      if (!order.agendado_para) continue;
+      const key = dateKey(order.agendado_para);
       groups.set(key, [...(groups.get(key) || []), order]);
     }
-    return [...groups.entries()];
-  }, [upcomingOrders]);
+    for (const orders of groups.values()) {
+      orders.sort((a, b) => String(a.agendado_para || "").localeCompare(String(b.agendado_para || "")));
+    }
+    return groups;
+  }, [data?.encomendas]);
+
+  const selectedDateObject = dateFromKey(selectedDate);
+  const selectedYear = selectedDateObject.getFullYear();
+  const selectedMonth = selectedDateObject.getMonth();
+  const selectedDayOrders = useMemo(() => ordersByDay.get(selectedDate) || [], [ordersByDay, selectedDate]);
+  const calendarDays = useMemo(() => {
+    const firstWeekday = new Date(selectedYear, selectedMonth, 1, 12).getDay();
+    const totalDays = new Date(selectedYear, selectedMonth + 1, 0, 12).getDate();
+    return [
+      ...Array.from({ length: firstWeekday }, () => null),
+      ...Array.from({ length: totalDays }, (_, index) => index + 1),
+    ];
+  }, [selectedMonth, selectedYear]);
+  const scheduleLines = useMemo(() => {
+    const start = timeToMinutes(String(data?.config.hora_inicio || "08:00"));
+    const end = timeToMinutes(String(data?.config.hora_fim || "20:00"));
+    const interval = Math.max(15, Number(data?.config.intervalo_slot_minutos || 60));
+    const times = new Set<string>();
+    for (let minute = start; minute <= end; minute += interval) times.add(minutesToTime(minute));
+    for (const order of selectedDayOrders) times.add(orderTime(order));
+    return [...times]
+      .filter((time) => /^\d{2}:\d{2}$/.test(time))
+      .sort((a, b) => timeToMinutes(a) - timeToMinutes(b))
+      .map((time) => ({ time, orders: selectedDayOrders.filter((order) => orderTime(order) === time) }));
+  }, [data?.config.hora_fim, data?.config.hora_inicio, data?.config.intervalo_slot_minutos, selectedDayOrders]);
+
+  function changeMonth(amount: number) {
+    const next = new Date(selectedYear, selectedMonth + amount, 1, 12);
+    setSelectedDate(keyFromParts(next.getFullYear(), next.getMonth(), 1));
+  }
 
   if (loading) {
     return <main className="flex min-h-screen items-center justify-center bg-slate-100"><div className="text-center"><Loader2 className="mx-auto animate-spin text-pink-600" size={42} /><p className="mt-3 font-bold text-slate-500">Carregando agenda...</p></div></main>;
@@ -310,25 +393,64 @@ export function AdminPreordersClient() {
         </nav>
 
         {tab === "agenda" ? (
-          <section className="mt-6 space-y-6">
-            {grouped.length === 0 ? <div className="rounded-3xl bg-white p-10 text-center font-bold text-slate-500">Nenhuma encomenda futura.</div> : null}
-            {grouped.map(([date, orders]) => (
-              <div key={date}><h2 className="mb-3 text-lg font-black">{date}</h2><div className="grid gap-4 lg:grid-cols-2">
-                {orders.map((order) => {
-                  const whatsapp = whatsappNotification(order);
-                  return <article key={order.id} className="rounded-3xl bg-white p-6 shadow-sm">
-                    <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-pink-600">#{order.id} · {order.tipo_recebimento || "retirada"}</p><h3 className="mt-1 text-xl font-black">{order.cliente_nome || "Cliente"}</h3><p className="mt-1 text-sm font-bold text-slate-500">{order.agendado_para ? new Date(order.agendado_para).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }) : "Sem horario"} · {order.whatsapp}</p></div><p className="text-lg font-black">{money(order.total)}</p></div>
-                    <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{(order.itens || []).map((item) => `${item.qtd || 1}x ${item.nome || "Item"}`).join(" · ")}</div>
-                    {orderDetails(order).event ? <p className="mt-3 rounded-2xl bg-violet-50 p-3 text-sm font-black text-violet-800">Evento: {orderDetails(order).event}</p> : null}
-                    {orderDetails(order).items.length ? <div className="mt-3 space-y-2 rounded-2xl bg-pink-50 p-4">{orderDetails(order).items.map((item, index) => <div key={`${item.name}-${index}`}><p className="text-xs font-black uppercase text-pink-700">{item.name}{item.unit ? ` · ${item.unit}` : ""}</p><div className="mt-1 flex flex-wrap gap-2 text-sm font-bold text-slate-700">{item.customizations.map(([key, value]) => key === "foto_referencia" ? <a key={key} href={String(value)} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-black uppercase text-emerald-800">Abrir foto de referência</a> : <span key={key}>{key.replaceAll("_", " ")}: {String(value)}</span>)}</div></div>)}</div> : null}
-                    {order.observacao ? <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-800">{order.observacao}</p> : null}
-                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">{STATUS_OPTIONS.map(([status, label]) => <button key={status} type="button" onClick={() => void action("order_status", order.id, { status_producao: status })} disabled={saving === `order_status-${order.id}`} className={`rounded-xl border p-2 text-[10px] font-black uppercase ${String(order.status_producao || "aguardando_confirmacao") === status ? "border-pink-600 bg-pink-50 text-pink-700" : "border-slate-200 text-slate-500"}`}>{label}</button>)}</div>
-                    {whatsapp ? <a href={whatsapp.href} target="_blank" rel="noopener noreferrer" className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-4 text-xs font-black uppercase tracking-wider text-white shadow-sm hover:bg-emerald-700"><MessageCircle size={18} />{whatsapp.label}</a> : null}
-                    <div className="mt-4 flex justify-between rounded-2xl bg-emerald-50 p-3 text-xs font-black text-emerald-800"><span>Sinal: {money(order.valor_sinal)}</span><span>Saldo: {money(order.saldo_restante)}</span></div>
-                  </article>
+          <section className="mt-6 grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+            <aside className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-5">
+              <div className="flex items-center justify-between gap-2">
+                <button type="button" onClick={() => changeMonth(-1)} aria-label="Mes anterior" className="rounded-xl bg-slate-100 p-2 text-slate-700"><ChevronLeft size={19} /></button>
+                <p className="text-center text-sm font-black capitalize">{selectedDateObject.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</p>
+                <button type="button" onClick={() => changeMonth(1)} aria-label="Proximo mes" className="rounded-xl bg-slate-100 p-2 text-slate-700"><ChevronRight size={19} /></button>
+              </div>
+              <label className="mt-4 block text-[10px] font-black uppercase tracking-wider text-slate-500">Ir para dia, mes e ano
+                <input type="date" value={selectedDate} onChange={(event) => event.target.value && setSelectedDate(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold" />
+              </label>
+              <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase text-slate-400">
+                {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"].map((day) => <span key={day} className="py-1">{day}</span>)}
+                {calendarDays.map((day, index) => {
+                  if (!day) return <span key={`empty-${index}`} />;
+                  const key = keyFromParts(selectedYear, selectedMonth, day);
+                  const count = ordersByDay.get(key)?.length || 0;
+                  const active = key === selectedDate;
+                  const today = key === dateKey(new Date());
+                  return <button key={key} type="button" onClick={() => setSelectedDate(key)} className={`relative aspect-square rounded-xl text-xs font-black transition ${active ? "bg-pink-600 text-white shadow-md" : today ? "bg-pink-50 text-pink-700" : "text-slate-700 hover:bg-slate-100"}`}>{day}{count ? <span className={`absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full ${active ? "bg-white" : "bg-pink-500"}`} /> : null}</button>;
                 })}
-              </div></div>
-            ))}
+              </div>
+              <button type="button" onClick={() => setSelectedDate(dateKey(new Date()))} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white">Voltar para hoje</button>
+              <p className="mt-3 text-center text-xs font-bold text-slate-500">{selectedDayOrders.length} {selectedDayOrders.length === 1 ? "encomenda" : "encomendas"} neste dia</p>
+            </aside>
+
+            <div className="notebook-page overflow-hidden rounded-[2rem] border border-[#eadfc9] bg-[#fffef8] shadow-xl">
+              <div className="border-b border-[#eadfc9] px-5 py-6 pl-20 sm:px-8 sm:pl-24">
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-pink-600">Agenda diaria</p>
+                <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+                  <div><h2 className="text-3xl font-black capitalize text-slate-900">{selectedDateObject.toLocaleDateString("pt-BR", { weekday: "long" })}</h2><p className="mt-1 text-lg font-bold capitalize text-slate-500">{selectedDateObject.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</p></div>
+                  <div className="flex gap-2"><button type="button" onClick={() => setSelectedDate(addDays(selectedDate, -1))} className="rounded-xl border border-slate-200 bg-white p-3" aria-label="Dia anterior"><ChevronLeft size={20} /></button><button type="button" onClick={() => setSelectedDate(addDays(selectedDate, 1))} className="rounded-xl border border-slate-200 bg-white p-3" aria-label="Proximo dia"><ChevronRight size={20} /></button></div>
+                </div>
+              </div>
+              <div>
+                {scheduleLines.map(({ time, orders }) => (
+                  <div key={time} className="notebook-line grid min-h-20 grid-cols-[68px_minmax(0,1fr)] sm:grid-cols-[88px_minmax(0,1fr)]">
+                    <div className="border-r border-pink-200 px-2 py-4 text-right font-black text-pink-700 sm:px-4">{time}</div>
+                    <div className="min-w-0 space-y-3 px-3 py-3 sm:px-5">
+                      {orders.length === 0 ? <span className="text-xs font-bold text-slate-300">Horario livre</span> : null}
+                      {orders.map((order) => {
+                        const whatsapp = whatsappNotification(order);
+                        const details = orderDetails(order);
+                        return <article key={order.id} className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm">
+                          <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-wider text-pink-600">Pedido #{order.id} · {order.tipo_recebimento || "retirada"}</p><h3 className="mt-1 text-lg font-black">{order.cliente_nome || "Cliente"}</h3><p className="text-xs font-bold text-slate-500">{order.whatsapp || "Sem telefone"}</p></div><p className="font-black">{money(order.total)}</p></div>
+                          <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm font-bold text-slate-700">{(order.itens || []).map((item) => `${item.qtd || 1}x ${item.nome || "Item"}`).join(" · ")}</div>
+                          {details.event ? <p className="mt-2 rounded-xl bg-violet-50 p-3 text-sm font-black text-violet-800">Evento: {details.event}</p> : null}
+                          {details.items.length ? <div className="mt-2 space-y-2 rounded-xl bg-pink-50 p-3">{details.items.map((item, index) => <div key={`${item.name}-${index}`}><p className="text-xs font-black uppercase text-pink-700">{item.name}{item.unit ? ` · ${item.unit}` : ""}</p><div className="mt-1 flex flex-wrap gap-2 text-xs font-bold text-slate-700">{item.customizations.map(([key, value]) => key === "foto_referencia" ? <a key={key} href={String(value)} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-emerald-100 px-3 py-2 font-black uppercase text-emerald-800">Abrir foto de referencia</a> : <span key={key}>{key.replaceAll("_", " ")}: {String(value)}</span>)}</div></div>)}</div> : null}
+                          {order.observacao ? <p className="mt-2 rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800">{order.observacao}</p> : null}
+                          <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-3">{STATUS_OPTIONS.map(([status, label]) => <button key={status} type="button" onClick={() => void action("order_status", order.id, { status_producao: status })} disabled={saving === `order_status-${order.id}`} className={`rounded-xl border p-2 text-[10px] font-black uppercase ${String(order.status_producao || "aguardando_confirmacao") === status ? "border-pink-600 bg-pink-50 text-pink-700" : "border-slate-200 bg-white text-slate-500"}`}>{label}</button>)}</div>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-black text-emerald-800"><span>Sinal: {money(order.valor_sinal)}</span><span>Saldo: {money(order.saldo_restante)}</span></div>
+                          {whatsapp ? <a href={whatsapp.href} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase text-white"><MessageCircle size={17} />{whatsapp.label}</a> : null}
+                        </article>;
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </section>
         ) : null}
 

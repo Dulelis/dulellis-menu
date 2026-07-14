@@ -360,6 +360,35 @@ body {
   padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
 }
 
+.notebook-page {
+  position: relative;
+  background-color: #fffef8;
+  background-image: linear-gradient(90deg, transparent 68px, rgba(220, 61, 132, 0.2) 68px, rgba(220, 61, 132, 0.2) 69px, transparent 69px);
+}
+
+.notebook-page::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 20px;
+  width: 12px;
+  content: "";
+  pointer-events: none;
+  background-image: radial-gradient(circle, #d8c8ae 3px, transparent 3.5px);
+  background-position: center 12px;
+  background-size: 12px 28px;
+}
+
+.notebook-line {
+  border-bottom: 1px solid rgba(104, 157, 190, 0.25);
+}
+
+@media (min-width: 640px) {
+  .notebook-page {
+    background-image: linear-gradient(90deg, transparent 88px, rgba(220, 61, 132, 0.2) 88px, rgba(220, 61, 132, 0.2) 89px, transparent 89px);
+  }
+}
+
 @media (display-mode: standalone) {
   body {
     overscroll-behavior-y: none;
