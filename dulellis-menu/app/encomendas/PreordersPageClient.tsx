@@ -150,6 +150,20 @@ function isFlavorField(field: CustomizationField) {
   return normalizedText(`${field.id || ""} ${field.label || ""}`).includes("sabor");
 }
 
+function isThemeDecorationField(field: CustomizationField) {
+  const text = normalizedText(`${field.id || ""} ${field.label || ""}`);
+  return text.includes("tema") || text.includes("topper") || text.includes("decoracao");
+}
+
+const CATEGORY_COLOR_CLASSES = [
+  { active: "bg-pink-600 text-white", idle: "bg-pink-100 text-pink-800" },
+  { active: "bg-violet-600 text-white", idle: "bg-violet-100 text-violet-800" },
+  { active: "bg-amber-500 text-white", idle: "bg-amber-100 text-amber-900" },
+  { active: "bg-emerald-600 text-white", idle: "bg-emerald-100 text-emerald-800" },
+  { active: "bg-sky-600 text-white", idle: "bg-sky-100 text-sky-800" },
+  { active: "bg-orange-600 text-white", idle: "bg-orange-100 text-orange-800" },
+] as const;
+
 function money(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
 }
@@ -686,7 +700,7 @@ export function PreordersPageClient() {
           <Link href={`/encomendas/pedido/${confirmation.pedido_id}`} className="mt-7 block w-full rounded-3xl bg-emerald-600 px-5 py-4 text-sm font-black uppercase tracking-widest text-white">
             Acompanhar e pagar
           </Link>
-          <a href={buildDulelisWhatsappUrl(`Olá! Fiz a encomenda #${confirmation.pedido_id} e gostaria de finalizar os detalhes pelo WhatsApp.`)} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-3xl bg-green-100 px-5 py-4 text-sm font-black uppercase tracking-widest text-green-800">
+          <a href={buildDulelisWhatsappUrl(`Olá! Pedido #${confirmation.pedido_id}: gostaria de finalizar os detalhes da encomenda pelo WhatsApp.`)} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-3xl bg-green-100 px-5 py-4 text-sm font-black uppercase tracking-widest text-green-800">
             <MessageCircle size={19} />Finalizar detalhes no WhatsApp
           </a>
           <button
@@ -840,9 +854,10 @@ export function PreordersPageClient() {
 
         {catalog && catalog.produtos.length > 0 ? (
           <nav id="catalogo-encomendas" className="overflow-x-auto rounded-[2rem] border border-pink-100 bg-white p-3 shadow-lg" aria-label="Categorias de encomendas">
-            <div className="flex min-w-max gap-2">{categories.map((category) => (
-              <button key={category} type="button" onClick={() => setSelectedCategory(category)} className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-wide ${activeCategory === category ? "bg-pink-600 text-white" : "bg-pink-50 text-pink-700"}`}>{category}</button>
-            ))}</div>
+            <div className="flex min-w-max gap-2">{categories.map((category, index) => {
+              const colors = CATEGORY_COLOR_CLASSES[index % CATEGORY_COLOR_CLASSES.length];
+              return <button key={category} type="button" onClick={() => setSelectedCategory(category)} className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-wide shadow-sm transition-all ${activeCategory === category ? `${colors.active} scale-[1.03] ring-2 ring-white` : colors.idle}`}>{category}</button>;
+            })}</div>
           </nav>
         ) : null}
 
@@ -877,6 +892,8 @@ export function PreordersPageClient() {
                       const label = String(field.label || "Informacao");
                       const value = entry.personalizacoes[id] || "";
                       const options = customizationOptions(field);
+                      const themeDecoration = isThemeDecorationField(field);
+                      const placeholder = themeDecoration ? "Descreva o tema, o nome e a idade." : field.placeholder;
                       return (
                         <label key={id} className="block text-xs font-black text-slate-600">
                           {label}{field.obrigatorio ? " *" : ""}
@@ -885,10 +902,11 @@ export function PreordersPageClient() {
                               <option value="">Selecione</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                             </select>
                           ) : field.tipo === "textarea" ? (
-                            <textarea value={value} onChange={(event) => setCustomization(product.id, id, event.target.value)} placeholder={field.placeholder} className="mt-2 min-h-24 w-full rounded-2xl border border-pink-100 bg-white p-3 text-sm font-bold outline-none" />
+                            <textarea value={value} onChange={(event) => setCustomization(product.id, id, event.target.value)} placeholder={placeholder} className="mt-2 min-h-24 w-full rounded-2xl border border-pink-100 bg-white p-3 text-sm font-bold outline-none" />
                           ) : (
-                            <input value={value} onChange={(event) => setCustomization(product.id, id, event.target.value)} placeholder={field.placeholder} className="mt-2 w-full rounded-2xl border border-pink-100 bg-white p-3 text-sm font-bold outline-none" />
+                            <input value={value} onChange={(event) => setCustomization(product.id, id, event.target.value)} placeholder={placeholder} className="mt-2 w-full rounded-2xl border border-pink-100 bg-white p-3 text-sm font-bold outline-none" />
                           )}
+                          {themeDecoration ? <span className="mt-2 block rounded-xl bg-amber-50 p-3 text-[11px] font-bold leading-relaxed text-amber-800">Descreva o tema, o nome e a idade. O valor será cobrado à parte pela equipe.</span> : null}
                         </label>
                       );
                     })}

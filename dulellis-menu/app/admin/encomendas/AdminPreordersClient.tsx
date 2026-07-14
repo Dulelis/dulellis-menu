@@ -128,8 +128,8 @@ function whatsappNotification(order: Order) {
   }) || "horário combinado";
   const isDelivery = String(order.tipo_recebimento || "").toLowerCase() === "entrega";
   const message = status === "confirmada"
-    ? `Olá, ${customer}! Sua encomenda #${order.id} foi confirmada para ${date} às ${time}. ${isDelivery ? "A entrega será feita no endereço cadastrado." : "A retirada será feita na Dulelis."} Obrigado pela preferência!`
-    : `Olá, ${customer}! Sua encomenda #${order.id} está pronta${isDelivery ? " e será encaminhada para entrega" : " para retirada na Dulelis"}. Obrigado pela preferência!`;
+    ? `Olá, ${customer}! O Pedido #${order.id} da sua encomenda foi confirmado para ${date} às ${time}. ${isDelivery ? "A entrega será feita no endereço cadastrado." : "A retirada será feita na Dulelis."} Obrigado pela preferência!`
+    : `Olá, ${customer}! O Pedido #${order.id} da sua encomenda está pronto${isDelivery ? " e será encaminhado para entrega" : " para retirada na Dulelis"}. Obrigado pela preferência!`;
 
   return {
     href: `https://wa.me/${phone}?text=${encodeURIComponent(message)}`,

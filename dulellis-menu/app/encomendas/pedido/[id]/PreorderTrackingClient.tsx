@@ -180,7 +180,7 @@ export function PreorderTrackingClient({ orderId }: { orderId: number }) {
               ) : null}
             </section>
 
-            {!isCanceled && hasPayment ? <div className="grid gap-3 sm:grid-cols-2"><Link href={`/encomendas/pedido/${order.id}/recibo`} className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 p-4 text-xs font-black uppercase tracking-widest text-white shadow-lg"><ReceiptText size={19} />Emitir recibo</Link><a href={buildDulelisWhatsappUrl(`Olá! Já realizei o pagamento da encomenda #${order.id} e gostaria de conversar sobre os detalhes.`)} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 p-4 text-xs font-black uppercase tracking-widest text-white shadow-lg"><MessageCircle size={19} />Conversar no WhatsApp</a></div> : null}
+            {!isCanceled && hasPayment ? <div className="grid gap-3 sm:grid-cols-2"><Link href={`/encomendas/pedido/${order.id}/recibo`} className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 p-4 text-xs font-black uppercase tracking-widest text-white shadow-lg"><ReceiptText size={19} />Emitir recibo</Link><a href={buildDulelisWhatsappUrl(`Olá! Pedido #${order.id}: já realizei o pagamento e gostaria de conversar sobre os detalhes da encomenda.`)} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 p-4 text-xs font-black uppercase tracking-widest text-white shadow-lg"><MessageCircle size={19} />Conversar no WhatsApp</a></div> : null}
 
             <Link href="/encomendas" className="block rounded-2xl bg-pink-600 p-4 text-center text-xs font-black uppercase tracking-widest text-white">Voltar para a agenda</Link>
           </div>

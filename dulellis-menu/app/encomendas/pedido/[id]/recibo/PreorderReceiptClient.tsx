@@ -134,7 +134,7 @@ export function PreorderReceiptClient({ orderId }: { orderId: number }) {
       const file = new File([blob], `recibo-dulelis-encomenda-${order.id}.png`, { type: "image/png" });
       const navigatorWithShare = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
       if (share && navigator.share && navigatorWithShare.canShare?.({ files: [file] })) {
-        await navigator.share({ title: `Recibo Dulelis #${order.id}`, text: `Recibo de pagamento da encomenda #${order.id}.`, files: [file] });
+        await navigator.share({ title: `Recibo Dulelis - Pedido #${order.id}`, text: `Recibo de pagamento do Pedido #${order.id}.`, files: [file] });
         return;
       }
       const url = URL.createObjectURL(blob);
@@ -144,7 +144,7 @@ export function PreorderReceiptClient({ orderId }: { orderId: number }) {
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       if (share) {
-        window.open(buildDulelisWhatsappUrl(`Olá! Segue o recibo de pagamento da encomenda #${order.id}. O arquivo foi baixado para ser anexado nesta conversa.`), "_blank", "noopener,noreferrer");
+        window.open(buildDulelisWhatsappUrl(`Olá! Segue o recibo de pagamento do Pedido #${order.id}. O arquivo foi baixado para ser anexado nesta conversa.`), "_blank", "noopener,noreferrer");
       }
     } catch (reason) {
       if (reason instanceof DOMException && reason.name === "AbortError") return;
