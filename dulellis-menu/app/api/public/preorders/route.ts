@@ -36,11 +36,22 @@ type PreorderItemInput = {
 };
 
 type PreorderBody = {
+  pedido_id?: number;
   agendado_para?: string;
   tipo_recebimento?: string;
   itens?: PreorderItemInput[];
   observacao?: string;
   evento?: string;
+};
+
+type EditableOrderRow = {
+  id?: number;
+  status_producao?: string | null;
+  status_pedido?: string | null;
+  status_pagamento?: string | null;
+  valor_sinal?: number | string | null;
+  total?: number | string | null;
+  saldo_restante?: number | string | null;
 };
 
 type ProductRow = {
@@ -111,6 +122,17 @@ function normalizeReceiptType(value?: string) {
   return normalized.includes("entrega") ? "entrega" : normalized.includes("retirada") ? "retirada" : "";
 }
 
+function customerCanChangePreorder(order: EditableOrderRow) {
+  const production = normalizeText(String(order.status_producao || "aguardando_confirmacao"));
+  const orderStatus = normalizeText(String(order.status_pedido || ""));
+  const paymentStatus = normalizeText(String(order.status_pagamento || ""));
+  const paidAmount = Math.max(0, Number(order.valor_sinal || 0));
+  const total = Math.max(0, Number(order.total || 0));
+  const balance = Math.max(0, Number(order.saldo_restante ?? total));
+  const hasPayment = paidAmount > 0.009 || balance + 0.009 < total || ["approved", "pago", "parcial"].includes(paymentStatus);
+  return production === "aguardando_confirmacao" && !["cancelado", "finalizado"].includes(orderStatus) && !hasPayment;
+}
+
 function validateRequiredCustomizations(product: ProductRow, customizations: Record<string, unknown>) {
   const config =
     product.opcoes_encomenda && typeof product.opcoes_encomenda === "object" && !Array.isArray(product.opcoes_encomenda)
@@ -176,9 +198,10 @@ export async function GET(request: NextRequest) {
       }
       const { data, error } = await supabase
         .from("pedidos")
-        .select("id,total,taxa_entrega,forma_pagamento,status_pedido,status_pagamento,tipo_recebimento,agendado_para,status_producao,valor_sinal,saldo_restante,created_at,itens")
+        .select("id,total,taxa_entrega,forma_pagamento,status_pedido,status_pagamento,tipo_recebimento,agendado_para,status_producao,valor_sinal,saldo_restante,created_at,itens,detalhes_encomenda,observacao")
         .eq("cliente_id", Number(session.clienteId || 0))
         .eq("tipo_pedido", "encomenda")
+        .neq("status_producao", "cancelada")
         .order("agendado_para", { ascending: true })
         .limit(50);
       if (error) {
@@ -260,6 +283,23 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json().catch(() => ({}))) as PreorderBody;
+    const editingOrderId = Number(body.pedido_id || 0);
+    let editingOrder: EditableOrderRow | null = null;
+    if (editingOrderId > 0) {
+      const { data, error } = await supabase
+        .from("pedidos")
+        .select("id,status_producao,status_pedido,status_pagamento,valor_sinal,total,saldo_restante")
+        .eq("id", editingOrderId)
+        .eq("cliente_id", Number(session.clienteId || 0))
+        .eq("tipo_pedido", "encomenda")
+        .maybeSingle();
+      if (error) throw new OrderDraftError(500, error.message);
+      if (!data) throw new OrderDraftError(404, "Encomenda nao encontrada nesta conta.");
+      editingOrder = data as EditableOrderRow;
+      if (!customerCanChangePreorder(editingOrder)) {
+        throw new OrderDraftError(409, "Esta encomenda ja foi confirmada, paga ou entrou em producao e nao pode mais ser editada pelo app.");
+      }
+    }
     const config = await loadPreorderConfig(supabase);
     if (config.ativo === false) throw new OrderDraftError(409, "As encomendas estao fechadas no momento.");
 
@@ -418,11 +458,47 @@ export async function POST(request: NextRequest) {
         itens: detailsItems,
       },
     };
-    const orderId = await insertOrderFromSnapshot(supabase, snapshot, { statusPedido: "aguardando_aceite" });
+    let orderId = editingOrderId;
+    if (editingOrder) {
+      const { data, error } = await supabase
+        .from("pedidos")
+        .update({
+          cliente_nome: snapshot.cliente.nome,
+          whatsapp: snapshot.cliente.whatsapp,
+          cep: snapshot.cep,
+          endereco: snapshot.endereco,
+          numero: snapshot.numero,
+          bairro: snapshot.bairro,
+          cidade: snapshot.cidade,
+          ponto_referencia: snapshot.ponto_referencia,
+          data_aniversario: snapshot.data_aniversario,
+          itens: snapshot.itens,
+          total: snapshot.total,
+          taxa_entrega: snapshot.taxa_entrega,
+          forma_pagamento: snapshot.forma_pagamento,
+          observacao: snapshot.observacao,
+          pagamento_referencia: snapshot.pagamento_referencia,
+          tipo_recebimento: snapshot.tipo_recebimento,
+          agendado_para: snapshot.agendado_para,
+          status_pedido: "aguardando_aceite",
+          status_producao: "aguardando_confirmacao",
+          saldo_restante: snapshot.total,
+          detalhes_encomenda: snapshot.detalhes_encomenda,
+        })
+        .eq("id", editingOrderId)
+        .eq("cliente_id", Number(session.clienteId || 0))
+        .eq("tipo_pedido", "encomenda")
+        .select("id")
+        .maybeSingle();
+      if (error) throw new OrderDraftError(500, error.message);
+      if (!data) throw new OrderDraftError(409, "A encomenda nao pode mais ser editada.");
+    } else {
+      orderId = await insertOrderFromSnapshot(supabase, snapshot, { statusPedido: "aguardando_aceite" });
+    }
     await supabase.from("pedido_eventos").insert([{
       pedido_id: orderId,
-      tipo: "encomenda_criada",
-      descricao: "Encomenda criada pelo cliente no app.",
+      tipo: editingOrder ? "encomenda_editada" : "encomenda_criada",
+      descricao: editingOrder ? "Encomenda editada pelo cliente no app." : "Encomenda criada pelo cliente no app.",
       dados: { agendado_para: snapshot.agendado_para, tipo_recebimento: receiptType },
       criado_por: "cliente",
     }]);
@@ -436,11 +512,70 @@ export async function POST(request: NextRequest) {
         taxa_entrega: deliveryFee,
         total,
         status: snapshot.status_producao,
+        editado: Boolean(editingOrder),
       },
     });
   } catch (error) {
     const status = error instanceof OrderDraftError ? error.status : 500;
     const message = error instanceof Error ? error.message : "Falha ao criar encomenda.";
+    return NextResponse.json({ ok: false, error: message }, { status });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const session = getCustomerSessionFromRequest(request);
+  if (!session) return NextResponse.json({ ok: false, error: "Entre na sua conta para cancelar." }, { status: 401 });
+  const originError = enforceSameOriginForWrite(request);
+  if (originError) return originError;
+
+  cleanupExpiredBuckets();
+  const rate = await checkRateLimit({
+    key: `public-preorders-delete:${getClientIp(request)}`,
+    limit: 10,
+    windowMs: 5 * 60_000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json({ ok: false, error: "Muitas tentativas. Aguarde alguns minutos." }, { status: 429 });
+  }
+
+  const orderId = Number(request.nextUrl.searchParams.get("pedido_id") || 0);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return NextResponse.json({ ok: false, error: "Encomenda invalida." }, { status: 400 });
+  }
+  const supabase = getServiceSupabase();
+  if (!supabase) return NextResponse.json({ ok: false, error: "Supabase nao configurado." }, { status: 500 });
+
+  try {
+    const { data: order, error } = await supabase
+      .from("pedidos")
+      .select("id,status_producao,status_pedido,status_pagamento,valor_sinal,total,saldo_restante")
+      .eq("id", orderId)
+      .eq("cliente_id", Number(session.clienteId || 0))
+      .eq("tipo_pedido", "encomenda")
+      .maybeSingle();
+    if (error) throw new OrderDraftError(500, error.message);
+    if (!order) throw new OrderDraftError(404, "Encomenda nao encontrada nesta conta.");
+    if (!customerCanChangePreorder(order as EditableOrderRow)) {
+      throw new OrderDraftError(409, "Esta encomenda ja foi confirmada, paga ou entrou em producao. Fale com a Dulelis para cancelar.");
+    }
+    const { error: updateError } = await supabase
+      .from("pedidos")
+      .update({ status_producao: "cancelada", status_pedido: "cancelado" })
+      .eq("id", orderId)
+      .eq("cliente_id", Number(session.clienteId || 0))
+      .eq("tipo_pedido", "encomenda");
+    if (updateError) throw new OrderDraftError(500, updateError.message);
+    await supabase.from("pedido_eventos").insert([{
+      pedido_id: orderId,
+      tipo: "encomenda_cancelada_cliente",
+      descricao: "Encomenda cancelada pelo cliente no app.",
+      dados: { status_producao: "cancelada", status_pedido: "cancelado" },
+      criado_por: "cliente",
+    }]);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const status = error instanceof OrderDraftError ? error.status : 500;
+    const message = error instanceof Error ? error.message : "Falha ao cancelar encomenda.";
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

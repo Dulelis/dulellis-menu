@@ -12,10 +12,12 @@ import {
   LogIn,
   Minus,
   PackageCheck,
+  Pencil,
   Plus,
   ShoppingBag,
   Truck,
   User,
+  XCircle,
 } from "lucide-react";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
@@ -116,9 +118,13 @@ type PreorderOrder = {
   tipo_recebimento?: string;
   agendado_para?: string;
   status_producao?: string;
+  status_pedido?: string;
+  status_pagamento?: string;
   valor_sinal?: number;
   saldo_restante?: number;
-  itens?: Array<{ nome?: string; qtd?: number }>;
+  observacao?: string;
+  detalhes_encomenda?: Record<string, unknown>;
+  itens?: Array<{ id?: number; nome?: string; qtd?: number; preco?: number }>;
 };
 
 function digitsOnly(value: string) {
@@ -164,6 +170,25 @@ function dateInSaoPaulo(date: Date) {
   }).formatToParts(date);
   const parts = Object.fromEntries(values.map((part) => [part.type, part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function timeInSaoPaulo(date: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+}
+
+function customerCanChangeOrder(order: PreorderOrder) {
+  const production = normalizedText(order.status_producao || "aguardando_confirmacao");
+  const orderStatus = normalizedText(order.status_pedido || "");
+  const paymentStatus = normalizedText(order.status_pagamento || "");
+  const total = Math.max(0, Number(order.total || 0));
+  const balance = Math.max(0, Number(order.saldo_restante ?? total));
+  const hasPayment = Number(order.valor_sinal || 0) > 0.009 || balance + 0.009 < total || ["approved", "pago", "parcial"].includes(paymentStatus);
+  return production === "aguardando_confirmacao" && !["cancelado", "finalizado"].includes(orderStatus) && !hasPayment;
 }
 
 function localScheduleIso(date: string, time: string) {
@@ -214,12 +239,14 @@ export function PreordersPageClient() {
   const [addressError, setAddressError] = useState("");
   const [eventName, setEventName] = useState("");
   const [notes, setNotes] = useState("");
+  const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<{
     pedido_id: number;
     agendado_para: string;
     total: number;
     taxa_entrega: number;
+    editado?: boolean;
   } | null>(null);
   const [myOrders, setMyOrders] = useState<PreorderOrder[]>([]);
 
@@ -270,8 +297,13 @@ export function PreordersPageClient() {
   }, [loadCatalog, loadSession]);
 
   useEffect(() => {
-    if (session) void loadMyOrders();
-    else setMyOrders([]);
+    if (!session) {
+      setMyOrders([]);
+      return;
+    }
+    void loadMyOrders();
+    const timer = window.setInterval(() => void loadMyOrders(), 15_000);
+    return () => window.clearInterval(timer);
   }, [loadMyOrders, session]);
 
   useEffect(() => {
@@ -482,6 +514,75 @@ export function PreordersPageClient() {
     setSession((current) => current ? { ...current, ...normalizedAddress } : current);
   }
 
+  function beginEditOrder(order: PreorderOrder) {
+    if (!customerCanChangeOrder(order)) return;
+    const details = order.detalhes_encomenda && typeof order.detalhes_encomenda === "object"
+      ? order.detalhes_encomenda
+      : {};
+    const detailItems = Array.isArray(details.itens) ? details.itens : [];
+    const personalizations = new Map<number, Record<string, string>>();
+    for (const raw of detailItems) {
+      if (!raw || typeof raw !== "object") continue;
+      const detail = raw as Record<string, unknown>;
+      const productId = Number(detail.produto_id || 0);
+      const values = detail.personalizacoes && typeof detail.personalizacoes === "object" && !Array.isArray(detail.personalizacoes)
+        ? Object.fromEntries(Object.entries(detail.personalizacoes as Record<string, unknown>).map(([key, value]) => [key, String(value || "")]))
+        : {};
+      if (productId > 0) personalizations.set(productId, values);
+    }
+    const availableIds = new Set((catalog?.produtos || []).map((product) => Number(product.id)));
+    const nextCart: Record<number, CartEntry> = {};
+    for (const item of order.itens || []) {
+      const productId = Number(item.id || 0);
+      const quantity = Math.max(0, Number(item.qtd || 0));
+      if (productId > 0 && quantity > 0 && availableIds.has(productId)) {
+        nextCart[productId] = { qtd: quantity, personalizacoes: personalizations.get(productId) || {} };
+      }
+    }
+    if (!Object.keys(nextCart).length) {
+      window.alert("Os produtos desta encomenda nao estao mais disponiveis para edicao.");
+      return;
+    }
+    const schedule = order.agendado_para ? new Date(order.agendado_para) : null;
+    setCart(nextCart);
+    const firstProductId = Number(Object.keys(nextCart)[0] || 0);
+    const firstProduct = (catalog?.produtos || []).find((product) => Number(product.id) === firstProductId);
+    if (firstProduct) setSelectedCategory(String(firstProduct.categoria || "Outros"));
+    if (schedule && Number.isFinite(schedule.getTime())) {
+      setSelectedDate(dateInSaoPaulo(schedule));
+      setSelectedTime(timeInSaoPaulo(schedule));
+    }
+    setReceiptType(normalizedText(order.tipo_recebimento || "") === "entrega" ? "entrega" : "retirada");
+    setEventName(String(details.evento || ""));
+    setNotes(String(order.observacao || details.observacao_geral || ""));
+    setEditingOrderId(order.id);
+    setConfirmation(null);
+    window.setTimeout(() => document.getElementById("catalogo-encomendas")?.scrollIntoView({ behavior: "smooth" }), 0);
+  }
+
+  function stopEditingOrder() {
+    setEditingOrderId(null);
+    setCart({});
+    setSelectedDate("");
+    setSelectedTime("");
+    setEventName("");
+    setNotes("");
+  }
+
+  async function cancelOrder(order: PreorderOrder) {
+    if (!customerCanChangeOrder(order)) return;
+    if (!window.confirm(`Cancelar a encomenda #${order.id}? Esta acao nao pode ser desfeita.`)) return;
+    try {
+      const response = await fetch(`/api/public/preorders?pedido_id=${order.id}`, { method: "DELETE" });
+      const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!response.ok || json.ok === false) throw new Error(json.error || "Falha ao cancelar encomenda.");
+      if (editingOrderId === order.id) stopEditingOrder();
+      await loadMyOrders();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Falha ao cancelar encomenda.");
+    }
+  }
+
   async function submitPreorder() {
     if (!session) {
       document.getElementById("acesso-encomendas")?.scrollIntoView({ behavior: "smooth" });
@@ -495,6 +596,7 @@ export function PreordersPageClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          pedido_id: editingOrderId || undefined,
           agendado_para: localScheduleIso(selectedDate, selectedTime),
           tipo_recebimento: receiptType,
           evento: eventName,
@@ -508,12 +610,13 @@ export function PreordersPageClient() {
       });
       const json = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
-        data?: { pedido_id: number; agendado_para: string; total: number; taxa_entrega: number };
+        data?: { pedido_id: number; agendado_para: string; total: number; taxa_entrega: number; editado?: boolean };
         error?: string;
       };
       if (!response.ok || json.ok === false || !json.data) throw new Error(json.error || "Falha ao enviar encomenda.");
       setConfirmation(json.data);
       setCart({});
+      setEditingOrderId(null);
       void loadMyOrders();
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
@@ -528,7 +631,7 @@ export function PreordersPageClient() {
       <main className="min-h-screen bg-gradient-to-b from-pink-50 via-white to-amber-50 px-4 py-8">
         <div className="mx-auto max-w-xl rounded-[2.5rem] border border-emerald-100 bg-white p-8 text-center shadow-2xl">
           <CheckCircle2 className="mx-auto text-emerald-600" size={68} />
-          <p className="mt-5 text-xs font-black uppercase tracking-[0.25em] text-emerald-600">Encomenda recebida</p>
+          <p className="mt-5 text-xs font-black uppercase tracking-[0.25em] text-emerald-600">{confirmation.editado ? "Encomenda atualizada" : "Encomenda recebida"}</p>
           <h1 className="mt-2 text-3xl font-black text-slate-900">Pedido #{confirmation.pedido_id}</h1>
           <p className="mt-4 font-bold text-slate-600">
             Agendada para {new Date(confirmation.agendado_para).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}.
@@ -654,32 +757,36 @@ export function PreordersPageClient() {
               <h2 className="text-xl font-black">Minhas encomendas</h2>
             </div>
             <div className="mt-4 space-y-3">
-              {myOrders.map((order) => (
-                <Link
-                  key={order.id}
-                  href={`/encomendas/pedido/${order.id}`}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 transition-colors hover:border-pink-200"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-black uppercase tracking-wider text-pink-600">Encomenda #{order.id}</p>
-                    <p className="mt-1 truncate text-sm font-bold text-slate-600">
-                      {order.agendado_para
-                        ? new Date(order.agendado_para).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
-                        : "Data em atualizacao"}
-                    </p>
-                    <p className="mt-1 text-xs font-black uppercase text-emerald-700">
-                      {String(order.status_producao || "aguardando_confirmacao").replaceAll("_", " ")}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="font-black text-slate-900">{money(Number(order.total || 0))}</p>
-                    <ChevronRight className="ml-auto mt-1 text-slate-400" size={18} />
-                  </div>
-                </Link>
-              ))}
+              {myOrders.map((order) => {
+                const canChange = customerCanChangeOrder(order);
+                return <article key={order.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <Link href={`/encomendas/pedido/${order.id}`} className="flex items-center justify-between gap-3 transition-colors hover:text-pink-700">
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-wider text-pink-600">Encomenda #{order.id}</p>
+                      <p className="mt-1 truncate text-sm font-bold text-slate-600">
+                        {order.agendado_para
+                          ? new Date(order.agendado_para).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })
+                          : "Data em atualizacao"}
+                      </p>
+                      <p className="mt-1 text-xs font-black uppercase text-emerald-700">
+                        {String(order.status_producao || "aguardando_confirmacao").replaceAll("_", " ")}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right"><p className="font-black text-slate-900">{money(Number(order.total || 0))}</p><ChevronRight className="ml-auto mt-1 text-slate-400" size={18} /></div>
+                  </Link>
+                  {canChange ? <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
+                    <button type="button" onClick={() => beginEditOrder(order)} className="flex items-center justify-center gap-2 rounded-xl bg-blue-100 p-3 text-xs font-black uppercase text-blue-800"><Pencil size={15} />Editar</button>
+                    <button type="button" onClick={() => void cancelOrder(order)} className="flex items-center justify-center gap-2 rounded-xl bg-rose-100 p-3 text-xs font-black uppercase text-rose-800"><XCircle size={16} />Cancelar</button>
+                  </div> : <p className="mt-3 border-t border-slate-200 pt-3 text-[11px] font-bold text-slate-500">Para alterar uma encomenda confirmada, em produção ou paga, fale com a Dulelis.</p>}
+                </article>;
+              })}
             </div>
           </section>
         ) : null}
+
+        {editingOrderId ? <section className="rounded-[2rem] border-2 border-blue-300 bg-blue-50 p-5 shadow-lg">
+          <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wider text-blue-700">Editando encomenda #{editingOrderId}</p><p className="mt-1 text-sm font-bold text-blue-900">Altere os produtos, a data ou a forma de recebimento e envie novamente.</p></div><button type="button" onClick={stopEditingOrder} className="rounded-xl bg-white px-4 py-3 text-xs font-black uppercase text-blue-800">Sair</button></div>
+        </section> : null}
 
         {catalog && catalog.produtos.length === 0 ? (
           <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 text-center">
@@ -690,7 +797,7 @@ export function PreordersPageClient() {
         ) : null}
 
         {catalog && catalog.produtos.length > 0 ? (
-          <nav className="overflow-x-auto rounded-[2rem] border border-pink-100 bg-white p-3 shadow-lg" aria-label="Categorias de encomendas">
+          <nav id="catalogo-encomendas" className="overflow-x-auto rounded-[2rem] border border-pink-100 bg-white p-3 shadow-lg" aria-label="Categorias de encomendas">
             <div className="flex min-w-max gap-2">{categories.map((category) => (
               <button key={category} type="button" onClick={() => setSelectedCategory(category)} className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-wide ${activeCategory === category ? "bg-pink-600 text-white" : "bg-pink-50 text-pink-700"}`}>{category}</button>
             ))}</div>
@@ -834,7 +941,7 @@ export function PreordersPageClient() {
           <div className="mx-auto flex max-w-xl items-center justify-between gap-4 rounded-[1.8rem] bg-slate-900 p-4 text-white shadow-2xl">
             <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{cartItems.reduce((sum, item) => sum + item.entry.qtd, 0)} itens</p><p className="truncate text-xl font-black text-pink-400">{money(subtotal)}{receiptType === "entrega" ? " + entrega" : ""}</p></div>
             <button type="button" onClick={() => void submitPreorder()} disabled={submitting || !selectedDate || !selectedTime} className="flex shrink-0 items-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-xs font-black uppercase tracking-wider disabled:bg-slate-600 disabled:text-slate-400">
-              {submitting ? <Loader2 size={17} className="animate-spin" /> : <ChevronRight size={17} />}Enviar encomenda
+              {submitting ? <Loader2 size={17} className="animate-spin" /> : <ChevronRight size={17} />}{editingOrderId ? "Salvar alterações" : "Enviar encomenda"}
             </button>
           </div>
         </div>
