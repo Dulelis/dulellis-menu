@@ -125,6 +125,21 @@ function digitsOnly(value: string) {
   return String(value || "").replace(/\D/g, "");
 }
 
+function normalizedText(value: string) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function isMixedProduct(product: Product) {
+  return /\bmist[oa]s?\b/.test(normalizedText(product.nome));
+}
+
+function isFlavorField(field: CustomizationField) {
+  return normalizedText(`${field.id || ""} ${field.label || ""}`).includes("sabor");
+}
+
 function money(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
 }
@@ -183,7 +198,7 @@ export function PreordersPageClient() {
     accepted: false,
   });
   const [cart, setCart] = useState<Record<number, CartEntry>>({});
-  const [selectedCategory, setSelectedCategory] = useState("Todos");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [receiptType, setReceiptType] = useState<"entrega" | "retirada">("retirada");
@@ -273,12 +288,13 @@ export function PreordersPageClient() {
 
   const config = catalog?.config;
   const categories = useMemo(
-    () => ["Todos", ...Array.from(new Set((catalog?.produtos || []).map((product) => String(product.categoria || "Outros"))))],
+    () => Array.from(new Set((catalog?.produtos || []).map((product) => String(product.categoria || "Outros")))),
     [catalog?.produtos],
   );
+  const activeCategory = categories.includes(selectedCategory) ? selectedCategory : categories[0] || "";
   const visibleProducts = useMemo(
-    () => (catalog?.produtos || []).filter((product) => selectedCategory === "Todos" || String(product.categoria || "Outros") === selectedCategory),
-    [catalog?.produtos, selectedCategory],
+    () => (catalog?.produtos || []).filter((product) => String(product.categoria || "Outros") === activeCategory),
+    [activeCategory, catalog?.produtos],
   );
   const minimumLeadHours = Math.max(0, Number(config?.antecedencia_minima_horas || 0));
   const minimumDate = useMemo(
@@ -676,14 +692,15 @@ export function PreordersPageClient() {
         {catalog && catalog.produtos.length > 0 ? (
           <nav className="overflow-x-auto rounded-[2rem] border border-pink-100 bg-white p-3 shadow-lg" aria-label="Categorias de encomendas">
             <div className="flex min-w-max gap-2">{categories.map((category) => (
-              <button key={category} type="button" onClick={() => setSelectedCategory(category)} className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-wide ${selectedCategory === category ? "bg-pink-600 text-white" : "bg-pink-50 text-pink-700"}`}>{category}</button>
+              <button key={category} type="button" onClick={() => setSelectedCategory(category)} className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-wide ${activeCategory === category ? "bg-pink-600 text-white" : "bg-pink-50 text-pink-700"}`}>{category}</button>
             ))}</div>
           </nav>
         ) : null}
 
         {visibleProducts.map((product) => {
           const entry = cart[product.id];
-          const fields = Array.isArray(product.opcoes_encomenda?.campos) ? product.opcoes_encomenda.campos : [];
+          const rawFields = Array.isArray(product.opcoes_encomenda?.campos) ? product.opcoes_encomenda.campos : [];
+          const fields = isMixedProduct(product) ? rawFields.filter((field) => !isFlavorField(field)) : rawFields;
           const unit = String(product.opcoes_encomenda?.unidade || "unidade");
           return (
             <article key={product.id} className="overflow-hidden rounded-[2rem] border border-pink-100 bg-white shadow-lg">

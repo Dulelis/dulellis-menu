@@ -58,7 +58,6 @@ for (const product of catalog.produtos) {
     nome: product.nome,
     descricao: product.descricao,
     categoria: product.categoria,
-    preco: product.preco,
     quantidade: 0,
     disponivel_delivery: false,
     disponivel_encomenda: true,
@@ -77,7 +76,7 @@ for (const product of catalog.produtos) {
     await request(`estoque?id=eq.${encodeURIComponent(current.id)}`, { method: "PATCH", body: JSON.stringify(payload) });
     updated += 1;
   } else {
-    await request("estoque", { method: "POST", body: JSON.stringify([payload]) });
+    await request("estoque", { method: "POST", body: JSON.stringify([{ ...payload, preco: product.preco }]) });
     inserted += 1;
   }
 }

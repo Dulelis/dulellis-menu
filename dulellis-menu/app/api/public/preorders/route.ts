@@ -117,11 +117,13 @@ function validateRequiredCustomizations(product: ProductRow, customizations: Rec
       ? (product.opcoes_encomenda as Record<string, unknown>)
       : {};
   const fields = Array.isArray(config.campos) ? config.campos : [];
+  const mixedProduct = /\bmist[oa]s?\b/.test(normalizeText(String(product.nome || "")));
   for (const rawField of fields) {
     const field = rawField && typeof rawField === "object" ? (rawField as Record<string, unknown>) : null;
     if (!field || field.obrigatorio !== true) continue;
     const id = String(field.id || "").trim();
     const label = String(field.label || id || "personalizacao").trim();
+    if (mixedProduct && normalizeText(`${id} ${label}`).includes("sabor")) continue;
     const value = id ? customizations[id] : undefined;
     if (value == null || String(value).trim() === "") {
       throw new OrderDraftError(400, `Preencha ${label} para ${String(product.nome || "o produto")}.`);
