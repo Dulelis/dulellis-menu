@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock3,
   FileImage,
+  LockKeyhole,
   Loader2,
   LogIn,
   MessageCircle,
@@ -391,6 +392,7 @@ export function PreordersPageClient() {
   );
 
   function changeQuantity(product: Product, delta: number) {
+    if (!session) return;
     setCart((current) => {
       const previous = current[product.id] || { qtd: 0, personalizacoes: {} };
       const limit = Math.max(0, Number(product.limite_por_encomenda || 0));
@@ -861,11 +863,12 @@ export function PreordersPageClient() {
                 <div className="mt-4 flex items-center justify-between gap-4">
                   <div><p className="text-xl font-black text-pink-600">{money(Number(product.preco || 0))}</p><p className="text-[10px] font-bold uppercase text-slate-400">por {unit}</p></div>
                   <div className="flex items-center gap-3 rounded-2xl bg-slate-900 p-2 text-white">
-                    <button type="button" onClick={() => changeQuantity(product, -1)} disabled={!entry?.qtd} className="rounded-xl bg-white/10 p-2 disabled:opacity-30"><Minus size={16} /></button>
+                    <button type="button" onClick={() => changeQuantity(product, -1)} disabled={!session || !entry?.qtd} className="rounded-xl bg-white/10 p-2 disabled:cursor-not-allowed disabled:opacity-30"><Minus size={16} /></button>
                     <span className="min-w-12 text-center text-sm font-black">{quantity(entry?.qtd || 0)} {unit === "unidade" ? "" : unit}</span>
-                    <button type="button" onClick={() => changeQuantity(product, 1)} className="rounded-xl bg-pink-600 p-2"><Plus size={16} /></button>
+                    <button type="button" onClick={() => changeQuantity(product, 1)} disabled={!session} aria-label={session ? `Adicionar ${product.nome}` : "Entre na sua conta para pedir"} className="rounded-xl bg-pink-600 p-2 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400">{session ? <Plus size={16} /> : <LockKeyhole size={16} />}</button>
                   </div>
                 </div>
+                {!session ? <button type="button" onClick={() => document.getElementById("acesso-encomendas")?.scrollIntoView({ behavior: "smooth", block: "center" })} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs font-black uppercase tracking-wide text-amber-800"><LockKeyhole size={16} />Entre para poder pedir</button> : null}
                 {entry?.qtd ? (
                   <div className="mt-5 space-y-3 rounded-3xl bg-pink-50 p-4">
                     <p className="text-xs font-black uppercase tracking-widest text-pink-700">Personalize</p>
@@ -992,7 +995,7 @@ export function PreordersPageClient() {
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-pink-100 bg-white/95 p-3 backdrop-blur-xl">
           <div className="mx-auto flex max-w-xl items-center justify-between gap-4 rounded-[1.8rem] bg-slate-900 p-4 text-white shadow-2xl">
             <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{cartItems.reduce((sum, item) => sum + item.entry.qtd, 0)} itens</p><p className="truncate text-xl font-black text-pink-400">{money(subtotal)}{receiptType === "entrega" ? " + entrega" : ""}</p></div>
-            <button type="button" onClick={() => void submitPreorder()} disabled={submitting || !selectedDate || !selectedTime} className="flex shrink-0 items-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-xs font-black uppercase tracking-wider disabled:bg-slate-600 disabled:text-slate-400">
+            <button type="button" onClick={() => void submitPreorder()} disabled={!session || submitting || !selectedDate || !selectedTime} className="flex shrink-0 items-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-xs font-black uppercase tracking-wider disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400">
               {submitting ? <Loader2 size={17} className="animate-spin" /> : <ChevronRight size={17} />}{editingOrderId ? "Salvar alterações" : "Enviar encomenda"}
             </button>
           </div>
