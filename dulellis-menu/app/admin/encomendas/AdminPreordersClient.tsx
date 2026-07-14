@@ -9,6 +9,7 @@ import {
   CalendarDays,
   Clock3,
   Loader2,
+  MessageCircle,
   PackageCheck,
   Plus,
   RefreshCw,
@@ -109,6 +110,31 @@ function money(value?: number) {
 
 function localInputToIso(value: string) {
   return value ? new Date(`${value}:00-03:00`).toISOString() : "";
+}
+
+function whatsappNotification(order: Order) {
+  const digits = String(order.whatsapp || "").replace(/\D/g, "");
+  const phone = digits.startsWith("55") ? digits : digits.length === 10 || digits.length === 11 ? `55${digits}` : "";
+  const status = String(order.status_producao || "");
+  if (!phone || (status !== "confirmada" && status !== "pronta")) return null;
+
+  const customer = String(order.cliente_nome || "cliente").trim();
+  const schedule = order.agendado_para ? new Date(order.agendado_para) : null;
+  const date = schedule?.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) || "data combinada";
+  const time = schedule?.toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  }) || "horário combinado";
+  const isDelivery = String(order.tipo_recebimento || "").toLowerCase() === "entrega";
+  const message = status === "confirmada"
+    ? `Olá, ${customer}! Sua encomenda #${order.id} foi confirmada para ${date} às ${time}. ${isDelivery ? "A entrega será feita no endereço cadastrado." : "A retirada será feita na Dulelis."} Obrigado pela preferência!`
+    : `Olá, ${customer}! Sua encomenda #${order.id} está pronta${isDelivery ? " e será encaminhada para entrega" : " para retirada na Dulelis"}. Obrigado pela preferência!`;
+
+  return {
+    href: `https://wa.me/${phone}?text=${encodeURIComponent(message)}`,
+    label: status === "confirmada" ? "Avisar confirmação" : "Avisar que está pronta",
+  };
 }
 
 function orderDetails(order: Order) {
@@ -288,17 +314,19 @@ export function AdminPreordersClient() {
             {grouped.length === 0 ? <div className="rounded-3xl bg-white p-10 text-center font-bold text-slate-500">Nenhuma encomenda futura.</div> : null}
             {grouped.map(([date, orders]) => (
               <div key={date}><h2 className="mb-3 text-lg font-black">{date}</h2><div className="grid gap-4 lg:grid-cols-2">
-                {orders.map((order) => (
-                  <article key={order.id} className="rounded-3xl bg-white p-6 shadow-sm">
+                {orders.map((order) => {
+                  const whatsapp = whatsappNotification(order);
+                  return <article key={order.id} className="rounded-3xl bg-white p-6 shadow-sm">
                     <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-wider text-pink-600">#{order.id} · {order.tipo_recebimento || "retirada"}</p><h3 className="mt-1 text-xl font-black">{order.cliente_nome || "Cliente"}</h3><p className="mt-1 text-sm font-bold text-slate-500">{order.agendado_para ? new Date(order.agendado_para).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }) : "Sem horario"} · {order.whatsapp}</p></div><p className="text-lg font-black">{money(order.total)}</p></div>
                     <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">{(order.itens || []).map((item) => `${item.qtd || 1}x ${item.nome || "Item"}`).join(" · ")}</div>
                     {orderDetails(order).event ? <p className="mt-3 rounded-2xl bg-violet-50 p-3 text-sm font-black text-violet-800">Evento: {orderDetails(order).event}</p> : null}
                     {orderDetails(order).items.length ? <div className="mt-3 space-y-2 rounded-2xl bg-pink-50 p-4">{orderDetails(order).items.map((item, index) => <div key={`${item.name}-${index}`}><p className="text-xs font-black uppercase text-pink-700">{item.name}{item.unit ? ` · ${item.unit}` : ""}</p><p className="mt-1 text-sm font-bold text-slate-700">{item.customizations.map(([key, value]) => `${key.replaceAll("_", " ")}: ${String(value)}`).join(" · ")}</p></div>)}</div> : null}
                     {order.observacao ? <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-800">{order.observacao}</p> : null}
                     <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">{STATUS_OPTIONS.map(([status, label]) => <button key={status} type="button" onClick={() => void action("order_status", order.id, { status_producao: status })} disabled={saving === `order_status-${order.id}`} className={`rounded-xl border p-2 text-[10px] font-black uppercase ${String(order.status_producao || "aguardando_confirmacao") === status ? "border-pink-600 bg-pink-50 text-pink-700" : "border-slate-200 text-slate-500"}`}>{label}</button>)}</div>
+                    {whatsapp ? <a href={whatsapp.href} target="_blank" rel="noopener noreferrer" className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-4 text-xs font-black uppercase tracking-wider text-white shadow-sm hover:bg-emerald-700"><MessageCircle size={18} />{whatsapp.label}</a> : null}
                     <div className="mt-4 flex justify-between rounded-2xl bg-emerald-50 p-3 text-xs font-black text-emerald-800"><span>Sinal: {money(order.valor_sinal)}</span><span>Saldo: {money(order.saldo_restante)}</span></div>
                   </article>
-                ))}
+                })}
               </div></div>
             ))}
           </section>
