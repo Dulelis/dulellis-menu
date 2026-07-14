@@ -14,6 +14,8 @@ type PedidoStatus = {
   status_pedido?: string | null;
   status_pagamento?: string | null;
   pagamento_referencia?: string | null;
+  pagamento_id?: string | null;
+  pagamento_atualizado_em?: string | null;
   troco_para?: number | string | null;
   observacao?: string | null;
   created_at?: string | null;
@@ -310,7 +312,7 @@ export async function GET(request: Request) {
   let pedidoSolicitado: PedidoStatus | null = null;
   if (Number.isInteger(requestedOrderId) && requestedOrderId > 0) {
     const selectsById = [
-      "id,cliente_id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,troco_para,observacao,created_at,tipo_pedido,tipo_recebimento,agendado_para,status_producao,valor_sinal,saldo_restante",
+      "id,cliente_id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,pagamento_id,pagamento_atualizado_em,troco_para,observacao,created_at,tipo_pedido,tipo_recebimento,agendado_para,status_producao,valor_sinal,saldo_restante",
       "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,status_pagamento,pagamento_referencia,troco_para,observacao,created_at",
       "id,cliente_nome,whatsapp,total,forma_pagamento,status_pedido,created_at",
     ];
@@ -433,6 +435,8 @@ export async function GET(request: Request) {
       status_pagamento_texto: pagamento.statusTexto,
       pagamento_detalhe: pagamento.detalhe,
       pagamento_referencia: String(pedidoFinal.pagamento_referencia || "").trim(),
+      pagamento_id: String(pedidoFinal.pagamento_id || "").trim(),
+      pagamento_atualizado_em: String(pedidoFinal.pagamento_atualizado_em || ""),
       troco_para: troco.valor,
       troco_texto: troco.texto,
       created_at: String(pedidoFinal.created_at || ""),
