@@ -32,7 +32,6 @@ const STATUS_OPTIONS = [
   ["em_producao", "Em producao"],
   ["pronta", "Pronta"],
   ["finalizada", "Finalizada"],
-  ["cancelada", "Cancelada"],
 ] as const;
 
 type Config = {
@@ -112,6 +111,18 @@ function money(value?: number) {
 
 function localInputToIso(value: string) {
   return value ? new Date(`${value}:00-03:00`).toISOString() : "";
+}
+
+function isoToLocalInput(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SAO_PAULO_TIME_ZONE,
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
 }
 
 const SAO_PAULO_TIME_ZONE = "America/Sao_Paulo";
@@ -208,10 +219,20 @@ function orderDetails(order: Order) {
   return { event: String(details.evento || "").trim(), items };
 }
 
+function cancellationReason(order: Order) {
+  const details = order.detalhes_encomenda && typeof order.detalhes_encomenda === "object"
+    ? order.detalhes_encomenda
+    : {};
+  const cancellation = details.cancelamento && typeof details.cancelamento === "object" && !Array.isArray(details.cancelamento)
+    ? details.cancelamento as Record<string, unknown>
+    : {};
+  return String(cancellation.motivo || "");
+}
+
 export function AdminPreordersClient() {
   const [data, setData] = useState<AdminData | null>(null);
   const [configDraft, setConfigDraft] = useState<Config | null>(null);
-  const [tab, setTab] = useState<"agenda" | "config" | "produtos" | "capacidade">("agenda");
+  const [tab, setTab] = useState<"agenda" | "config" | "produtos" | "cancelados">("agenda");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
@@ -222,6 +243,7 @@ export function AdminPreordersClient() {
   const [blockForm, setBlockForm] = useState({ inicio: "", fim: "", motivo: "" });
   const [capacityForm, setCapacityForm] = useState({ data: "", hora_inicio: "08:00", hora_fim: "09:00", capacidade_total: 4, observacao: "" });
   const [newProduct, setNewProduct] = useState({ nome: "", descricao: "", categoria: "Encomendas", preco: 0, prazo_minimo_encomenda_horas: 24 });
+  const [cancellationDrafts, setCancellationDrafts] = useState<Record<number, string>>({});
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -277,8 +299,10 @@ export function AdminPreordersClient() {
       const json = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(json.error || "Falha ao salvar.");
       await load(true);
+      return true;
     } catch (reason) {
       window.alert(reason instanceof Error ? reason.message : "Falha ao salvar.");
+      return false;
     } finally {
       setSaving("");
     }
@@ -289,6 +313,48 @@ export function AdminPreordersClient() {
       ...current,
       produtos: current.produtos.map((item) => item.id === id ? { ...item, ...changes } : item),
     } : current);
+  }
+
+  function updateOrder(id: number, changes: Partial<Order>) {
+    setData((current) => current ? {
+      ...current,
+      encomendas: current.encomendas.map((item) => item.id === id ? { ...item, ...changes } : item),
+    } : current);
+  }
+
+  function updateOrderItem(orderId: number, itemIndex: number, changes: Partial<NonNullable<Order["itens"]>[number]>) {
+    const order = data?.encomendas.find((item) => item.id === orderId);
+    updateOrder(orderId, {
+      itens: (order?.itens || []).map((item, index) => index === itemIndex ? { ...item, ...changes } : item),
+    });
+  }
+
+  function updateCancellationReason(order: Order, motivo: string) {
+    const details = order.detalhes_encomenda && typeof order.detalhes_encomenda === "object"
+      ? order.detalhes_encomenda
+      : {};
+    const previous = details.cancelamento && typeof details.cancelamento === "object" && !Array.isArray(details.cancelamento)
+      ? details.cancelamento as Record<string, unknown>
+      : {};
+    updateOrder(order.id, {
+      detalhes_encomenda: { ...details, cancelamento: { ...previous, motivo } },
+    });
+  }
+
+  async function cancelOrder(order: Order) {
+    const motivo = String(cancellationDrafts[order.id] || "").trim();
+    if (!motivo) {
+      window.alert("Digite o motivo do cancelamento.");
+      return;
+    }
+    const cancelled = await action("order_cancel", order.id, { motivo });
+    if (!cancelled) return;
+    setCancellationDrafts((current) => {
+      const next = { ...current };
+      delete next[order.id];
+      return next;
+    });
+    setTab("cancelados");
   }
 
   function updateProductOptions(id: number, fields: ProductOption[]) {
@@ -315,9 +381,13 @@ export function AdminPreordersClient() {
     () => (data?.encomendas || []).filter((order) => String(order.status_producao || "") !== "cancelada" && String(order.status_producao || "") !== "finalizada"),
     [data?.encomendas],
   );
+  const cancelledOrders = useMemo(
+    () => (data?.encomendas || []).filter((order) => String(order.status_producao || "") === "cancelada"),
+    [data?.encomendas],
+  );
   const ordersByDay = useMemo(() => {
     const groups = new Map<string, Order[]>();
-    for (const order of data?.encomendas || []) {
+    for (const order of upcomingOrders) {
       if (!order.agendado_para) continue;
       const key = dateKey(order.agendado_para);
       groups.set(key, [...(groups.get(key) || []), order]);
@@ -326,7 +396,7 @@ export function AdminPreordersClient() {
       orders.sort((a, b) => String(a.agendado_para || "").localeCompare(String(b.agendado_para || "")));
     }
     return groups;
-  }, [data?.encomendas]);
+  }, [upcomingOrders]);
 
   const selectedDateObject = dateFromKey(selectedDate);
   const selectedYear = selectedDateObject.getFullYear();
@@ -386,7 +456,7 @@ export function AdminPreordersClient() {
         <nav className="mt-6 grid grid-cols-2 gap-2 rounded-2xl bg-white p-2 shadow-sm sm:grid-cols-4">
           {([
             ["agenda", "Agenda", CalendarDays], ["config", "Configuracao", Settings],
-            ["produtos", "Produtos", PackageCheck], ["capacidade", "Bloqueios", Ban],
+            ["produtos", "Produtos", PackageCheck], ["cancelados", "Itens cancelados", Ban],
           ] as const).map(([id, label, Icon]) => (
             <button key={id} type="button" onClick={() => setTab(id)} className={`flex items-center justify-center gap-2 rounded-xl p-3 text-xs font-black uppercase ${tab === id ? "bg-pink-600 text-white" : "text-slate-500"}`}><Icon size={16} />{label}</button>
           ))}
@@ -442,6 +512,13 @@ export function AdminPreordersClient() {
                           {details.items.length ? <div className="mt-2 space-y-2 rounded-xl bg-pink-50 p-3">{details.items.map((item, index) => <div key={`${item.name}-${index}`}><p className="text-xs font-black uppercase text-pink-700">{item.name}{item.unit ? ` · ${item.unit}` : ""}</p><div className="mt-1 flex flex-wrap gap-2 text-xs font-bold text-slate-700">{item.customizations.map(([key, value]) => key === "foto_referencia" ? <a key={key} href={String(value)} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-emerald-100 px-3 py-2 font-black uppercase text-emerald-800">Abrir foto de referencia</a> : <span key={key}>{key.replaceAll("_", " ")}: {String(value)}</span>)}</div></div>)}</div> : null}
                           {order.observacao ? <p className="mt-2 rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800">{order.observacao}</p> : null}
                           <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-3">{STATUS_OPTIONS.map(([status, label]) => <button key={status} type="button" onClick={() => void action("order_status", order.id, { status_producao: status })} disabled={saving === `order_status-${order.id}`} className={`rounded-xl border p-2 text-[10px] font-black uppercase ${String(order.status_producao || "aguardando_confirmacao") === status ? "border-pink-600 bg-pink-50 text-pink-700" : "border-slate-200 bg-white text-slate-500"}`}>{label}</button>)}</div>
+                          <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-rose-700">
+                              Motivo do cancelamento
+                              <textarea value={cancellationDrafts[order.id] || ""} onChange={(event) => setCancellationDrafts((current) => ({ ...current, [order.id]: event.target.value }))} placeholder="Ex.: cliente desistiu, data alterada..." className="mt-2 min-h-16 w-full rounded-xl border border-rose-200 bg-white p-3 text-sm font-bold normal-case text-slate-800" />
+                            </label>
+                            <button type="button" onClick={() => void cancelOrder(order)} disabled={saving === `order_cancel-${order.id}`} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><Ban size={16} />Cancelar e retirar da agenda</button>
+                          </div>
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-black text-emerald-800"><span>Sinal: {money(order.valor_sinal)}</span><span>Saldo: {money(order.saldo_restante)}</span></div>
                           {whatsapp ? <a href={whatsapp.href} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase text-white"><MessageCircle size={17} />{whatsapp.label}</a> : null}
                         </article>;
@@ -512,7 +589,53 @@ export function AdminPreordersClient() {
           </section>
         ) : null}
 
-        {tab === "capacidade" ? (
+        {tab === "cancelados" ? (
+          <section className="mt-6 space-y-4">
+            <div className="rounded-3xl bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3"><Ban className="text-rose-600" /><div><h2 className="text-xl font-black">Itens cancelados</h2><p className="text-sm font-bold text-slate-500">Edite os dados, registre o motivo ou devolva a encomenda para a agenda.</p></div></div>
+                <span className="rounded-full bg-rose-100 px-4 py-2 text-xs font-black uppercase text-rose-700">{cancelledOrders.length} cancelados</span>
+              </div>
+            </div>
+
+            {cancelledOrders.map((order) => (
+              <article key={order.id} className="rounded-3xl border border-rose-100 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div><p className="text-[10px] font-black uppercase tracking-wider text-rose-600">Pedido #{order.id} cancelado</p><p className="mt-1 font-black text-slate-800">{money(order.total)}</p></div>
+                  <button type="button" onClick={() => void action("order_restore", order.id)} disabled={saving === `order_restore-${order.id}`} className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><RefreshCw size={16} />Voltar para a agenda</button>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="text-[10px] font-black uppercase text-slate-500">Cliente<input value={order.cliente_nome || ""} onChange={(event) => updateOrder(order.id, { cliente_nome: event.target.value })} className="mt-2 w-full rounded-xl border p-3 text-sm font-bold normal-case text-slate-800" /></label>
+                  <label className="text-[10px] font-black uppercase text-slate-500">WhatsApp<input value={order.whatsapp || ""} onChange={(event) => updateOrder(order.id, { whatsapp: event.target.value })} className="mt-2 w-full rounded-xl border p-3 text-sm font-bold normal-case text-slate-800" /></label>
+                  <label className="text-[10px] font-black uppercase text-slate-500">Data e horario<input type="datetime-local" value={isoToLocalInput(order.agendado_para)} onChange={(event) => updateOrder(order.id, { agendado_para: localInputToIso(event.target.value) })} className="mt-2 w-full rounded-xl border p-3 text-sm font-bold normal-case text-slate-800" /></label>
+                  <label className="text-[10px] font-black uppercase text-slate-500">Recebimento<select value={order.tipo_recebimento || "retirada"} onChange={(event) => updateOrder(order.id, { tipo_recebimento: event.target.value })} className="mt-2 w-full rounded-xl border p-3 text-sm font-bold normal-case text-slate-800"><option value="retirada">Retirada</option><option value="entrega">Entrega</option></select></label>
+                </div>
+
+                <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-4">
+                  <div className="flex items-center justify-between"><p className="text-xs font-black uppercase tracking-wider text-slate-600">Itens da encomenda</p><button type="button" onClick={() => updateOrder(order.id, { itens: [...(order.itens || []), { nome: "Novo item", qtd: 1, preco: 0 }] })} className="rounded-lg bg-slate-900 p-2 text-white"><Plus size={14} /></button></div>
+                  {(order.itens || []).map((item, itemIndex) => (
+                    <div key={`${order.id}-${itemIndex}`} className="grid grid-cols-[minmax(0,1fr)_70px_100px_38px] gap-2">
+                      <input value={item.nome || ""} onChange={(event) => updateOrderItem(order.id, itemIndex, { nome: event.target.value })} placeholder="Nome do item" className="min-w-0 rounded-xl border bg-white p-2 text-xs font-bold" />
+                      <input type="number" min="0" step="1" value={Number(item.qtd || 0)} onChange={(event) => updateOrderItem(order.id, itemIndex, { qtd: Number(event.target.value) })} aria-label="Quantidade" className="rounded-xl border bg-white p-2 text-xs font-bold" />
+                      <input type="number" min="0" step="0.01" value={Number(item.preco || 0)} onChange={(event) => updateOrderItem(order.id, itemIndex, { preco: Number(event.target.value) })} aria-label="Preco" className="rounded-xl border bg-white p-2 text-xs font-bold" />
+                      <button type="button" onClick={() => updateOrder(order.id, { itens: (order.itens || []).filter((_, index) => index !== itemIndex) })} aria-label="Remover item" className="flex items-center justify-center rounded-xl bg-rose-100 text-rose-700"><Trash2 size={15} /></button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <label className="text-[10px] font-black uppercase text-rose-700">Motivo do cancelamento<textarea value={cancellationReason(order)} onChange={(event) => updateCancellationReason(order, event.target.value)} placeholder="Digite o motivo" className="mt-2 min-h-24 w-full rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold normal-case text-slate-800" /></label>
+                  <label className="text-[10px] font-black uppercase text-slate-500">Observacoes<textarea value={order.observacao || ""} onChange={(event) => updateOrder(order.id, { observacao: event.target.value })} placeholder="Observacoes internas" className="mt-2 min-h-24 w-full rounded-xl border p-3 text-sm font-bold normal-case text-slate-800" /></label>
+                </div>
+                <button type="button" onClick={() => void action("order_cancelled_update", order.id, { cliente_nome: order.cliente_nome, whatsapp: order.whatsapp, agendado_para: order.agendado_para, tipo_recebimento: order.tipo_recebimento, itens: order.itens, observacao: order.observacao, motivo: cancellationReason(order) })} disabled={saving === `order_cancelled_update-${order.id}`} className="mt-4 flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><Save size={16} />Salvar alteracoes</button>
+              </article>
+            ))}
+            {cancelledOrders.length === 0 ? <div className="rounded-3xl border border-dashed border-slate-300 bg-white py-16 text-center font-bold text-slate-400">Nenhuma encomenda cancelada.</div> : null}
+          </section>
+        ) : null}
+
+        {tab === "config" ? (
           <section className="mt-6 grid gap-6 lg:grid-cols-2">
             <div className="rounded-3xl bg-white p-6 shadow-sm"><h2 className="text-xl font-black">Bloquear periodo</h2><div className="mt-4 space-y-3"><input type="datetime-local" value={blockForm.inicio} onChange={(event) => setBlockForm({ ...blockForm, inicio: event.target.value })} className="w-full rounded-xl border p-3" /><input type="datetime-local" value={blockForm.fim} onChange={(event) => setBlockForm({ ...blockForm, fim: event.target.value })} className="w-full rounded-xl border p-3" /><input value={blockForm.motivo} onChange={(event) => setBlockForm({ ...blockForm, motivo: event.target.value })} placeholder="Motivo" className="w-full rounded-xl border p-3" /><button type="button" onClick={() => void action("block_create", undefined, { inicio: localInputToIso(blockForm.inicio), fim: localInputToIso(blockForm.fim), motivo: blockForm.motivo })} className="rounded-xl bg-rose-600 px-4 py-3 text-xs font-black uppercase text-white">Criar bloqueio</button></div><div className="mt-5 space-y-2">{(data?.bloqueios || []).map((block) => <div key={block.id} className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-800"><span>{new Date(block.inicio).toLocaleString("pt-BR")} — {new Date(block.fim).toLocaleString("pt-BR")}<br />{block.motivo}</span><button type="button" onClick={() => void action("block_delete", block.id)}><Trash2 size={17} /></button></div>)}</div></div>
             <div className="rounded-3xl bg-white p-6 shadow-sm"><h2 className="text-xl font-black">Capacidade especial</h2><div className="mt-4 grid grid-cols-2 gap-3"><input type="date" value={capacityForm.data} onChange={(event) => setCapacityForm({ ...capacityForm, data: event.target.value })} className="col-span-2 rounded-xl border p-3" /><input type="time" value={capacityForm.hora_inicio} onChange={(event) => setCapacityForm({ ...capacityForm, hora_inicio: event.target.value })} className="rounded-xl border p-3" /><input type="time" value={capacityForm.hora_fim} onChange={(event) => setCapacityForm({ ...capacityForm, hora_fim: event.target.value })} className="rounded-xl border p-3" /><input type="number" value={capacityForm.capacidade_total} onChange={(event) => setCapacityForm({ ...capacityForm, capacidade_total: Number(event.target.value) })} className="rounded-xl border p-3" /><input value={capacityForm.observacao} onChange={(event) => setCapacityForm({ ...capacityForm, observacao: event.target.value })} placeholder="Observacao" className="rounded-xl border p-3" /></div><button type="button" onClick={() => void action("capacity_save", undefined, capacityForm)} className="mt-3 rounded-xl bg-pink-600 px-4 py-3 text-xs font-black uppercase text-white">Salvar capacidade</button><div className="mt-5 space-y-2">{(data?.capacidades || []).map((capacity) => <div key={capacity.id} className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs font-bold"><span>{capacity.data} · {String(capacity.hora_inicio).slice(0, 5)}–{String(capacity.hora_fim).slice(0, 5)} · {capacity.capacidade_total} pedidos</span><button type="button" onClick={() => void action("capacity_delete", capacity.id)}><Trash2 size={17} /></button></div>)}</div></div>

@@ -464,6 +464,8 @@ function formatarMoedaAdmin(valor: unknown) {
   return `R$ ${Number(valor || 0).toFixed(2)}`;
 }
 
+const PRECIFICACAO_FICHA_PREFIXO = "DULELLIS_FICHA_V1:";
+
 function criarReceitaPlanilhaEditavel(receita: any): ReceitaPlanilhaEditavel {
   const ingredientes = Array.isArray(receita?.ingredientes)
     ? receita.ingredientes.map((ingrediente: any) => ({
@@ -494,6 +496,55 @@ function criarReceitaPlanilhaEditavel(receita: any): ReceitaPlanilhaEditavel {
     precoFinalSugerido,
     estoque_id: "",
     marcado: false,
+  };
+}
+
+function criarNovaReceitaPlanilha(): ReceitaPlanilhaEditavel {
+  return criarReceitaPlanilhaEditavel({
+    nome: "Nova ficha de precificacao",
+    ingredientes: [],
+    margemLucroTaxa: 0.5,
+  });
+}
+
+function criarReceitaDePrecificacaoSalva(registro: any): ReceitaPlanilhaEditavel {
+  let fichaSalva: any = null;
+  const observacoes = String(registro?.observacoes || "");
+  if (observacoes.startsWith(PRECIFICACAO_FICHA_PREFIXO)) {
+    try {
+      fichaSalva = JSON.parse(observacoes.slice(PRECIFICACAO_FICHA_PREFIXO.length));
+    } catch {
+      fichaSalva = null;
+    }
+  }
+
+  const custoIngredientes = Number(registro?.custo_ingredientes || 0);
+  const ingredientes = Array.isArray(fichaSalva?.ingredientes)
+    ? fichaSalva.ingredientes
+    : custoIngredientes > 0
+      ? [{
+          nome: "Custo de ingredientes (consolidado)",
+          quantidade: 1,
+          custoUnitario: custoIngredientes,
+          subtotal: custoIngredientes,
+        }]
+      : [];
+
+  return {
+    nome: String(registro?.nome || "Ficha sem nome"),
+    ingredientes,
+    custoTotalInsumos: custoIngredientes,
+    subtotalProducao:
+      custoIngredientes +
+      Number(registro?.custo_mao_obra || 0) +
+      Number(registro?.custo_operacional || 0),
+    margemLucroTaxa: Number(registro?.margem_percentual || 0) / 100,
+    embalagemDescartaveis: Number(registro?.custo_embalagem || 0),
+    precoFinalSugerido: Number(
+      registro?.preco_venda || registro?.preco_sugerido || 0,
+    ),
+    estoque_id: registro?.estoque_id ? String(registro.estoque_id) : "",
+    marcado: registro?.ativo_vitrine === true,
   };
 }
 
@@ -612,6 +663,7 @@ function AdminPageContent() {
   const [propagandas, setPropagandas] = useState<any[]>([]);
   const [entregadores, setEntregadores] = useState<any[]>([]);
   const [entregas, setEntregas] = useState<any[]>([]);
+  const [precificacoes, setPrecificacoes] = useState<any[]>([]);
   const [controleAdminAba] = useState<ControleAdminAba>("precificacao");
   const [receitaPlanilhaSelecionada, setReceitaPlanilhaSelecionada] = useState<string>(
     PRECIFICACAO_PLANILHA_DADOS.receitas[0]?.nome || "",
@@ -799,6 +851,7 @@ function AdminPageContent() {
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
       error?: string;
+      data?: any[];
     };
     if (!res.ok || json.ok === false) {
       throw new Error(json.error || "Falha na operacao administrativa.");
@@ -1087,6 +1140,7 @@ function AdminPageContent() {
         propagandas?: any[];
         entregadores?: any[];
         entregas?: any[];
+        precificacoes?: any[];
         horario?: {
           id?: number;
           hora_abertura?: string;
@@ -1115,6 +1169,7 @@ function AdminPageContent() {
     setPropagandas(json.data?.propagandas || []);
     setEntregadores(json.data?.entregadores || []);
     setEntregas(json.data?.entregas || []);
+    setPrecificacoes(json.data?.precificacoes || []);
     if (json.data?.horario) {
       setHorarioFuncionamento({
         id: Number(json.data.horario.id),
@@ -1501,6 +1556,34 @@ function AdminPageContent() {
     setReceitaPlanilhaSelecionada(nomeReceita);
     setReceitaPlanilhaEditavel(criarReceitaPlanilhaEditavel(receita));
     setReceitaPlanilhaEmEdicao(false);
+    setEditandoPrecificacaoId(null);
+  };
+
+  const iniciarNovaReceitaPlanilha = () => {
+    setReceitaPlanilhaSelecionada("");
+    setReceitaPlanilhaEditavel(criarNovaReceitaPlanilha());
+    setReceitaPlanilhaEmEdicao(true);
+    setEditandoPrecificacaoId(null);
+  };
+
+  const editarPrecificacaoSalva = (registro: any) => {
+    setReceitaPlanilhaSelecionada("");
+    setReceitaPlanilhaEditavel(criarReceitaDePrecificacaoSalva(registro));
+    setReceitaPlanilhaEmEdicao(true);
+    setEditandoPrecificacaoId(Number(registro.id));
+  };
+
+  const duplicarPrecificacaoSalva = (registro: any) => {
+    const copia = criarReceitaDePrecificacaoSalva(registro);
+    setReceitaPlanilhaSelecionada("");
+    setReceitaPlanilhaEditavel({
+      ...copia,
+      nome: `${copia.nome} - copia`,
+      estoque_id: "",
+      marcado: false,
+    });
+    setReceitaPlanilhaEmEdicao(true);
+    setEditandoPrecificacaoId(null);
   };
 
   const atualizarReceitaPlanilhaEditavel = (
@@ -1550,14 +1633,21 @@ function AdminPageContent() {
   };
 
   const limparEdicaoReceitaPlanilha = () => {
-    selecionarReceitaPlanilha(receitaPlanilhaSelecionada);
-  };
-
-  const marcarReceitaPlanilha = () => {
-    setReceitaPlanilhaEditavel((receitaAtual) => ({
-      ...receitaAtual,
-      marcado: true,
-    }));
+    if (editandoPrecificacaoId) {
+      const registro = precificacoes.find(
+        (item) => Number(item.id) === editandoPrecificacaoId,
+      );
+      if (registro) {
+        setReceitaPlanilhaEditavel(criarReceitaDePrecificacaoSalva(registro));
+        setReceitaPlanilhaEmEdicao(false);
+        return;
+      }
+    }
+    if (receitaPlanilhaSelecionada) {
+      selecionarReceitaPlanilha(receitaPlanilhaSelecionada);
+      return;
+    }
+    iniciarNovaReceitaPlanilha();
   };
 
   const salvarReceitaPlanilhaEditavel = async (e: React.FormEvent) => {
@@ -1582,30 +1672,65 @@ function AdminPageContent() {
       preco_sugerido: precoVenda,
       preco_venda: precoVenda,
       ativo_vitrine: receita.marcado,
-      observacoes: "Ficha tecnica editada no admin a partir da planilha de precificacao.",
+      observacoes: `${PRECIFICACAO_FICHA_PREFIXO}${JSON.stringify({
+        ingredientes: receita.ingredientes,
+      })}`,
     };
 
     try {
+      let respostaSalva: { data?: any[] } | null = null;
       if (editandoPrecificacaoId) {
-        await adminDb({
+        respostaSalva = await adminDb({
           action: "update_eq",
           table: "precificacao_produtos",
           payload,
           eq: { column: "id", value: editandoPrecificacaoId },
         });
       } else {
-        await adminDb({
+        respostaSalva = await adminDb({
           action: "insert",
           table: "precificacao_produtos",
           values: [payload],
         });
       }
+      const idSalvo = Number(respostaSalva?.data?.[0]?.id || editandoPrecificacaoId || 0);
+      if (idSalvo) setEditandoPrecificacaoId(idSalvo);
       setReceitaPlanilhaEditavel(receita);
       setReceitaPlanilhaEmEdicao(false);
-      setEditandoPrecificacaoId(null);
-      carregarDados();
+      await carregarDados();
     } catch (error: any) {
       alert(`Erro ao salvar receita: ${error.message || "verifique a tabela de precificacao."}`);
+    }
+  };
+
+  const excluirPrecificacao = async (registro: any) => {
+    if (!confirm(`Excluir a ficha "${registro.nome}" permanentemente?`)) return;
+    try {
+      await adminDb({
+        action: "delete_eq",
+        table: "precificacao_produtos",
+        eq: { column: "id", value: Number(registro.id) },
+      });
+      if (editandoPrecificacaoId === Number(registro.id)) {
+        iniciarNovaReceitaPlanilha();
+      }
+      await carregarDados();
+    } catch (error: any) {
+      alert(`Erro ao excluir ficha: ${error.message || "tente novamente."}`);
+    }
+  };
+
+  const alternarVitrinePrecificacao = async (registro: any) => {
+    try {
+      await adminDb({
+        action: "update_eq",
+        table: "precificacao_produtos",
+        payload: { ativo_vitrine: registro.ativo_vitrine !== true },
+        eq: { column: "id", value: Number(registro.id) },
+      });
+      await carregarDados();
+    } catch (error: any) {
+      alert(`Erro ao alterar vitrine: ${error.message || "tente novamente."}`);
     }
   };
 
@@ -5915,6 +6040,84 @@ function AdminPageContent() {
 
             {controleAdminAba === "precificacao" && (
               <div className="space-y-6">
+                <section className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        Fichas cadastradas
+                      </p>
+                      <h2 className="mt-1 text-xl font-black text-slate-800">
+                        Seus produtos precificados
+                      </h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={iniciarNovaReceitaPlanilha}
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-pink-600 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-pink-700"
+                    >
+                      <PlusCircle size={18} /> Nova ficha
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {precificacoes.map((registro) => (
+                      <article
+                        key={registro.id}
+                        className={`rounded-2xl border p-4 ${editandoPrecificacaoId === Number(registro.id) ? "border-pink-300 bg-pink-50/50" : "border-slate-100 bg-slate-50"}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="truncate font-black text-slate-800">
+                              {registro.nome || "Ficha sem nome"}
+                            </h3>
+                            <p className="mt-1 text-lg font-black text-pink-600">
+                              {formatarMoedaAdmin(registro.preco_venda || registro.preco_sugerido)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => alternarVitrinePrecificacao(registro)}
+                            className={`shrink-0 rounded-full px-3 py-1 text-[10px] font-black uppercase ${registro.ativo_vitrine ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}
+                            title="Alterar visibilidade na vitrine"
+                          >
+                            {registro.ativo_vitrine ? "Na vitrine" : "Oculta"}
+                          </button>
+                        </div>
+                        <p className="mt-2 text-xs font-bold text-slate-500">
+                          Custo: {formatarMoedaAdmin(Number(registro.custo_ingredientes || 0) + Number(registro.custo_embalagem || 0) + Number(registro.custo_mao_obra || 0) + Number(registro.custo_operacional || 0))}
+                        </p>
+                        <div className="mt-4 grid grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => editarPrecificacaoSalva(registro)}
+                            className="flex items-center justify-center gap-1 rounded-xl bg-white px-2 py-2 text-xs font-black text-blue-700 hover:bg-blue-50"
+                          >
+                            <Pencil size={14} /> Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => duplicarPrecificacaoSalva(registro)}
+                            className="flex items-center justify-center gap-1 rounded-xl bg-white px-2 py-2 text-xs font-black text-slate-600 hover:bg-slate-100"
+                          >
+                            <PlusCircle size={14} /> Copiar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => excluirPrecificacao(registro)}
+                            className="flex items-center justify-center gap-1 rounded-xl bg-white px-2 py-2 text-xs font-black text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 size={14} /> Excluir
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                  {precificacoes.length === 0 && (
+                    <div className="rounded-2xl border border-dashed border-slate-200 py-8 text-center text-sm font-bold text-slate-400">
+                      Nenhuma ficha salva. Crie a primeira em “Nova ficha”.
+                    </div>
+                  )}
+                </section>
                 <div className="w-full">
                 <form
                   onSubmit={salvarReceitaPlanilhaEditavel}
@@ -5926,7 +6129,7 @@ function AdminPageContent() {
                         Planilha de custos editavel
                       </p>
                       <h2 className="mt-1 text-xl font-black text-slate-800">
-                        {receitaPlanilhaEditavel.nome || "Receita sem nome"}
+                        {editandoPrecificacaoId ? "Editando: " : ""}{receitaPlanilhaEditavel.nome || "Receita sem nome"}
                       </h2>
                       <p className="mt-1 text-sm font-bold leading-6 text-slate-500">
                         Edite a ficha tecnica aqui, marque para vitrine e salve na lista de precificacao.
@@ -5942,17 +6145,21 @@ function AdminPageContent() {
                       </button>
                       <button
                         type="button"
-                        onClick={marcarReceitaPlanilha}
+                        onClick={() =>
+                          atualizarReceitaPlanilhaEditavel({
+                            marcado: !receitaPlanilhaEditavel.marcado,
+                          })
+                        }
                         className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-black uppercase text-emerald-700 hover:bg-emerald-100"
                       >
-                        <BadgePercent size={14} /> Marcar
+                        <BadgePercent size={14} /> {receitaPlanilhaEditavel.marcado ? "Desmarcar" : "Marcar"}
                       </button>
                       <button
                         type="button"
                         onClick={limparEdicaoReceitaPlanilha}
                         className="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black uppercase text-slate-600 hover:bg-slate-200"
                       >
-                        <Trash2 size={14} /> Limpar
+                        <RotateCcw size={14} /> Descartar alteracoes
                       </button>
                     </div>
                   </div>
@@ -5967,6 +6174,9 @@ function AdminPageContent() {
                         value={receitaPlanilhaSelecionada}
                         onChange={(e) => selecionarReceitaPlanilha(e.target.value)}
                       >
+                        <option value="" disabled>
+                          Ficha nova ou cadastrada
+                        </option>
                         {PRECIFICACAO_PLANILHA_DADOS.receitas.map((receita) => (
                           <option key={receita.nome} value={receita.nome}>
                             {receita.nome}
@@ -6082,6 +6292,13 @@ function AdminPageContent() {
                                 </td>
                               </tr>
                             ))}
+                            {receitaPlanilhaEditavel.ingredientes.length === 0 && (
+                              <tr>
+                                <td colSpan={5} className="px-4 py-8 text-center font-bold text-slate-400">
+                                  Nenhum ingrediente. Use o botao abaixo para adicionar.
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -6177,7 +6394,7 @@ function AdminPageContent() {
                       type="submit"
                       className="flex w-full items-center justify-center gap-2 rounded-[2rem] bg-pink-600 p-5 font-black uppercase text-white shadow-lg shadow-pink-100 transition-transform active:scale-95"
                     >
-                      <Save size={18} /> Salvar ficha editada
+                      <Save size={18} /> {editandoPrecificacaoId ? "Salvar alteracoes" : "Adicionar ficha"}
                     </button>
                   </div>
                 </form>

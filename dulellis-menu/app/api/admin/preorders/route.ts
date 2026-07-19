@@ -9,7 +9,6 @@ const PRODUCTION_STATUSES = new Set([
   "em_producao",
   "pronta",
   "finalizada",
-  "cancelada",
 ]);
 
 function schemaMissing(message?: string) {
@@ -87,6 +86,143 @@ export async function POST(request: NextRequest) {
   const id = Number(body.id || 0);
   const payload = body.payload || {};
   try {
+    if (action === "order_cancel") {
+      const motivo = String(payload.motivo || "").trim();
+      if (!Number.isInteger(id) || id <= 0 || !motivo) {
+        return NextResponse.json({ ok: false, error: "Informe o motivo do cancelamento." }, { status: 400 });
+      }
+      const { data: current, error: readError } = await supabase
+        .from("pedidos")
+        .select("detalhes_encomenda")
+        .eq("id", id)
+        .eq("tipo_pedido", "encomenda")
+        .maybeSingle();
+      if (readError) throw readError;
+      if (!current) return NextResponse.json({ ok: false, error: "Encomenda nao encontrada." }, { status: 404 });
+      const details = current.detalhes_encomenda && typeof current.detalhes_encomenda === "object"
+        ? current.detalhes_encomenda as Record<string, unknown>
+        : {};
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("pedidos")
+        .update({
+          status_producao: "cancelada",
+          status_pedido: "cancelado",
+          detalhes_encomenda: {
+            ...details,
+            cancelamento: { motivo: motivo.slice(0, 1000), cancelado_em: now, atualizado_em: now },
+          },
+        })
+        .eq("id", id)
+        .eq("tipo_pedido", "encomenda")
+        .select("*")
+        .maybeSingle();
+      if (error) throw error;
+      await supabase.from("pedido_eventos").insert([{
+        pedido_id: id,
+        tipo: "encomenda_cancelada",
+        descricao: `Encomenda cancelada. Motivo: ${motivo.slice(0, 300)}`,
+        dados: { motivo: motivo.slice(0, 1000) },
+        criado_por: "admin",
+      }]);
+      return NextResponse.json({ ok: true, data });
+    }
+
+    if (action === "order_restore") {
+      if (!Number.isInteger(id) || id <= 0) {
+        return NextResponse.json({ ok: false, error: "Encomenda invalida." }, { status: 400 });
+      }
+      const { data, error } = await supabase
+        .from("pedidos")
+        .update({ status_producao: "aguardando_confirmacao", status_pedido: "aguardando_aceite" })
+        .eq("id", id)
+        .eq("tipo_pedido", "encomenda")
+        .eq("status_producao", "cancelada")
+        .select("*")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return NextResponse.json({ ok: false, error: "Item cancelado nao encontrado." }, { status: 404 });
+      await supabase.from("pedido_eventos").insert([{
+        pedido_id: id,
+        tipo: "encomenda_restaurada",
+        descricao: "Encomenda restaurada para a agenda.",
+        dados: { status_producao: "aguardando_confirmacao" },
+        criado_por: "admin",
+      }]);
+      return NextResponse.json({ ok: true, data });
+    }
+
+    if (action === "order_cancelled_update") {
+      const motivo = String(payload.motivo || "").trim();
+      if (!Number.isInteger(id) || id <= 0 || !motivo) {
+        return NextResponse.json({ ok: false, error: "O motivo do cancelamento e obrigatorio." }, { status: 400 });
+      }
+      const schedule = new Date(String(payload.agendado_para || ""));
+      if (!Number.isFinite(schedule.getTime())) {
+        return NextResponse.json({ ok: false, error: "Informe uma data valida." }, { status: 400 });
+      }
+      const rawItems = Array.isArray(payload.itens) ? payload.itens : [];
+      const items = rawItems.flatMap((raw) => {
+        if (!raw || typeof raw !== "object") return [];
+        const item = raw as Record<string, unknown>;
+        const nome = String(item.nome || "").trim();
+        const qtd = Math.max(0, Number(item.qtd || 0));
+        const preco = Math.max(0, Number(item.preco || 0));
+        if (!nome || !Number.isFinite(qtd) || !Number.isFinite(preco)) return [];
+        return [{ ...item, nome, qtd, preco }];
+      });
+      const { data: current, error: readError } = await supabase
+        .from("pedidos")
+        .select("detalhes_encomenda,taxa_entrega,status_producao")
+        .eq("id", id)
+        .eq("tipo_pedido", "encomenda")
+        .maybeSingle();
+      if (readError) throw readError;
+      if (!current || current.status_producao !== "cancelada") {
+        return NextResponse.json({ ok: false, error: "A encomenda nao esta cancelada." }, { status: 409 });
+      }
+      const details = current.detalhes_encomenda && typeof current.detalhes_encomenda === "object"
+        ? current.detalhes_encomenda as Record<string, unknown>
+        : {};
+      const previousCancellation = details.cancelamento && typeof details.cancelamento === "object" && !Array.isArray(details.cancelamento)
+        ? details.cancelamento as Record<string, unknown>
+        : {};
+      const total = items.reduce((sum, item) => sum + Number(item.qtd) * Number(item.preco), 0) + Number(current.taxa_entrega || 0);
+      const { data, error } = await supabase
+        .from("pedidos")
+        .update({
+          cliente_nome: String(payload.cliente_nome || "").trim(),
+          whatsapp: String(payload.whatsapp || "").trim(),
+          agendado_para: schedule.toISOString(),
+          tipo_recebimento: String(payload.tipo_recebimento || "retirada") === "entrega" ? "entrega" : "retirada",
+          itens: items,
+          total: Math.round(total * 100) / 100,
+          observacao: String(payload.observacao || "").trim(),
+          detalhes_encomenda: {
+            ...details,
+            cancelamento: {
+              ...previousCancellation,
+              motivo: motivo.slice(0, 1000),
+              atualizado_em: new Date().toISOString(),
+            },
+          },
+        })
+        .eq("id", id)
+        .eq("tipo_pedido", "encomenda")
+        .eq("status_producao", "cancelada")
+        .select("*")
+        .maybeSingle();
+      if (error) throw error;
+      await supabase.from("pedido_eventos").insert([{
+        pedido_id: id,
+        tipo: "encomenda_cancelada_editada",
+        descricao: "Dados da encomenda cancelada atualizados.",
+        dados: { motivo: motivo.slice(0, 1000) },
+        criado_por: "admin",
+      }]);
+      return NextResponse.json({ ok: true, data });
+    }
+
     if (action === "order_status") {
       const status = String(payload.status_producao || "");
       if (!Number.isInteger(id) || id <= 0 || !PRODUCTION_STATUSES.has(status)) {
