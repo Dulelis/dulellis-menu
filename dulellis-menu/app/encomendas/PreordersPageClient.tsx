@@ -147,6 +147,10 @@ function isMixedProduct(product: Product) {
   return /\bmist[oa]s?\b/.test(normalizedText(product.nome));
 }
 
+function acceptsReferencePhoto(product: Product) {
+  return /\bbolos?\b/.test(normalizedText(`${product.nome} ${product.categoria || ""}`));
+}
+
 function isFlavorField(field: CustomizationField) {
   return normalizedText(`${field.id || ""} ${field.label || ""}`).includes("sabor");
 }
@@ -665,7 +669,9 @@ export function PreordersPageClient() {
           itens: cartItems.map(({ product, entry }) => ({
             id: product.id,
             qtd: entry.qtd,
-            personalizacoes: entry.personalizacoes,
+            personalizacoes: acceptsReferencePhoto(product)
+              ? entry.personalizacoes
+              : Object.fromEntries(Object.entries(entry.personalizacoes).filter(([key]) => key !== "foto_referencia")),
           })),
         }),
       });
@@ -875,6 +881,7 @@ export function PreordersPageClient() {
           const rawFields = Array.isArray(product.opcoes_encomenda?.campos) ? product.opcoes_encomenda.campos : [];
           const fields = isMixedProduct(product) ? rawFields.filter((field) => !isFlavorField(field)) : rawFields;
           const unit = String(product.opcoes_encomenda?.unidade || "unidade");
+          const canAddReferencePhoto = acceptsReferencePhoto(product);
           return (
             <article key={product.id} className="overflow-hidden rounded-[2rem] border border-pink-100 bg-white shadow-lg">
               {product.imagem_url ? (
@@ -919,14 +926,14 @@ export function PreordersPageClient() {
                         </label>
                       );
                     })}
-                    <div className="rounded-2xl border border-dashed border-pink-300 bg-white p-4">
+                    {canAddReferencePhoto ? <div className="rounded-2xl border border-dashed border-pink-300 bg-white p-4">
                       <div className="flex items-center gap-3"><FileImage className="text-pink-600" size={21} /><div><p className="text-xs font-black text-slate-700">Adicione uma foto de referência</p><p className="text-[10px] font-bold text-slate-400">Opcional · JPG, PNG ou WEBP · até 5 MB</p></div></div>
                       <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl bg-pink-100 p-3 text-xs font-black uppercase text-pink-700">
                         {uploadingProductId === product.id ? "Enviando foto..." : "Escolher foto"}
                         <input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploadingProductId === product.id} onChange={(event) => { void uploadReferencePhoto(product.id, event.target.files?.[0]); event.currentTarget.value = ""; }} className="sr-only" />
                       </label>
                       {entry.personalizacoes.foto_referencia ? <div className="mt-3 flex items-center gap-3 rounded-xl bg-emerald-50 p-3"><Image src={entry.personalizacoes.foto_referencia} alt="Foto de referência" width={56} height={56} className="h-14 w-14 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="text-xs font-black text-emerald-800">Foto adicionada</p><button type="button" onClick={() => setCustomization(product.id, "foto_referencia", "")} className="mt-1 text-[10px] font-black uppercase text-rose-600">Remover</button></div></div> : null}
-                    </div>
+                    </div> : null}
                   </div>
                 ) : null}
               </div>

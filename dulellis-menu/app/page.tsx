@@ -233,6 +233,7 @@ type SessaoCliente = {
   observacao: string;
   data_aniversario: string;
   ultima_taxa_entrega?: number | null;
+  credito_delivery?: number | null;
 };
 
 function normalizarStatusPagamento(status?: string) {
@@ -632,7 +633,7 @@ function obterAssinaturaPedidoAcompanhamento(pedido: PedidoAcompanhamento | null
   ].join("|");
 }
 
-async function buscarPedidoAcompanhamento(whatsappBase: string) {
+async function buscarPedidosAcompanhamento(whatsappBase: string) {
   const zap = normalizarNumero(whatsappBase);
   if (zap.length < 10) {
     throw new Error("Informe um WhatsApp valido.");
@@ -643,7 +644,7 @@ async function buscarPedidoAcompanhamento(whatsappBase: string) {
   });
   const json = (await res.json().catch(() => ({}))) as {
     ok?: boolean;
-    data?: PedidoAcompanhamento | null;
+    data?: PedidoAcompanhamento[] | null;
     error?: string;
   };
 
@@ -651,7 +652,7 @@ async function buscarPedidoAcompanhamento(whatsappBase: string) {
     throw new Error(json.error || "Falha ao consultar pedido.");
   }
 
-  return (json.data || null) as PedidoAcompanhamento | null;
+  return Array.isArray(json.data) ? json.data : [];
 }
 
 function PainelAcompanhamentoPedido({
@@ -967,7 +968,8 @@ function ClientePageContent() {
   const [ultimoPedidoFoiRetirada, setUltimoPedidoFoiRetirada] = useState(false);
   const [whatsappAcompanhamento, setWhatsappAcompanhamento] = useState("");
   const [carregandoAcompanhamento, setCarregandoAcompanhamento] = useState(false);
-  const [pedidoAcompanhamento, setPedidoAcompanhamento] = useState<PedidoAcompanhamento | null>(null);
+  const [pedidosAcompanhamento, setPedidosAcompanhamento] = useState<PedidoAcompanhamento[]>([]);
+  const pedidoAcompanhamento = pedidosAcompanhamento[0] || null;
   const [ultimaAtualizacaoAcompanhamento, setUltimaAtualizacaoAcompanhamento] = useState("");
   const [podeAcompanharPedido, setPodeAcompanharPedido] = useState(false);
   const [modalAuthAberto, setModalAuthAberto] = useState(false);
@@ -2462,10 +2464,10 @@ function ClientePageContent() {
     }
 
     try {
-      const pedido = await buscarPedidoAcompanhamento(zap);
-      setPedidoAcompanhamento(pedido);
-      setPodeAcompanharPedido(Boolean(pedido));
-      return pedido;
+      const pedidos = await buscarPedidosAcompanhamento(zap);
+      setPedidosAcompanhamento(pedidos);
+      setPodeAcompanharPedido(pedidos.length > 0);
+      return pedidos;
     } catch (error) {
       if (options?.alertarErro) {
         const mensagem = obterMensagemErro(error) || "Não foi possível consultar o pedido.";
@@ -2571,9 +2573,9 @@ function ClientePageContent() {
       });
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
-        data?: PedidoAcompanhamento | null;
+        data?: PedidoAcompanhamento[] | null;
       };
-      setPodeAcompanharPedido(Boolean(res.ok && json.ok !== false && json.data));
+      setPodeAcompanharPedido(Boolean(res.ok && json.ok !== false && Array.isArray(json.data) && json.data.length));
     } catch {
       setPodeAcompanharPedido(false);
     }
@@ -2852,11 +2854,13 @@ function ClientePageContent() {
             : "";
 
         setWhatsappAcompanhamento(whatsappPedido);
-        setPedidoAcompanhamento({
-          id: Number(jsonPedido.data.pedido_id || 0),
+        const novoPedidoId = Number(jsonPedido.data.pedido_id || 0);
+        const novoPedidoTotal = Number(jsonPedido.data.total || totalGeral || 0);
+        setPedidosAcompanhamento((current) => [{
+          id: novoPedidoId,
           cliente_nome: String(payloadCliente.nome || cliente.nome || "").trim(),
           whatsapp: whatsappPedido,
-          total: Number(jsonPedido.data.total || totalGeral || 0),
+          total: novoPedidoTotal,
           forma_pagamento: formaPagamento,
           status_pedido: "aguardando_aceite",
           status_pagamento: "",
@@ -2871,7 +2875,7 @@ function ClientePageContent() {
           status_chave: "aguardando_aceite",
           status_texto: "Pedido enviado",
           retiradaNoBalcao,
-        });
+        }, ...current.filter((pedido) => pedido.id !== novoPedidoId)]);
         void sincronizarPedidoAcompanhamento(whatsappPedido);
       }
 
@@ -3215,7 +3219,7 @@ function ClientePageContent() {
 
     if (sessaoCliente && podeAcompanharPedido) {
       setModalAcompanhamentoAberto(true);
-      setPedidoAcompanhamento(null);
+      setPedidosAcompanhamento([]);
       setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
       return;
     }
@@ -3297,9 +3301,16 @@ function ClientePageContent() {
         <div className="max-w-xl mx-auto mt-4 flex items-center justify-between gap-3">
           <div className="text-left min-h-[20px]">
             {sessaoCliente?.nome ? (
-              <p className="text-base sm:text-lg font-black text-slate-800 leading-none">
-                Olá, {primeiroNome(sessaoCliente.nome)}
-              </p>
+              <div>
+                <p className="text-base sm:text-lg font-black text-slate-800 leading-none">
+                  Olá, {primeiroNome(sessaoCliente.nome)}
+                </p>
+                {Number(sessaoCliente.credito_delivery || 0) > 0.009 ? (
+                  <p className="mt-2 text-xs font-black text-emerald-700 sm:text-sm">
+                    Crédito para compras no delivery: {formatarMoedaBR(Number(sessaoCliente.credito_delivery || 0))}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
           <button
@@ -3307,7 +3318,7 @@ function ClientePageContent() {
             onClick={() => {
               if (!sessaoCliente || !podeAcompanharPedido) return;
               setModalAcompanhamentoAberto(true);
-              setPedidoAcompanhamento(null);
+              setPedidosAcompanhamento([]);
               setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
             }}
             disabled={!sessaoCliente || !podeAcompanharPedido}
@@ -4011,18 +4022,24 @@ function ClientePageContent() {
               </button>
             </div>
 
-            {pedidoAcompanhamento ? (
+            {pedidosAcompanhamento.length ? (
               <div className="mt-5 space-y-4">
-                <PainelAcompanhamentoPedido
-                  pedido={pedidoAcompanhamento}
-                  retiradaNoBalcao={acompanhamentoEhRetiradaNoBalcao}
-                  ultimaAtualizacao={ultimaAtualizacaoAcompanhamento}
-                />
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+                  {pedidosAcompanhamento.length} {pedidosAcompanhamento.length === 1 ? "pedido em aberto" : "pedidos em aberto"}
+                </p>
+                {pedidosAcompanhamento.map((pedido, index) => (
+                  <PainelAcompanhamentoPedido
+                    key={pedido.id}
+                    pedido={pedido}
+                    retiradaNoBalcao={typeof pedido.retiradaNoBalcao === "boolean" ? pedido.retiradaNoBalcao : acompanhamentoEhRetiradaNoBalcao}
+                    ultimaAtualizacao={index === 0 ? ultimaAtualizacaoAcompanhamento : String(pedido.ultima_atualizacao || "")}
+                  />
+                ))}
               </div>
             ) : (
               <div className="mt-5 space-y-4">
                 <p className="text-xs font-bold text-slate-500">
-                  Informe seu WhatsApp para consultar o último pedido.
+                  Informe seu WhatsApp para consultar seus pedidos em aberto.
                 </p>
                 {acompanhamentoEhRetiradaNoBalcao ? (
                   <BlocoRetiradaLoja

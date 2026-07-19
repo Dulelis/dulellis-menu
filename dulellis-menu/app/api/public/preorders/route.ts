@@ -158,6 +158,11 @@ function validateRequiredCustomizations(product: ProductRow, customizations: Rec
   }
 }
 
+function sanitizeCustomizations(product: ProductRow, customizations: Record<string, unknown>) {
+  if (/\bbolos?\b/.test(normalizeText(`${product.nome || ""} ${product.categoria || ""}`))) return customizations;
+  return Object.fromEntries(Object.entries(customizations).filter(([key]) => key !== "foto_referencia"));
+}
+
 async function loadPreorderConfig(supabase: NonNullable<ReturnType<typeof getServiceSupabase>>) {
   const { data, error } = await supabase
     .from("configuracoes_encomendas")
@@ -397,14 +402,15 @@ export async function POST(request: NextRequest) {
       if (scheduledAt.getTime() < now + productLead * 60 * 60_000) {
         throw new OrderDraftError(409, `${String(product.nome || "O produto")} exige ${productLead} horas de antecedencia.`);
       }
-      validateRequiredCustomizations(product, input.personalizacoes);
+      const customizations = sanitizeCustomizations(product, input.personalizacoes);
+      validateRequiredCustomizations(product, customizations);
       const price = Math.max(0, Number(product.preco || 0));
       items.push({ id: input.id, nome: String(product.nome || "Item"), qtd: input.qtd, preco: price });
       detailsItems.push({
         produto_id: input.id,
         produto_nome: String(product.nome || "Item"),
         unidade: String(productOptions.unidade || "unidade"),
-        personalizacoes: input.personalizacoes,
+        personalizacoes: customizations,
       });
     }
 

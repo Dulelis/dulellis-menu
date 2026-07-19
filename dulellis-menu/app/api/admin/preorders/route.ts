@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       }
       const { data: current, error: readError } = await supabase
         .from("pedidos")
-        .select("detalhes_encomenda")
+        .select("detalhes_encomenda,total,valor_sinal,saldo_restante")
         .eq("id", id)
         .eq("tipo_pedido", "encomenda")
         .maybeSingle();
@@ -102,6 +102,11 @@ export async function POST(request: NextRequest) {
       const details = current.detalhes_encomenda && typeof current.detalhes_encomenda === "object"
         ? current.detalhes_encomenda as Record<string, unknown>
         : {};
+      const total = Math.max(0, Number(current.total || 0));
+      const paidAmount = Math.min(
+        total,
+        Math.max(0, Number(current.valor_sinal || 0), total - Number(current.saldo_restante ?? total)),
+      );
       const now = new Date().toISOString();
       const { data, error } = await supabase
         .from("pedidos")
@@ -110,7 +115,13 @@ export async function POST(request: NextRequest) {
           status_pedido: "cancelado",
           detalhes_encomenda: {
             ...details,
-            cancelamento: { motivo: motivo.slice(0, 1000), cancelado_em: now, atualizado_em: now },
+            cancelamento: {
+              motivo: motivo.slice(0, 1000),
+              cancelado_em: now,
+              atualizado_em: now,
+              credito_delivery: Math.round(paidAmount * 100) / 100,
+              credito_utilizado: 0,
+            },
           },
         })
         .eq("id", id)

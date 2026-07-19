@@ -180,6 +180,41 @@ async function buscarUltimaTaxaEntrega(
   return null;
 }
 
+async function buscarCreditoDelivery(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  clienteId: number,
+) {
+  const { data, error } = await supabase
+    .from("pedidos")
+    .select("total,valor_sinal,saldo_restante,detalhes_encomenda")
+    .eq("cliente_id", clienteId)
+    .eq("tipo_pedido", "encomenda")
+    .or("status_producao.eq.cancelada,status_pedido.eq.cancelado");
+  if (error || !Array.isArray(data)) return 0;
+
+  const credit = data.reduce((sum, rawOrder) => {
+    const order = rawOrder as Record<string, unknown>;
+    const details = order.detalhes_encomenda && typeof order.detalhes_encomenda === "object" && !Array.isArray(order.detalhes_encomenda)
+      ? order.detalhes_encomenda as Record<string, unknown>
+      : {};
+    const cancellation = details.cancelamento && typeof details.cancelamento === "object" && !Array.isArray(details.cancelamento)
+      ? details.cancelamento as Record<string, unknown>
+      : {};
+    const total = Math.max(0, Number(order.total || 0));
+    const paidAmount = Math.min(
+      total,
+      Math.max(0, Number(order.valor_sinal || 0), total - Number(order.saldo_restante ?? total)),
+    );
+    const generatedCredit = Object.prototype.hasOwnProperty.call(cancellation, "credito_delivery")
+      ? Math.max(0, Number(cancellation.credito_delivery || 0))
+      : paidAmount;
+    const usedCredit = Math.max(0, Number(cancellation.credito_utilizado || 0));
+    return sum + Math.max(0, generatedCredit - usedCredit);
+  }, 0);
+
+  return Math.round(credit * 100) / 100;
+}
+
 export async function GET(request: NextRequest) {
   const sessao = getCustomerSessionFromRequest(request);
   if (!sessao) {
@@ -233,7 +268,10 @@ export async function GET(request: NextRequest) {
   const pontoExtraido = extrairPontoReferenciaDeEndereco(enderecoBruto);
   const pontoFinal = pontoDireto || pontoExtraido;
   const enderecoFinal = limparEnderecoDePontoReferencia(enderecoBruto);
-  const ultimaTaxaEntrega = await buscarUltimaTaxaEntrega(supabase, String(cliente.whatsapp || sessao.whatsapp || ""));
+  const [ultimaTaxaEntrega, creditoDelivery] = await Promise.all([
+    buscarUltimaTaxaEntrega(supabase, String(cliente.whatsapp || sessao.whatsapp || "")),
+    buscarCreditoDelivery(supabase, Number(cliente.id || sessao.clienteId || 0)),
+  ]);
 
   return NextResponse.json({
     ok: true,
@@ -251,6 +289,7 @@ export async function GET(request: NextRequest) {
       observacao: String(cliente.observacao || ""),
       data_aniversario: String(cliente.data_aniversario || "").slice(0, 10),
       ultima_taxa_entrega: ultimaTaxaEntrega,
+      credito_delivery: creditoDelivery,
     },
   });
 }

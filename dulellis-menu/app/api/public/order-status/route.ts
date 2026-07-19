@@ -256,25 +256,21 @@ function statusResumo(pedido: PedidoStatus) {
   return { chave: "recebido", texto: "Pedido recebido" };
 }
 
-function dataChaveSaoPaulo(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const year = parts.find((p) => p.type === "year")?.value || "0000";
-  const month = parts.find((p) => p.type === "month")?.value || "00";
-  const day = parts.find((p) => p.type === "day")?.value || "00";
-  return `${year}-${month}-${day}`;
-}
-
-function pedidoEhDoDiaCorrente(createdAt: string) {
-  const iso = String(createdAt || "").trim();
-  if (!iso) return false;
-  const dataPedido = new Date(iso);
-  if (Number.isNaN(dataPedido.getTime())) return false;
-  return dataChaveSaoPaulo(dataPedido) === dataChaveSaoPaulo(new Date());
+function pedidoEstaEmAberto(pedido: PedidoStatus) {
+  const statusPedido = normalizarTexto(String(pedido.status_pedido || ""));
+  const statusProducao = normalizarTexto(String(pedido.status_producao || ""));
+  const encerrados = new Set([
+    "cancelado",
+    "cancelada",
+    "finalizado",
+    "finalizada",
+    "concluido",
+    "concluida",
+    "entregue",
+    "recusado",
+    "recusada",
+  ]);
+  return !encerrados.has(statusPedido) && !encerrados.has(statusProducao);
 }
 
 export async function GET(request: Request) {
@@ -363,21 +359,16 @@ export async function GET(request: Request) {
     "id,cliente_nome,whatsapp,total,created_at",
   ];
 
-  let pedidoFinal: PedidoStatus | null = pedidoSolicitado;
+  let pedidosFinais: PedidoStatus[] = pedidoSolicitado ? [pedidoSolicitado] : [];
   for (const selectCols of pedidoSolicitado ? [] : tentativasSelect) {
-    const { data: exato, error: erroExato } = await supabase
+    const { data: exatos, error: erroExato } = await supabase
       .from("pedidos")
       .select(selectCols)
       .eq("whatsapp", zap)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(100);
 
     if (erroExato) continue;
-    if (exato) {
-      pedidoFinal = exato as PedidoStatus;
-      break;
-    }
 
     const sufixo = zap.slice(-8);
     const { data: candidatos, error: erroCandidatos } = await supabase
@@ -385,35 +376,27 @@ export async function GET(request: Request) {
       .select(selectCols)
       .ilike("whatsapp", `%${sufixo}%`)
       .order("created_at", { ascending: false })
-      .limit(30);
+      .limit(100);
 
     if (erroCandidatos) continue;
-
-    const equivalente =
-      ((candidatos || []) as PedidoStatus[]).find((p) =>
-        whatsappEquivalente(String(p.whatsapp || ""), zap),
-      ) || null;
-    if (equivalente) {
-      pedidoFinal = equivalente;
-      break;
+    const unicos = new Map<number, PedidoStatus>();
+    for (const pedido of [...((exatos || []) as PedidoStatus[]), ...((candidatos || []) as PedidoStatus[])]) {
+      if (!whatsappEquivalente(String(pedido.whatsapp || ""), zap)) continue;
+      if (!pedidoEstaEmAberto(pedido)) continue;
+      unicos.set(Number(pedido.id || 0), pedido);
     }
+    pedidosFinais = Array.from(unicos.values()).sort((a, b) =>
+      new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime(),
+    );
+    break;
   }
 
-  if (!pedidoFinal) {
-    return NextResponse.json({ ok: true, data: null });
-  }
-  if (
-    normalizarTexto(String(pedidoFinal.tipo_pedido || "delivery")) !== "encomenda" &&
-    !pedidoEhDoDiaCorrente(String(pedidoFinal.created_at || ""))
-  ) {
-    return NextResponse.json({ ok: true, data: null });
+  if (!pedidosFinais.length) {
+    return NextResponse.json({ ok: true, data: pedidoSolicitado ? null : [] });
   }
 
-  const resumo = statusResumo(pedidoFinal);
-  const pagamento = resumoPagamento(pedidoFinal);
-  const troco = resumoTrocoPedido(pedidoFinal);
   let permitePagamentoIntegral = true;
-  if (normalizarTexto(String(pedidoFinal.tipo_pedido || "")) === "encomenda") {
+  if (pedidosFinais.some((pedido) => normalizarTexto(String(pedido.tipo_pedido || "")) === "encomenda")) {
     const { data: configPagamento } = await supabase
       .from("configuracoes_encomendas")
       .select("permite_pagamento_integral")
@@ -422,9 +405,11 @@ export async function GET(request: Request) {
       .maybeSingle();
     permitePagamentoIntegral = configPagamento?.permite_pagamento_integral !== false;
   }
-  return NextResponse.json({
-    ok: true,
-    data: {
+  const responseOrders = pedidosFinais.map((pedidoFinal) => {
+    const resumo = statusResumo(pedidoFinal);
+    const pagamento = resumoPagamento(pedidoFinal);
+    const troco = resumoTrocoPedido(pedidoFinal);
+    return {
       id: Number(pedidoFinal.id || 0),
       cliente_nome: String(pedidoFinal.cliente_nome || "").trim(),
       whatsapp: zap,
@@ -450,7 +435,8 @@ export async function GET(request: Request) {
       valor_sinal: Number(pedidoFinal.valor_sinal || 0),
       saldo_restante: Number(pedidoFinal.saldo_restante || 0),
       permite_pagamento_integral: permitePagamentoIntegral,
-    },
+    };
   });
+  return NextResponse.json({ ok: true, data: pedidoSolicitado ? responseOrders[0] : responseOrders });
 }
 
