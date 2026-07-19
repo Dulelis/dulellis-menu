@@ -245,7 +245,7 @@ export function AdminPreordersClient() {
   const [newProduct, setNewProduct] = useState({ nome: "", descricao: "", categoria: "Encomendas", preco: 0, prazo_minimo_encomenda_horas: 24 });
   const [cancellationDrafts, setCancellationDrafts] = useState<Record<number, string>>({});
 
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (silent = false, refreshConfig = true) => {
     if (!silent) setLoading(true);
     try {
       const response = await fetch("/api/admin/preorders", { cache: "no-store" });
@@ -267,7 +267,7 @@ export function AdminPreordersClient() {
       }
       knownOrderIdsRef.current = nextIds;
       setData(json.data);
-      setConfigDraft(json.data.config);
+      if (refreshConfig) setConfigDraft(json.data.config);
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Falha ao carregar agenda.");
@@ -284,9 +284,13 @@ export function AdminPreordersClient() {
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(true), 15_000);
-    return () => window.clearInterval(timer);
   }, [load]);
+
+  useEffect(() => {
+    if (tab !== "agenda") return;
+    const timer = window.setInterval(() => void load(true, false), 30_000);
+    return () => window.clearInterval(timer);
+  }, [load, tab]);
 
   async function action(actionName: string, id?: number, payload?: Record<string, unknown>) {
     setSaving(`${actionName}-${id || "new"}`);
@@ -298,7 +302,7 @@ export function AdminPreordersClient() {
       });
       const json = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(json.error || "Falha ao salvar.");
-      await load(true);
+      await load(true, actionName === "config");
       return true;
     } catch (reason) {
       window.alert(reason instanceof Error ? reason.message : "Falha ao salvar.");

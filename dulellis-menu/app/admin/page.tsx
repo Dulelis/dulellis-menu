@@ -255,6 +255,15 @@ const ADMIN_TABS = [
 ] as const;
 type AdminTab = (typeof ADMIN_TABS)[number];
 type ControleAdminAba = "precificacao";
+type InsumoPrecificacao = {
+  id: string;
+  nome: string;
+  marca: string;
+  unidade: string;
+  quantidadeEmbalagem: number;
+  precoCompra: number;
+  custoUnitario: number;
+};
 type ReceitaPlanilhaEditavel = {
   nome: string;
   ingredientes: Array<{
@@ -262,6 +271,8 @@ type ReceitaPlanilhaEditavel = {
     quantidade: number;
     custoUnitario: number;
     subtotal: number;
+    insumoId?: string;
+    unidade?: string;
   }>;
   custoTotalInsumos: number;
   subtotalProducao: number;
@@ -270,6 +281,7 @@ type ReceitaPlanilhaEditavel = {
   precoFinalSugerido: number;
   estoque_id: string;
   marcado: boolean;
+  disponivel_encomenda: boolean;
 };
 type AlarmeSomId = "classico" | "campainha" | "suave" | "urgente";
 type AlarmeSomPreset = {
@@ -465,15 +477,64 @@ function formatarMoedaAdmin(valor: unknown) {
 }
 
 const PRECIFICACAO_FICHA_PREFIXO = "DULELLIS_FICHA_V1:";
+const PRECIFICACAO_INSUMOS_PREFIXO = "DULELLIS_INSUMOS_V1:";
+const PRECIFICACAO_INSUMOS_NOME = "__DULELLIS_CATALOGO_INSUMOS__";
 
-function criarReceitaPlanilhaEditavel(receita: any): ReceitaPlanilhaEditavel {
+function normalizarNomeInsumo(valor: unknown) {
+  return String(valor || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function criarCatalogoInsumosInicial(): InsumoPrecificacao[] {
+  return PRECIFICACAO_PLANILHA_DADOS.insumos.map((insumo, indice) => {
+    const nomeNormalizado = normalizarNomeInsumo(insumo.nome);
+    const unidadeOriginal = normalizarNomeInsumo(insumo.unidade);
+    const unidadeUso = nomeNormalizado.includes("ovo") || nomeNormalizado.includes("bombom")
+      ? "un"
+      : Number(insumo.quantidadeEmbalagem || 0) > 1 && ["kg", "gr", "pt", "cx"].includes(unidadeOriginal)
+        ? "g"
+        : String(insumo.unidade || "un");
+    return {
+      id: `insumo-${indice + 1}-${nomeNormalizado.replace(/[^a-z0-9]+/g, "-")}`,
+      nome: String(insumo.nome || ""),
+      marca: String(insumo.marca || ""),
+      unidade: unidadeUso,
+      quantidadeEmbalagem: Number(insumo.quantidadeEmbalagem || 0),
+      precoCompra: Number(insumo.precoCompra || 0),
+      custoUnitario: Number(insumo.custoUnitario || 0),
+    };
+  });
+}
+
+function encontrarInsumoPorIngrediente(ingrediente: any, insumos: InsumoPrecificacao[]) {
+  return insumos.find((insumo) => insumo.id === ingrediente?.insumoId) ||
+    insumos.find((insumo) => normalizarNomeInsumo(insumo.nome) === normalizarNomeInsumo(ingrediente?.nome));
+}
+
+function criarReceitaPlanilhaEditavel(
+  receita: any,
+  insumos: InsumoPrecificacao[] = criarCatalogoInsumosInicial(),
+): ReceitaPlanilhaEditavel {
   const ingredientes = Array.isArray(receita?.ingredientes)
-    ? receita.ingredientes.map((ingrediente: any) => ({
-        nome: String(ingrediente?.nome || ""),
-        quantidade: Number(ingrediente?.quantidade || 0),
-        custoUnitario: Number(ingrediente?.custoUnitario || 0),
-        subtotal: Number(ingrediente?.subtotal || 0),
-      }))
+    ? receita.ingredientes.map((ingrediente: any) => {
+        const insumo = encontrarInsumoPorIngrediente(ingrediente, insumos);
+        const custoAnterior = Number(ingrediente?.custoUnitario || 0);
+        const custoUnitario = insumo ? insumo.custoUnitario : custoAnterior;
+        const quantidadeOriginal = Number(ingrediente?.quantidade || 0);
+        const usavaEmbalagemInteira = insumo
+          ? insumo.quantidadeEmbalagem > 1 &&
+            Math.abs(custoAnterior - insumo.precoCompra) < 0.01 &&
+            Math.abs(custoAnterior - insumo.custoUnitario) > 0.01
+          : false;
+        const quantidade = quantidadeOriginal * (usavaEmbalagemInteira ? insumo!.quantidadeEmbalagem : 1);
+        return {
+          nome: String(insumo?.nome || ingrediente?.nome || ""),
+          quantidade,
+          custoUnitario,
+          subtotal: quantidade * custoUnitario,
+          insumoId: insumo?.id,
+          unidade: insumo?.unidade || String(ingrediente?.unidade || ""),
+        };
+      })
     : [];
   const custoTotalInsumos =
     Number(receita?.custoTotalInsumos || 0) ||
@@ -496,18 +557,24 @@ function criarReceitaPlanilhaEditavel(receita: any): ReceitaPlanilhaEditavel {
     precoFinalSugerido,
     estoque_id: "",
     marcado: false,
+    disponivel_encomenda: false,
   };
 }
 
-function criarNovaReceitaPlanilha(): ReceitaPlanilhaEditavel {
+function criarNovaReceitaPlanilha(
+  insumos: InsumoPrecificacao[] = criarCatalogoInsumosInicial(),
+): ReceitaPlanilhaEditavel {
   return criarReceitaPlanilhaEditavel({
     nome: "Nova ficha de precificacao",
     ingredientes: [],
     margemLucroTaxa: 0.5,
-  });
+  }, insumos);
 }
 
-function criarReceitaDePrecificacaoSalva(registro: any): ReceitaPlanilhaEditavel {
+function criarReceitaDePrecificacaoSalva(
+  registro: any,
+  insumos: InsumoPrecificacao[] = criarCatalogoInsumosInicial(),
+): ReceitaPlanilhaEditavel {
   let fichaSalva: any = null;
   const observacoes = String(registro?.observacoes || "");
   if (observacoes.startsWith(PRECIFICACAO_FICHA_PREFIXO)) {
@@ -519,7 +586,7 @@ function criarReceitaDePrecificacaoSalva(registro: any): ReceitaPlanilhaEditavel
   }
 
   const custoIngredientes = Number(registro?.custo_ingredientes || 0);
-  const ingredientes = Array.isArray(fichaSalva?.ingredientes)
+  const ingredientesBrutos = Array.isArray(fichaSalva?.ingredientes)
     ? fichaSalva.ingredientes
     : custoIngredientes > 0
       ? [{
@@ -529,6 +596,27 @@ function criarReceitaDePrecificacaoSalva(registro: any): ReceitaPlanilhaEditavel
           subtotal: custoIngredientes,
         }]
       : [];
+  const ingredientes = ingredientesBrutos.map((ingrediente: any) => {
+    const insumo = encontrarInsumoPorIngrediente(ingrediente, insumos);
+    const custoAnterior = Number(ingrediente?.custoUnitario || 0);
+    const custoUnitario = insumo ? insumo.custoUnitario : custoAnterior;
+    const quantidadeOriginal = Number(ingrediente?.quantidade || 0);
+    const usavaEmbalagemInteira = insumo
+      ? insumo.quantidadeEmbalagem > 1 &&
+        Math.abs(custoAnterior - insumo.precoCompra) < 0.01 &&
+        Math.abs(custoAnterior - insumo.custoUnitario) > 0.01
+      : false;
+    const quantidade = quantidadeOriginal * (usavaEmbalagemInteira ? insumo!.quantidadeEmbalagem : 1);
+    return {
+      ...ingrediente,
+      nome: String(insumo?.nome || ingrediente?.nome || ""),
+      quantidade,
+      custoUnitario,
+      subtotal: quantidade * custoUnitario,
+      insumoId: insumo?.id,
+      unidade: insumo?.unidade || String(ingrediente?.unidade || ""),
+    };
+  });
 
   return {
     nome: String(registro?.nome || "Ficha sem nome"),
@@ -545,7 +633,19 @@ function criarReceitaDePrecificacaoSalva(registro: any): ReceitaPlanilhaEditavel
     ),
     estoque_id: registro?.estoque_id ? String(registro.estoque_id) : "",
     marcado: registro?.ativo_vitrine === true,
+    disponivel_encomenda: fichaSalva?.disponivel_encomenda === true,
   };
+}
+
+function precificacaoDisponivelEncomenda(registro: any) {
+  const observacoes = String(registro?.observacoes || "");
+  if (!observacoes.startsWith(PRECIFICACAO_FICHA_PREFIXO)) return false;
+  try {
+    return JSON.parse(observacoes.slice(PRECIFICACAO_FICHA_PREFIXO.length))
+      ?.disponivel_encomenda === true;
+  } catch {
+    return false;
+  }
 }
 
 function recalcularReceitaPlanilhaEditavel(
@@ -664,6 +764,11 @@ function AdminPageContent() {
   const [entregadores, setEntregadores] = useState<any[]>([]);
   const [entregas, setEntregas] = useState<any[]>([]);
   const [precificacoes, setPrecificacoes] = useState<any[]>([]);
+  const [insumosPrecificacao, setInsumosPrecificacao] = useState<InsumoPrecificacao[]>(
+    () => criarCatalogoInsumosInicial(),
+  );
+  const [catalogoInsumosRegistroId, setCatalogoInsumosRegistroId] = useState<number | null>(null);
+  const [salvandoInsumos, setSalvandoInsumos] = useState(false);
   const [controleAdminAba] = useState<ControleAdminAba>("precificacao");
   const [receitaPlanilhaSelecionada, setReceitaPlanilhaSelecionada] = useState<string>(
     PRECIFICACAO_PLANILHA_DADOS.receitas[0]?.nome || "",
@@ -1169,7 +1274,37 @@ function AdminPageContent() {
     setPropagandas(json.data?.propagandas || []);
     setEntregadores(json.data?.entregadores || []);
     setEntregas(json.data?.entregas || []);
-    setPrecificacoes(json.data?.precificacoes || []);
+    const precificacoesCarregadas = json.data?.precificacoes || [];
+    const registroInsumos = precificacoesCarregadas.find(
+      (item) => item.nome === PRECIFICACAO_INSUMOS_NOME,
+    );
+    setCatalogoInsumosRegistroId(registroInsumos ? Number(registroInsumos.id) : null);
+    if (registroInsumos?.observacoes?.startsWith(PRECIFICACAO_INSUMOS_PREFIXO)) {
+      try {
+        const insumosSalvos = JSON.parse(
+          String(registroInsumos.observacoes).slice(PRECIFICACAO_INSUMOS_PREFIXO.length),
+        );
+        if (Array.isArray(insumosSalvos)) {
+          setInsumosPrecificacao(insumosSalvos);
+          setReceitaPlanilhaEditavel((receitaAtual) =>
+            recalcularReceitaPlanilhaEditavel({
+              ...receitaAtual,
+              ingredientes: receitaAtual.ingredientes.map((ingrediente) => {
+                const insumo = encontrarInsumoPorIngrediente(ingrediente, insumosSalvos);
+                return insumo
+                  ? { ...ingrediente, insumoId: insumo.id, nome: insumo.nome, unidade: insumo.unidade, custoUnitario: insumo.custoUnitario }
+                  : ingrediente;
+              }),
+            }),
+          );
+        }
+      } catch {
+        setInsumosPrecificacao(criarCatalogoInsumosInicial());
+      }
+    }
+    setPrecificacoes(
+      precificacoesCarregadas.filter((item) => item.nome !== PRECIFICACAO_INSUMOS_NOME),
+    );
     if (json.data?.horario) {
       setHorarioFuncionamento({
         id: Number(json.data.horario.id),
@@ -1554,33 +1689,44 @@ function AdminPageContent() {
     );
     if (!receita) return;
     setReceitaPlanilhaSelecionada(nomeReceita);
-    setReceitaPlanilhaEditavel(criarReceitaPlanilhaEditavel(receita));
+    setReceitaPlanilhaEditavel(
+      recalcularReceitaPlanilhaEditavel(
+        criarReceitaPlanilhaEditavel(receita, insumosPrecificacao),
+      ),
+    );
     setReceitaPlanilhaEmEdicao(false);
     setEditandoPrecificacaoId(null);
   };
 
   const iniciarNovaReceitaPlanilha = () => {
     setReceitaPlanilhaSelecionada("");
-    setReceitaPlanilhaEditavel(criarNovaReceitaPlanilha());
+    setReceitaPlanilhaEditavel(criarNovaReceitaPlanilha(insumosPrecificacao));
     setReceitaPlanilhaEmEdicao(true);
     setEditandoPrecificacaoId(null);
   };
 
   const editarPrecificacaoSalva = (registro: any) => {
     setReceitaPlanilhaSelecionada("");
-    setReceitaPlanilhaEditavel(criarReceitaDePrecificacaoSalva(registro));
+    setReceitaPlanilhaEditavel(
+      recalcularReceitaPlanilhaEditavel(
+        criarReceitaDePrecificacaoSalva(registro, insumosPrecificacao),
+      ),
+    );
     setReceitaPlanilhaEmEdicao(true);
     setEditandoPrecificacaoId(Number(registro.id));
   };
 
   const duplicarPrecificacaoSalva = (registro: any) => {
-    const copia = criarReceitaDePrecificacaoSalva(registro);
+    const copia = recalcularReceitaPlanilhaEditavel(
+      criarReceitaDePrecificacaoSalva(registro, insumosPrecificacao),
+    );
     setReceitaPlanilhaSelecionada("");
     setReceitaPlanilhaEditavel({
       ...copia,
       nome: `${copia.nome} - copia`,
       estoque_id: "",
       marcado: false,
+      disponivel_encomenda: false,
     });
     setReceitaPlanilhaEmEdicao(true);
     setEditandoPrecificacaoId(null);
@@ -1608,13 +1754,88 @@ function AdminPageContent() {
     );
   };
 
+  const selecionarInsumoIngrediente = (indice: number, insumoId: string) => {
+    const insumo = insumosPrecificacao.find((item) => item.id === insumoId);
+    if (!insumo) return;
+    atualizarIngredienteReceitaPlanilha(indice, {
+      insumoId: insumo.id,
+      nome: insumo.nome,
+      unidade: insumo.unidade,
+      custoUnitario: insumo.custoUnitario,
+    });
+  };
+
+  const atualizarInsumoPrecificacao = (indice: number, patch: Partial<InsumoPrecificacao>) => {
+    setInsumosPrecificacao((insumosAtuais) => {
+      const proximos = insumosAtuais.map((insumo, itemIndice) => {
+        if (itemIndice !== indice) return insumo;
+        const atualizado = { ...insumo, ...patch };
+        return {
+          ...atualizado,
+          custoUnitario: Number(atualizado.quantidadeEmbalagem || 0) > 0
+            ? Number(atualizado.precoCompra || 0) / Number(atualizado.quantidadeEmbalagem || 0)
+            : 0,
+        };
+      });
+      const insumoAtualizado = proximos[indice];
+      if (insumoAtualizado) {
+        setReceitaPlanilhaEditavel((receitaAtual) =>
+          recalcularReceitaPlanilhaEditavel({
+            ...receitaAtual,
+            ingredientes: receitaAtual.ingredientes.map((ingrediente) =>
+              ingrediente.insumoId === insumoAtualizado.id
+                ? { ...ingrediente, nome: insumoAtualizado.nome, unidade: insumoAtualizado.unidade, custoUnitario: insumoAtualizado.custoUnitario }
+                : ingrediente,
+            ),
+          }),
+        );
+      }
+      return proximos;
+    });
+  };
+
+  const adicionarInsumoPrecificacao = () => {
+    setInsumosPrecificacao((insumosAtuais) => [
+      ...insumosAtuais,
+      { id: `insumo-${Date.now()}`, nome: "Novo insumo", marca: "", unidade: "un", quantidadeEmbalagem: 1, precoCompra: 0, custoUnitario: 0 },
+    ]);
+  };
+
+  const removerInsumoPrecificacao = (indice: number) => {
+    const insumo = insumosPrecificacao[indice];
+    if (!insumo || !confirm(`Excluir o insumo "${insumo.nome}" da lista?`)) return;
+    setInsumosPrecificacao((insumosAtuais) => insumosAtuais.filter((_item, itemIndice) => itemIndice !== indice));
+  };
+
+  const salvarCatalogoInsumos = async () => {
+    setSalvandoInsumos(true);
+    const payload = {
+      nome: PRECIFICACAO_INSUMOS_NOME, estoque_id: null, unidade_rendimento: "catalogo",
+      custo_ingredientes: 0, custo_embalagem: 0, custo_mao_obra: 0, custo_operacional: 0,
+      margem_percentual: 0, preco_sugerido: 0, preco_venda: 0, ativo_vitrine: false,
+      observacoes: `${PRECIFICACAO_INSUMOS_PREFIXO}${JSON.stringify(insumosPrecificacao)}`,
+    };
+    try {
+      const resposta = catalogoInsumosRegistroId
+        ? await adminDb({ action: "update_eq", table: "precificacao_produtos", payload, eq: { column: "id", value: catalogoInsumosRegistroId } })
+        : await adminDb({ action: "insert", table: "precificacao_produtos", values: [payload] });
+      const idSalvo = Number(resposta?.data?.[0]?.id || catalogoInsumosRegistroId || 0);
+      if (idSalvo) setCatalogoInsumosRegistroId(idSalvo);
+      alert("Lista de insumos salva. As fichas passam a usar estes custos.");
+    } catch (error: any) {
+      alert(`Erro ao salvar insumos: ${error.message || "tente novamente."}`);
+    } finally {
+      setSalvandoInsumos(false);
+    }
+  };
+
   const adicionarIngredienteReceitaPlanilha = () => {
     setReceitaPlanilhaEditavel((receitaAtual) =>
       recalcularReceitaPlanilhaEditavel({
         ...receitaAtual,
         ingredientes: [
           ...receitaAtual.ingredientes,
-          { nome: "", quantidade: 0, custoUnitario: 0, subtotal: 0 },
+          { nome: "", quantidade: 0, custoUnitario: 0, subtotal: 0, insumoId: "", unidade: "" },
         ],
       }),
     );
@@ -1638,7 +1859,11 @@ function AdminPageContent() {
         (item) => Number(item.id) === editandoPrecificacaoId,
       );
       if (registro) {
-        setReceitaPlanilhaEditavel(criarReceitaDePrecificacaoSalva(registro));
+        setReceitaPlanilhaEditavel(
+          recalcularReceitaPlanilhaEditavel(
+            criarReceitaDePrecificacaoSalva(registro, insumosPrecificacao),
+          ),
+        );
         setReceitaPlanilhaEmEdicao(false);
         return;
       }
@@ -1674,6 +1899,7 @@ function AdminPageContent() {
       ativo_vitrine: receita.marcado,
       observacoes: `${PRECIFICACAO_FICHA_PREFIXO}${JSON.stringify({
         ingredientes: receita.ingredientes,
+        disponivel_encomenda: receita.disponivel_encomenda,
       })}`,
     };
 
@@ -1695,6 +1921,18 @@ function AdminPageContent() {
       }
       const idSalvo = Number(respostaSalva?.data?.[0]?.id || editandoPrecificacaoId || 0);
       if (idSalvo) setEditandoPrecificacaoId(idSalvo);
+      if (receita.estoque_id) {
+        await adminDb({
+          action: "update_eq",
+          table: "estoque",
+          payload: {
+            preco: precoVenda,
+            disponivel_delivery: receita.marcado,
+            disponivel_encomenda: receita.disponivel_encomenda,
+          },
+          eq: { column: "id", value: Number(receita.estoque_id) },
+        });
+      }
       setReceitaPlanilhaEditavel(receita);
       setReceitaPlanilhaEmEdicao(false);
       await carregarDados();
@@ -1722,12 +1960,21 @@ function AdminPageContent() {
 
   const alternarVitrinePrecificacao = async (registro: any) => {
     try {
+      const novoStatus = registro.ativo_vitrine !== true;
       await adminDb({
         action: "update_eq",
         table: "precificacao_produtos",
-        payload: { ativo_vitrine: registro.ativo_vitrine !== true },
+        payload: { ativo_vitrine: novoStatus },
         eq: { column: "id", value: Number(registro.id) },
       });
+      if (registro.estoque_id) {
+        await adminDb({
+          action: "update_eq",
+          table: "estoque",
+          payload: { disponivel_delivery: novoStatus },
+          eq: { column: "id", value: Number(registro.estoque_id) },
+        });
+      }
       await carregarDados();
     } catch (error: any) {
       alert(`Erro ao alterar vitrine: ${error.message || "tente novamente."}`);
@@ -6040,6 +6287,40 @@ function AdminPageContent() {
 
             {controleAdminAba === "precificacao" && (
               <div className="space-y-6">
+                <details open className="group rounded-[2rem] border border-amber-200 bg-white p-5 shadow-sm">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Base de custos</p>
+                      <h2 className="mt-1 text-xl font-black text-slate-800">Lista de insumos e ingredientes</h2>
+                      <p className="mt-1 text-sm font-bold text-slate-500">Informe o tamanho da embalagem e o valor pago. O custo por unidade será usado automaticamente nas fichas.</p>
+                    </div>
+                    <ChevronDown className="shrink-0 text-amber-600 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-100">
+                    <table className="w-full min-w-[950px] text-left text-sm">
+                      <thead className="bg-amber-50 text-[10px] font-black uppercase tracking-widest text-amber-800">
+                        <tr><th className="p-3">Insumo</th><th className="p-3">Marca</th><th className="p-3">Unidade</th><th className="p-3">Qtd. embalagem</th><th className="p-3">Preço pago</th><th className="p-3">Custo unit.</th><th className="p-3 text-right">Ações</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {insumosPrecificacao.map((insumo, indice) => (
+                          <tr key={insumo.id}>
+                            <td className="p-2"><input value={insumo.nome} onChange={(event) => atualizarInsumoPrecificacao(indice, { nome: event.target.value })} className="w-full min-w-40 rounded-xl border p-2 font-bold" /></td>
+                            <td className="p-2"><input value={insumo.marca} onChange={(event) => atualizarInsumoPrecificacao(indice, { marca: event.target.value })} className="w-full min-w-28 rounded-xl border p-2 font-bold" /></td>
+                            <td className="p-2"><input value={insumo.unidade} onChange={(event) => atualizarInsumoPrecificacao(indice, { unidade: event.target.value })} className="w-24 rounded-xl border p-2 font-bold" placeholder="g, ml, un" /></td>
+                            <td className="p-2"><input type="number" min="0" step="0.01" value={insumo.quantidadeEmbalagem} onChange={(event) => atualizarInsumoPrecificacao(indice, { quantidadeEmbalagem: Number(event.target.value) })} className="w-32 rounded-xl border p-2 font-bold" /></td>
+                            <td className="p-2"><input type="number" min="0" step="0.01" value={insumo.precoCompra} onChange={(event) => atualizarInsumoPrecificacao(indice, { precoCompra: Number(event.target.value) })} className="w-32 rounded-xl border p-2 font-bold" /></td>
+                            <td className="p-3 font-black text-emerald-700">R$ {insumo.custoUnitario.toFixed(4)}</td>
+                            <td className="p-2 text-right"><button type="button" onClick={() => removerInsumoPrecificacao(indice)} className="rounded-xl bg-red-50 p-2 text-red-600"><Trash2 size={16} /></button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                    <button type="button" onClick={adicionarInsumoPrecificacao} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-xs font-black uppercase text-slate-700"><PlusCircle size={16} />Adicionar insumo</button>
+                    <button type="button" onClick={() => void salvarCatalogoInsumos()} disabled={salvandoInsumos} className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-xs font-black uppercase text-white disabled:opacity-50">{salvandoInsumos ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}Salvar lista de insumos</button>
+                  </div>
+                </details>
                 <section className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
                   <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -6074,14 +6355,14 @@ function AdminPageContent() {
                               {formatarMoedaAdmin(registro.preco_venda || registro.preco_sugerido)}
                             </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => alternarVitrinePrecificacao(registro)}
-                            className={`shrink-0 rounded-full px-3 py-1 text-[10px] font-black uppercase ${registro.ativo_vitrine ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}
-                            title="Alterar visibilidade na vitrine"
-                          >
-                            {registro.ativo_vitrine ? "Na vitrine" : "Oculta"}
-                          </button>
+                          <div className="flex shrink-0 flex-col items-end gap-1">
+                            <button type="button" onClick={() => alternarVitrinePrecificacao(registro)} className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${registro.ativo_vitrine ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`} title="Alterar visibilidade na vitrine">
+                              {registro.ativo_vitrine ? "Vitrine" : "Fora da vitrine"}
+                            </button>
+                            <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${precificacaoDisponivelEncomenda(registro) ? "bg-violet-100 text-violet-700" : "bg-slate-200 text-slate-500"}`}>
+                              {precificacaoDisponivelEncomenda(registro) ? "Encomendas" : "Fora das encomendas"}
+                            </span>
+                          </div>
                         </div>
                         <p className="mt-2 text-xs font-bold text-slate-500">
                           Custo: {formatarMoedaAdmin(Number(registro.custo_ingredientes || 0) + Number(registro.custo_embalagem || 0) + Number(registro.custo_mao_obra || 0) + Number(registro.custo_operacional || 0))}
@@ -6201,7 +6482,7 @@ function AdminPageContent() {
                       </div>
                       <div className="space-y-1">
                         <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                          Produto na vitrine
+                          Produto do cardapio
                         </label>
                         <select
                           className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-pink-500"
@@ -6236,16 +6517,15 @@ function AdminPageContent() {
                             {receitaPlanilhaEditavel.ingredientes.map((ingrediente, indice) => (
                               <tr key={`${indice}-${ingrediente.nome}`}>
                                 <td className="px-3 py-3">
-                                  <input
+                                  <select
                                     className="w-full min-w-[180px] rounded-xl border border-slate-200 bg-white px-3 py-2 font-bold text-slate-700 disabled:border-transparent disabled:bg-transparent disabled:px-0"
-                                    value={ingrediente.nome}
+                                    value={ingrediente.insumoId || ""}
                                     disabled={!receitaPlanilhaEmEdicao}
-                                    onChange={(e) =>
-                                      atualizarIngredienteReceitaPlanilha(indice, {
-                                        nome: e.target.value,
-                                      })
-                                    }
-                                  />
+                                    onChange={(e) => selecionarInsumoIngrediente(indice, e.target.value)}
+                                  >
+                                    <option value="">Selecione um insumo</option>
+                                    {insumosPrecificacao.map((insumo) => <option key={insumo.id} value={insumo.id}>{insumo.nome} · {insumo.unidade}</option>)}
+                                  </select>
                                 </td>
                                 <td className="px-3 py-3">
                                   <input
@@ -6261,6 +6541,7 @@ function AdminPageContent() {
                                       })
                                     }
                                   />
+                                  {ingrediente.unidade ? <span className="ml-2 text-[10px] font-black uppercase text-slate-400">{ingrediente.unidade}</span> : null}
                                 </td>
                                 <td className="px-3 py-3">
                                   <input
@@ -6269,12 +6550,8 @@ function AdminPageContent() {
                                     min="0"
                                     className="w-32 rounded-xl border border-slate-200 bg-white px-3 py-2 font-bold text-slate-700 disabled:border-transparent disabled:bg-transparent disabled:px-0"
                                     value={ingrediente.custoUnitario}
-                                    disabled={!receitaPlanilhaEmEdicao}
-                                    onChange={(e) =>
-                                      atualizarIngredienteReceitaPlanilha(indice, {
-                                        custoUnitario: Number(e.target.value),
-                                      })
-                                    }
+                                    readOnly
+                                    title="Calculado pela lista de insumos"
                                   />
                                 </td>
                                 <td className="px-3 py-3 text-right font-black text-slate-800">
@@ -6351,17 +6628,16 @@ function AdminPageContent() {
                       </div>
                     </div>
 
-                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-600">
-                      <input
-                        type="checkbox"
-                        className="h-5 w-5 accent-pink-600"
-                        checked={receitaPlanilhaEditavel.marcado}
-                        onChange={(e) =>
-                          atualizarReceitaPlanilhaEditavel({ marcado: e.target.checked })
-                        }
-                      />
-                      Marcado para ligar na vitrine
-                    </label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="flex items-center gap-3 rounded-2xl border border-pink-200 bg-pink-50 p-4 text-sm font-bold text-pink-800">
+                        <input type="checkbox" className="h-5 w-5 accent-pink-600" checked={receitaPlanilhaEditavel.marcado} onChange={(e) => atualizarReceitaPlanilhaEditavel({ marcado: e.target.checked })} />
+                        Colocar na vitrine / delivery
+                      </label>
+                      <label className="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm font-bold text-violet-800">
+                        <input type="checkbox" className="h-5 w-5 accent-violet-600" checked={receitaPlanilhaEditavel.disponivel_encomenda} onChange={(e) => atualizarReceitaPlanilhaEditavel({ disponivel_encomenda: e.target.checked })} />
+                        Disponibilizar para encomendas
+                      </label>
+                    </div>
 
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div className="rounded-2xl bg-slate-50 p-4">

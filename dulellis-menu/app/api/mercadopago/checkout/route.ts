@@ -15,6 +15,10 @@ import {
   type ServiceSupabaseClient,
   upsertOrderCustomer,
 } from "@/lib/order-draft";
+import {
+  PREORDER_PAYMENT_POLICY_TEXT,
+  PREORDER_PAYMENT_POLICY_VERSION,
+} from "@/lib/preorder-payment-policy";
 
 type CheckoutBody = PublicOrderBody & {
   total?: number;
@@ -23,6 +27,7 @@ type CheckoutBody = PublicOrderBody & {
   pedido_id?: number;
   cliente_ja_salvo?: boolean;
   tipo_pagamento_encomenda?: "sinal" | "saldo" | "integral";
+  aceitou_politica_pagamento_encomenda?: boolean;
   itens?: Array<{
     id?: number;
     qtd?: number;
@@ -323,7 +328,7 @@ export async function POST(request: Request) {
     if (Number.isInteger(pedidoId) && pedidoId > 0) {
       const { data: pedido, error: erroPedido } = await supabase
         .from("pedidos")
-        .select("id,cliente_id,total,cliente_nome,whatsapp,pagamento_referencia,itens,forma_pagamento,tipo_pedido,valor_sinal,saldo_restante,status_pedido,status_producao")
+        .select("id,cliente_id,total,cliente_nome,whatsapp,pagamento_referencia,itens,forma_pagamento,tipo_pedido,valor_sinal,saldo_restante,status_pedido,status_producao,detalhes_encomenda")
         .eq("id", pedidoId)
         .maybeSingle();
       if (erroPedido || !pedido) {
@@ -348,11 +353,37 @@ export async function POST(request: Request) {
       total = Number(pedido.total || 0);
       valorTotalEncomenda = total;
       if (String(pedido.tipo_pedido || "") === "encomenda") {
+        if (body.aceitou_politica_pagamento_encomenda !== true) {
+          return NextResponse.json(
+            { error: "Leia e aceite a regra de pagamento antes de continuar." },
+            { status: 400 },
+          );
+        }
         if (
           ["cancelado", "cancelada", "recusado"].includes(normalizarTexto(String(pedido.status_pedido || ""))) ||
           normalizarTexto(String(pedido.status_producao || "")) === "cancelada"
         ) {
           return NextResponse.json({ error: "Nao e possivel pagar uma encomenda cancelada." }, { status: 409 });
+        }
+        const detalhesEncomenda = pedido.detalhes_encomenda && typeof pedido.detalhes_encomenda === "object"
+          ? pedido.detalhes_encomenda as Record<string, unknown>
+          : {};
+        const { error: erroPolitica } = await supabase
+          .from("pedidos")
+          .update({
+            detalhes_encomenda: {
+              ...detalhesEncomenda,
+              politica_pagamento: {
+                aceita: true,
+                versao: PREORDER_PAYMENT_POLICY_VERSION,
+                texto: PREORDER_PAYMENT_POLICY_TEXT,
+                aceita_em: new Date().toISOString(),
+              },
+            },
+          })
+          .eq("id", pedidoId);
+        if (erroPolitica) {
+          return NextResponse.json({ error: erroPolitica.message }, { status: 500 });
         }
         tipoPagamentoEncomenda = String(body.tipo_pagamento_encomenda || "sinal");
         if (!["sinal", "saldo", "integral"].includes(tipoPagamentoEncomenda)) {
