@@ -19,6 +19,7 @@ import {
   Bike,
   CheckCircle2,
   Clock3,
+  CreditCard,
   ChevronRight,
   LogIn,
   LogOut,
@@ -207,6 +208,10 @@ type PedidoAcompanhamento = {
   status_chave: "aguardando_aceite" | "recebido" | "em_preparo" | "saiu_entrega" | "aprovado" | "pendente" | "recusado";
   status_texto: string;
   retiradaNoBalcao?: boolean;
+  tipo_pedido?: string;
+  status_producao?: string;
+  valor_sinal?: number;
+  saldo_restante?: number;
 };
 
 type RetornoPixInfo = {
@@ -666,6 +671,12 @@ function PainelAcompanhamentoPedido({
     pedido,
     retiradaNoBalcao,
   );
+  const pedidoEhEncomenda = normalizarTexto(String(pedido.tipo_pedido || "")) === "encomenda";
+  const encomendaCancelada = ["cancelada", "recusada"].includes(
+    normalizarTexto(String(pedido.status_producao || "")),
+  );
+  const encomendaTemSaldo = Number(pedido.saldo_restante ?? pedido.total) > 0.009;
+  const mostrarPagamentoEncomenda = pedidoEhEncomenda && !encomendaCancelada && encomendaTemSaldo;
   const whatsappLojaHref = `https://wa.me/${WHATSAPP_LOJA_ACOMPANHAMENTO}?text=${encodeURIComponent(
     `Oi, Dulelis! 💗 Tudo bem? Gostaria de saber uma informação sobre o meu pedido #${pedido.id}. Podem me ajudar, por favor? 🧁`,
   )}`;
@@ -696,6 +707,16 @@ function PainelAcompanhamentoPedido({
           {trocoTexto ? <p>Troco: {trocoTexto}</p> : null}
         </div>
       </div>
+
+      {mostrarPagamentoEncomenda ? (
+        <Link
+          href={`/encomendas/pedido/${pedido.id}`}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-sm font-black uppercase tracking-wider text-white shadow-lg shadow-pink-200 transition-colors hover:bg-pink-700"
+        >
+          <CreditCard size={18} />
+          Voltar e pagar encomenda
+        </Link>
+      ) : null}
 
       {retiradaNoBalcao ? (
         <BlocoRetiradaLoja
