@@ -26,6 +26,7 @@ import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { CUSTOMER_PASSWORD_RULES_TEXT } from "@/lib/customer-password-policy";
 import { buildDulelisWhatsappUrl } from "@/lib/store-contact";
+import { PREORDER_PAYMENT_POLICY_TEXT } from "@/lib/preorder-payment-policy";
 
 type CustomerSession = {
   id: number;
@@ -261,6 +262,7 @@ export function PreordersPageClient() {
   const [addressError, setAddressError] = useState("");
   const [eventName, setEventName] = useState("");
   const [notes, setNotes] = useState("");
+  const [acceptedPaymentPolicy, setAcceptedPaymentPolicy] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingProductId, setUploadingProductId] = useState<number | null>(null);
@@ -620,6 +622,7 @@ export function PreordersPageClient() {
     setSelectedTime("");
     setEventName("");
     setNotes("");
+    setAcceptedPaymentPolicy(false);
   }
 
   async function cancelOrder(order: PreorderOrder) {
@@ -642,6 +645,10 @@ export function PreordersPageClient() {
       return;
     }
     if (!selectedDate || !selectedTime || !cartItems.length) return;
+    if (!acceptedPaymentPolicy) {
+      window.alert("Leia e aceite a regra de pagamento das encomendas.");
+      return;
+    }
     setSubmitting(true);
     try {
       if (receiptType === "entrega") await saveDeliveryAddress();
@@ -654,6 +661,7 @@ export function PreordersPageClient() {
           tipo_recebimento: receiptType,
           evento: eventName,
           observacao: notes,
+          aceitou_politica_pagamento_encomenda: acceptedPaymentPolicy,
           itens: cartItems.map(({ product, entry }) => ({
             id: product.id,
             qtd: entry.qtd,
@@ -670,6 +678,7 @@ export function PreordersPageClient() {
       setConfirmation(json.data);
       setCart({});
       setEditingOrderId(null);
+      setAcceptedPaymentPolicy(false);
       void loadMyOrders();
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
@@ -1003,6 +1012,10 @@ export function PreordersPageClient() {
               <MessageCircle className="mt-0.5 shrink-0" size={20} />
               <p>Ao finalizar a encomenda, você poderá conversar pelo WhatsApp para acertar fotos, decoração e outros detalhes com a Dulelis.</p>
             </div>
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-900">
+              <input type="checkbox" checked={acceptedPaymentPolicy} onChange={(event) => setAcceptedPaymentPolicy(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-pink-600" />
+              <span><strong className="block font-black uppercase">Regra de pagamento e cancelamento</strong>{PREORDER_PAYMENT_POLICY_TEXT} Confirmo que li e estou de acordo.</span>
+            </label>
             <input value={eventName} onChange={(event) => setEventName(event.target.value)} placeholder="Evento ou ocasiao (opcional)" className="mt-4 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Observacoes gerais da encomenda" className="mt-3 min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
           </section>
@@ -1013,7 +1026,7 @@ export function PreordersPageClient() {
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-pink-100 bg-white/95 p-3 backdrop-blur-xl">
           <div className="mx-auto flex max-w-xl items-center justify-between gap-4 rounded-[1.8rem] bg-slate-900 p-4 text-white shadow-2xl">
             <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{cartItems.reduce((sum, item) => sum + item.entry.qtd, 0)} itens</p><p className="truncate text-xl font-black text-pink-400">{money(subtotal)}{receiptType === "entrega" ? " + entrega" : ""}</p></div>
-            <button type="button" onClick={() => void submitPreorder()} disabled={!session || submitting || !selectedDate || !selectedTime} className="flex shrink-0 items-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-xs font-black uppercase tracking-wider disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400">
+            <button type="button" onClick={() => void submitPreorder()} disabled={!session || submitting || !selectedDate || !selectedTime || !acceptedPaymentPolicy} className="flex shrink-0 items-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-xs font-black uppercase tracking-wider disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400">
               {submitting ? <Loader2 size={17} className="animate-spin" /> : <ChevronRight size={17} />}{editingOrderId ? "Salvar alterações" : "Enviar encomenda"}
             </button>
           </div>

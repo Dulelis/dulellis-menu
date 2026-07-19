@@ -11,6 +11,10 @@ import {
   type OrderDraftSnapshot,
   type OrderItemSnapshot,
 } from "@/lib/order-draft";
+import {
+  PREORDER_PAYMENT_POLICY_TEXT,
+  PREORDER_PAYMENT_POLICY_VERSION,
+} from "@/lib/preorder-payment-policy";
 
 const WEEKDAYS = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"] as const;
 
@@ -42,6 +46,7 @@ type PreorderBody = {
   itens?: PreorderItemInput[];
   observacao?: string;
   evento?: string;
+  aceitou_politica_pagamento_encomenda?: boolean;
 };
 
 type EditableOrderRow = {
@@ -283,6 +288,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json().catch(() => ({}))) as PreorderBody;
+    if (body.aceitou_politica_pagamento_encomenda !== true) {
+      throw new OrderDraftError(400, "Leia e aceite a regra de pagamento das encomendas.");
+    }
     const editingOrderId = Number(body.pedido_id || 0);
     let editingOrder: EditableOrderRow | null = null;
     if (editingOrderId > 0) {
@@ -460,6 +468,12 @@ export async function POST(request: NextRequest) {
         evento: String(body.evento || "").trim(),
         observacao_geral: String(body.observacao || "").trim(),
         itens: detailsItems,
+        politica_pagamento: {
+          aceita: true,
+          versao: PREORDER_PAYMENT_POLICY_VERSION,
+          texto: PREORDER_PAYMENT_POLICY_TEXT,
+          aceita_em: new Date().toISOString(),
+        },
       },
     };
     let orderId = editingOrderId;

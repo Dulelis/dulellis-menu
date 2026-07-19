@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, CheckCircle2, Clock3, Loader2, MessageCircle, PackageCheck, ReceiptText, WalletCards } from "lucide-react";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { buildDulelisWhatsappUrl } from "@/lib/store-contact";
+import { PREORDER_PAYMENT_POLICY_TEXT } from "@/lib/preorder-payment-policy";
 
 type TrackingOrder = {
   id: number;
@@ -37,6 +38,7 @@ export function PreorderTrackingClient({ orderId }: { orderId: number }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [paymentLoading, setPaymentLoading] = useState<"sinal" | "saldo" | "integral" | "">("");
+  const [acceptedPaymentPolicy, setAcceptedPaymentPolicy] = useState(false);
 
   const load = useCallback(async () => {
     if (!Number.isInteger(orderId) || orderId <= 0) {
@@ -80,6 +82,10 @@ export function PreorderTrackingClient({ orderId }: { orderId: number }) {
   );
 
   async function startPayment(type: "sinal" | "saldo" | "integral") {
+    if (!acceptedPaymentPolicy) {
+      window.alert("Leia e aceite a regra de pagamento antes de continuar.");
+      return;
+    }
     setPaymentLoading(type);
     try {
       const response = await fetch("/api/mercadopago/checkout", {
@@ -89,6 +95,7 @@ export function PreorderTrackingClient({ orderId }: { orderId: number }) {
           pedido_id: orderId,
           forma_pagamento: "Pix",
           tipo_pagamento_encomenda: type,
+          aceitou_politica_pagamento_encomenda: true,
         }),
       });
       const json = (await response.json().catch(() => ({}))) as { url?: string; error?: string };
@@ -159,21 +166,27 @@ export function PreorderTrackingClient({ orderId }: { orderId: number }) {
               </div>
               <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm font-bold text-amber-800">{order.status_pagamento_texto || "Pagamento a combinar com a Dulelis"}</p>
               {!isCanceled && Number(order.saldo_restante ?? order.total) > 0.009 ? (
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <div className="mt-4">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-900">
+                    <input type="checkbox" checked={acceptedPaymentPolicy} onChange={(event) => setAcceptedPaymentPolicy(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-pink-600" />
+                    <span><strong className="block font-black uppercase">Antes de pagar</strong>{PREORDER_PAYMENT_POLICY_TEXT} Confirmo que li e estou de acordo.</span>
+                  </label>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {Number(order.valor_sinal || 0) <= 0.009 && order.permite_pagamento_integral !== false ? (
-                    <button type="button" onClick={() => void startPayment("sinal")} disabled={Boolean(paymentLoading)} className="flex items-center justify-center gap-2 rounded-2xl bg-pink-600 p-4 text-xs font-black uppercase tracking-wider text-white disabled:opacity-60">
+                    <button type="button" onClick={() => void startPayment("sinal")} disabled={Boolean(paymentLoading) || !acceptedPaymentPolicy} className="flex items-center justify-center gap-2 rounded-2xl bg-pink-600 p-4 text-xs font-black uppercase tracking-wider text-white disabled:opacity-60">
                       {paymentLoading === "sinal" ? <Loader2 size={17} className="animate-spin" /> : null}Pagar sinal com Pix
                     </button>
                   ) : (
-                    <button type="button" onClick={() => void startPayment("saldo")} disabled={Boolean(paymentLoading)} className="flex items-center justify-center gap-2 rounded-2xl bg-pink-600 p-4 text-xs font-black uppercase tracking-wider text-white disabled:opacity-60">
+                    <button type="button" onClick={() => void startPayment("saldo")} disabled={Boolean(paymentLoading) || !acceptedPaymentPolicy} className="flex items-center justify-center gap-2 rounded-2xl bg-pink-600 p-4 text-xs font-black uppercase tracking-wider text-white disabled:opacity-60">
                       {paymentLoading === "saldo" ? <Loader2 size={17} className="animate-spin" /> : null}Pagar saldo com Pix
                     </button>
                   )}
                   {Number(order.valor_sinal || 0) <= 0.009 ? (
-                    <button type="button" onClick={() => void startPayment("integral")} disabled={Boolean(paymentLoading)} className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 p-4 text-xs font-black uppercase tracking-wider text-white disabled:opacity-60">
+                    <button type="button" onClick={() => void startPayment("integral")} disabled={Boolean(paymentLoading) || !acceptedPaymentPolicy} className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 p-4 text-xs font-black uppercase tracking-wider text-white disabled:opacity-60">
                       {paymentLoading === "integral" ? <Loader2 size={17} className="animate-spin" /> : null}Pagar valor integral
                     </button>
                   ) : null}
+                  </div>
                 </div>
               ) : !isCanceled ? (
                 <p className="mt-4 rounded-2xl bg-emerald-50 p-4 text-center text-xs font-black uppercase tracking-wider text-emerald-700">Encomenda totalmente paga</p>
