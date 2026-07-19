@@ -6,6 +6,7 @@ export type OrderReceiptItem = {
 
 export type OrderReceiptData = {
   orderId: number | string;
+  orderType: "DELIVERY" | "ENCOMENDA";
   createdAt: string;
   customerName: string;
   whatsapp: string;
@@ -480,6 +481,13 @@ export function renderOrderReceiptHtml(
             letter-spacing: 0.04em;
             text-transform: uppercase;
           }
+          .receipt-order-type {
+            margin-top: 1.5mm;
+            font-size: 26px;
+            font-weight: 900;
+            line-height: 1;
+            letter-spacing: 0.06em;
+          }
           .receipt-order {
             margin-top: 0.8mm;
             font-size: 11px;
@@ -609,6 +617,7 @@ export function renderOrderReceiptHtml(
         <article class="receipt">
           <header class="receipt-header">
             <div class="receipt-brand">Dulelis Confeitaria</div>
+            <div class="receipt-order-type">${renderText(data.orderType)}</div>
             <div class="receipt-order">Pedido #${renderText(data.orderId)}</div>
           </header>
 

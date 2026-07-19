@@ -734,6 +734,65 @@ function normalizarStatusPedidoAdmin(pedido: any) {
   return "aguardando_aceite";
 }
 
+function obterDetalhesEncomendaAdmin(pedido: any) {
+  const details = pedido?.detalhes_encomenda && typeof pedido.detalhes_encomenda === "object" && !Array.isArray(pedido.detalhes_encomenda)
+    ? pedido.detalhes_encomenda
+    : {};
+  const detailItems = Array.isArray(details.itens) ? details.itens : [];
+  return {
+    evento: String(details.evento || "").trim(),
+    itens: detailItems.map((raw: any) => {
+      const customizations = raw?.personalizacoes && typeof raw.personalizacoes === "object" && !Array.isArray(raw.personalizacoes)
+        ? Object.entries(raw.personalizacoes)
+            .filter(([, value]) => String(value || "").trim())
+            .map(([key, value]) => key === "foto_referencia"
+              ? "Foto de referencia anexada"
+              : `${key.replaceAll("_", " ")}: ${String(value)}`)
+        : [];
+      return {
+        produtoId: Number(raw?.produto_id || 0),
+        nome: String(raw?.produto_nome || "Item"),
+        unidade: String(raw?.unidade || ""),
+        personalizacoes: customizations,
+      };
+    }),
+  };
+}
+
+function prepararEncomendaParaImpressao(pedido: any) {
+  const details = obterDetalhesEncomendaAdmin(pedido);
+  const items = Array.isArray(pedido?.itens) ? pedido.itens : [];
+  const printedItems = items.map((item: any, index: number) => {
+    const detail = details.itens.find((candidate: any) =>
+      candidate.produtoId > 0 && candidate.produtoId === Number(item?.id || 0),
+    ) || details.itens[index];
+    const complements = [
+      detail?.unidade ? `Unidade: ${detail.unidade}` : "",
+      ...(detail?.personalizacoes || []),
+    ].filter(Boolean);
+    return {
+      ...item,
+      nome: complements.length
+        ? `${String(item?.nome || detail?.nome || "Item")} | ${complements.join(" | ")}`
+        : String(item?.nome || detail?.nome || "Item"),
+    };
+  });
+  const schedule = pedido?.agendado_para ? new Date(pedido.agendado_para) : null;
+  const scheduleText = schedule && Number.isFinite(schedule.getTime())
+    ? schedule.toLocaleString("pt-BR")
+    : "Nao informado";
+  const receiptType = String(pedido?.tipo_recebimento || "retirada").toLowerCase() === "entrega"
+    ? "Entrega"
+    : "Retirada";
+  const organizedNotes = [
+    `ENCOMENDA AGENDADA: ${scheduleText}`,
+    `RECEBIMENTO: ${receiptType}`,
+    details.evento ? `EVENTO: ${details.evento}` : "",
+    String(pedido?.observacao || "").trim(),
+  ].filter(Boolean).join(" | ");
+  return { ...pedido, itens: printedItems, observacao: organizedNotes };
+}
+
 function obterValorAcertoEntrega(entrega: any) {
   return Math.max(0, Number(entrega?.pedido?.taxa_entrega || 0));
 }
@@ -758,6 +817,7 @@ function AdminPageContent() {
   const [estoque, setEstoque] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
+  const [encomendasFilaImpressao, setEncomendasFilaImpressao] = useState<any[]>([]);
   const [taxas, setTaxas] = useState<any[]>([]);
   const [promocoes, setPromocoes] = useState<any[]>([]);
   const [propagandas, setPropagandas] = useState<any[]>([]);
@@ -1240,6 +1300,7 @@ function AdminPageContent() {
         estoque?: any[];
         clientes?: any[];
         pedidos?: any[];
+        encomendas_impressao?: any[];
         taxas?: any[];
         promocoes?: any[];
         propagandas?: any[];
@@ -1269,6 +1330,7 @@ function AdminPageContent() {
     setEstoque(json.data?.estoque || []);
     setClientes(json.data?.clientes || []);
     setPedidos(pedidosCarregados);
+    setEncomendasFilaImpressao(json.data?.encomendas_impressao || []);
     setTaxas(json.data?.taxas || []);
     setPromocoes(json.data?.promocoes || []);
     setPropagandas(json.data?.propagandas || []);
@@ -3050,6 +3112,9 @@ function AdminPageContent() {
       const observacao = limparObservacaoTroco(
         String(pedidoCompleto?.observacao || "").trim(),
       );
+      const tipoComprovante = String(pedidoCompleto?.tipo_pedido || "delivery").trim().toLowerCase() === "encomenda"
+        ? "ENCOMENDA"
+        : "DELIVERY";
       const larguraLinha = 42;
 
       const quebrarLinha = (texto: string, largura = larguraLinha) => {
@@ -3122,6 +3187,7 @@ function AdminPageContent() {
       const alinharCentro = "\x1b\x61\x01";
       const alinharEsquerda = "\x1b\x61\x00";
       const fonteNormal = "\x1d\x21\x00";
+      const fonteDestaque = "\x1d\x21\x11";
       const divisor = `${"-".repeat(larguraLinha)}\n`;
       const blocoQrMaps = linkAceiteEntrega
         ? alinharCentro +
@@ -3143,6 +3209,9 @@ function AdminPageContent() {
         negritoOn +
         "DULELIS\n" +
         "CONFEITARIA\n" +
+        fonteDestaque +
+        `${tipoComprovante}\n` +
+        fonteNormal +
         "\n" +
         negritoOff +
         fonteNormal +
@@ -3318,6 +3387,9 @@ function AdminPageContent() {
       const observacao = limparObservacaoTroco(
         String(pedidoCompleto?.observacao || "").trim(),
       );
+      const tipoComprovante = String(pedidoCompleto?.tipo_pedido || "delivery").trim().toLowerCase() === "encomenda"
+        ? "ENCOMENDA" as const
+        : "DELIVERY" as const;
       const itens = parseItensPedido(pedidoCompleto);
       const formatarValor = (valor: number) => `R$ ${valor.toFixed(2)}`;
       const itensHtml = itens.length
@@ -3469,6 +3541,7 @@ function AdminPageContent() {
           renderOrderReceiptHtml(
             {
               orderId: pedidoCompleto?.id ?? "",
+              orderType: tipoComprovante,
               createdAt: pedidoCompleto?.created_at
                 ? new Date(pedidoCompleto.created_at).toLocaleString("pt-BR")
                 : "Não informada",
@@ -3644,7 +3717,9 @@ function AdminPageContent() {
         <body class="${visualizar ? "preview-mode" : ""}">
           ${barraVisualizacaoHtml}
           <div class="cupom" style="width:76mm;padding:2mm 1.5mm 3mm;">
-            <h1 style="margin:0 0 2mm;font-size:16px;text-align:center;line-height:1.1;font-weight:700;">Dulelis - Pedido #${pedidoCompleto?.id ?? ""}</h1>
+            <h1 style="margin:0;text-align:center;font-size:16px;line-height:1.1;font-weight:700;">Dulelis</h1>
+            <div style="margin:1.5mm 0;font-size:26px;text-align:center;line-height:1;font-weight:900;letter-spacing:.06em;">${tipoComprovante}</div>
+            <div style="margin:0 0 2mm;text-align:center;font-size:13px;font-weight:700;">Pedido #${pedidoCompleto?.id ?? ""}</div>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Data:</strong> ${pedidoCompleto?.created_at ? new Date(pedidoCompleto.created_at).toLocaleString("pt-BR") : "Não informada"}</div>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>Cliente:</strong> ${String(pedidoCompleto?.cliente_nome || "Cliente")}</div>
             <div style="font-size:12px;margin-bottom:1.2mm;line-height:1.22;font-weight:500;word-break:break-word;"><strong>WhatsApp:</strong> ${String(pedidoCompleto?.whatsapp || "Não informado")}</div>
@@ -7736,7 +7811,7 @@ function AdminPageContent() {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
               <div className="p-5 rounded-[2rem] border border-pink-200 bg-pink-50">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-black text-slate-700 uppercase tracking-widest text-xs">
@@ -7807,7 +7882,82 @@ function AdminPageContent() {
                   prontas para imprimir
                 </p>
               </div>
+              <div className="rounded-[2rem] border border-violet-200 bg-violet-50 p-5">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-700">
+                    Encomendas
+                  </p>
+                  <CalendarDays size={18} className="text-violet-500" />
+                </div>
+                <p className="text-2xl font-black text-slate-800">
+                  {encomendasFilaImpressao.length}
+                </p>
+                <p className="text-sm font-bold text-violet-700">
+                  confirmadas e pagas na fila
+                </p>
+              </div>
             </div>
+            {encomendasFilaImpressao.length ? (
+              <section className="rounded-[2rem] border border-violet-200 bg-violet-50/60 p-5 shadow-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-violet-600">
+                      Fila de impressão
+                    </p>
+                    <h3 className="mt-1 text-lg font-black text-slate-900">
+                      Encomendas confirmadas e pagas
+                    </h3>
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                      A encomenda sai desta fila quando for colocada em produção na agenda.
+                    </p>
+                  </div>
+                  <a href="/admin/encomendas" className="rounded-xl border border-violet-200 bg-white px-4 py-3 text-center text-xs font-black uppercase text-violet-700">
+                    Abrir agenda
+                  </a>
+                </div>
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  {encomendasFilaImpressao.map((order) => {
+                    const details = obterDetalhesEncomendaAdmin(order);
+                    const printableOrder = prepararEncomendaParaImpressao(order);
+                    const scheduledAt = order.agendado_para ? new Date(order.agendado_para) : null;
+                    return (
+                      <article key={order.id} className="rounded-[1.5rem] border border-violet-100 bg-white p-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-violet-600">
+                              Encomenda #{order.id} · Confirmada · Paga
+                            </p>
+                            <h4 className="mt-1 text-base font-black text-slate-900">{order.cliente_nome || "Cliente"}</h4>
+                            <p className="text-xs font-bold text-slate-500">{order.whatsapp || "Sem telefone"}</p>
+                          </div>
+                          <p className="font-black text-emerald-700">{formatarMoedaAdmin(order.total)}</p>
+                        </div>
+                        <div className="mt-3 grid gap-2 text-xs font-bold text-slate-700 sm:grid-cols-2">
+                          <p className="rounded-xl bg-violet-50 p-3"><strong className="block text-[9px] uppercase tracking-widest text-violet-600">Agendamento</strong>{scheduledAt && Number.isFinite(scheduledAt.getTime()) ? scheduledAt.toLocaleString("pt-BR") : "Não informado"}</p>
+                          <p className="rounded-xl bg-slate-50 p-3"><strong className="block text-[9px] uppercase tracking-widest text-slate-400">Recebimento</strong>{String(order.tipo_recebimento || "retirada") === "entrega" ? "Entrega" : "Retirada"}</p>
+                        </div>
+                        {details.evento ? <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs font-black text-amber-800">Evento: {details.evento}</p> : null}
+                        <div className="mt-2 space-y-2 rounded-xl border border-slate-100 p-3">
+                          {(Array.isArray(order.itens) ? order.itens : []).map((item: any, index: number) => {
+                            const detail = details.itens.find((candidate: any) => candidate.produtoId === Number(item?.id || 0)) || details.itens[index];
+                            return <div key={`${item?.id || index}-${index}`} className="text-xs text-slate-700"><p className="font-black">{Number(item?.qtd || 1)}x {String(item?.nome || detail?.nome || "Item")}</p>{detail?.personalizacoes?.length ? <p className="mt-1 font-bold text-slate-500">{detail.personalizacoes.join(" · ")}</p> : null}</div>;
+                          })}
+                        </div>
+                        {order.observacao ? <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-900">Observação: {order.observacao}</p> : null}
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <button type="button" onClick={() => {
+                            const manualPreview = deveUsarVisualizacaoManualImpressao();
+                            const popup = abrirPopupImpressaoPedido(Number(order.id || 0), { visualizacao: manualPreview });
+                            void imprimirPedidoAceito(printableOrder, { popupExistente: popup, visualizar: manualPreview });
+                          }} className="flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-xs font-black uppercase text-white"><Printer size={16} />Imprimir encomenda</button>
+                          <button type="button" onClick={() => void imprimirPedidoAceito(printableOrder, { visualizar: true })} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase text-slate-700">Visualizar impressão</button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
             <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <h3 className="font-black text-base text-slate-800">

@@ -22,10 +22,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
-  const [resEst, resCli, resPed, resTaxas, resProm, resPropagandas, resHorario, resEntregadores, resEntregas, resPrecificacoes] = await Promise.all([
+  const [resEst, resCli, resPed, resEncomendasImpressao, resTaxas, resProm, resPropagandas, resHorario, resEntregadores, resEntregas, resPrecificacoes] = await Promise.all([
     supabase.from("estoque").select("*").order("nome"),
     supabase.from("clientes").select("*").order("created_at", { ascending: false }),
     supabase.from("pedidos").select("*").neq("tipo_pedido", "encomenda").order("created_at", { ascending: false }),
+    supabase
+      .from("pedidos")
+      .select("*")
+      .eq("tipo_pedido", "encomenda")
+      .eq("status_producao", "confirmada")
+      .in("status_pagamento", ["approved", "paid", "authorized", "pago"])
+      .order("agendado_para", { ascending: true }),
     supabase.from("taxas_entrega").select("*").order("taxa"),
     supabase.from("promocoes").select("*").order("created_at", { ascending: false }),
     supabase.from("propagandas").select("*").order("ordem").order("created_at", { ascending: false }),
@@ -44,6 +51,7 @@ export async function GET(request: NextRequest) {
     resEst.error ||
     resCli.error ||
     resPed.error ||
+    resEncomendasImpressao.error ||
     resTaxas.error ||
     resProm.error ||
     resPropagandas.error ||
@@ -66,6 +74,7 @@ export async function GET(request: NextRequest) {
       estoque: resEst.data || [],
       clientes: resCli.data || [],
       pedidos: resPed.data || [],
+      encomendas_impressao: resEncomendasImpressao.data || [],
       taxas: resTaxas.data || [],
       promocoes: resProm.data || [],
       propagandas: resPropagandas.data || [],
