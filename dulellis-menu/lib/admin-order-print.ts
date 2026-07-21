@@ -415,7 +415,7 @@ export function renderOrderReceiptHtml(
           * { box-sizing: border-box; }
           html, body { margin: 0; padding: 0; background: #ffffff; }
           body {
-            color: #111827;
+            color: #000000;
             font-family: "Consolas", "Liberation Mono", "Courier New", monospace;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -523,7 +523,7 @@ export function renderOrderReceiptHtml(
             grid-template-columns: 19mm 1fr;
             gap: 1.8mm;
             align-items: start;
-            font-size: 10px;
+            font-size: 11px;
             line-height: 1.3;
           }
           .receipt-line + .receipt-line {
@@ -534,14 +534,14 @@ export function renderOrderReceiptHtml(
             text-transform: uppercase;
           }
           .receipt-value {
-            font-weight: 500;
+            font-weight: 700;
             word-break: break-word;
           }
           .receipt-items {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
-            font-size: 10px;
+            font-size: 11px;
           }
           .receipt-items td {
             padding: 1.2mm 0;
@@ -555,6 +555,7 @@ export function renderOrderReceiptHtml(
           .receipt-items .name {
             padding-right: 2mm;
             word-break: break-word;
+            font-weight: 700;
           }
           .receipt-items .price {
             width: 19mm;
@@ -572,7 +573,7 @@ export function renderOrderReceiptHtml(
             align-items: baseline;
             justify-content: space-between;
             gap: 10px;
-            font-size: 10px;
+            font-size: 11px;
             line-height: 1.3;
           }
           .receipt-summary-row + .receipt-summary-row {
