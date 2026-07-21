@@ -2855,6 +2855,12 @@ function AdminPageContent() {
     (registro: any) => {
       const pedidoId = Number(registro?.id || 0);
       if (!pedidoId) return "";
+      if (
+        String(registro?.tipo_recebimento || "").trim().toLowerCase() ===
+        "retirada"
+      ) {
+        return "";
+      }
       if (pedidoEhRetiradaNoBalcao(registro)) return "";
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
@@ -3214,7 +3220,7 @@ function AdminPageContent() {
         `${tipoComprovante}\n` +
         fonteNormal +
         "\n" +
-        negritoOff +
+        negritoOn +
         fonteNormal +
         alinharEsquerda +
         `${linhasMeta}\n` +

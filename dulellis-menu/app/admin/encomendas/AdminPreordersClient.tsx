@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Script from "next/script";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -27,6 +28,15 @@ import {
   renderOrderReceiptHtml,
   writePopupHtml,
 } from "@/lib/admin-order-print";
+import {
+  openEscPosInRawbt,
+  printEscPosWithQz,
+  qrCodeEscPos,
+} from "@/lib/admin-direct-print";
+import {
+  ADMIN_QZ_ENABLED,
+  QZ_TRAY_SCRIPT_URL,
+} from "@/lib/admin-print-config";
 
 const WEEKDAYS = [
   ["domingo", "Dom"], ["segunda", "Seg"], ["terca", "Ter"], ["quarta", "Qua"],
@@ -251,7 +261,7 @@ function isMobilePrintEnvironment() {
   );
 }
 
-function printPreorder(order: Order) {
+async function printPreorder(order: Order) {
   const mobile = isMobilePrintEnvironment();
   const token = mobile
     ? `${ORDER_PRINT_BRIDGE_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -311,6 +321,73 @@ function printPreorder(order: Order) {
     String(order.observacao || "").trim(),
   ].filter(Boolean).join(" | ");
   const address = [order.endereco, order.numero].filter(Boolean).join(", ");
+
+  const ascii = (value: unknown) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\x20-\x7e\n]/g, "?");
+  const itemLines = items.length
+    ? items.map((item) => ascii(`${item.quantity}x ${item.name} ${item.total}`)).join("\n")
+    : "ITENS NAO INFORMADOS";
+  const deliveryQr = receiptType === "Entrega"
+    ? qrCodeEscPos(`${window.location.origin}/entrega?pedido=${order.id}`)
+    : "";
+  const escPos =
+    "\x1b\x40" +
+    "\x1b\x61\x01" +
+    "\x1b\x45\x01" +
+    "DULELIS CONFEITARIA\n" +
+    "\x1d\x21\x11" +
+    "ENCOMENDA\n" +
+    "\x1d\x21\x00" +
+    `PEDIDO #${order.id}\n\n` +
+    "\x1b\x61\x00" +
+    ascii(`DATA: ${order.created_at ? new Date(order.created_at).toLocaleString("pt-BR") : "Nao informada"}\n`) +
+    ascii(`CLIENTE: ${order.cliente_nome || "Cliente"}\n`) +
+    ascii(`WHATSAPP: ${order.whatsapp || "Nao informado"}\n`) +
+    ascii(`ENDERECO: ${receiptType === "Retirada" ? "Retirada na Dulelis" : address || "Nao informado"}\n`) +
+    ascii(`BAIRRO: ${order.bairro || "Nao informado"}\n`) +
+    ascii(`CIDADE: ${order.cidade || "Nao informado"}\n`) +
+    ascii(`CEP: ${order.cep || "Nao informado"}\n`) +
+    ascii(`PONTO: ${order.ponto_referencia || "Nao informado"}\n`) +
+    ascii(`OBSERVACAO: ${observation}\n`) +
+    ascii(`PAGAMENTO: ${order.forma_pagamento || "Nao informado"}\n`) +
+    ascii(`STATUS: ${order.status_pagamento || "Nao informado"}\n`) +
+    ascii(`SINAL: ${money(order.valor_sinal)} | SALDO: ${money(order.saldo_restante)}\n`) +
+    "------------------------------------------\n" +
+    itemLines +
+    "\n------------------------------------------\n" +
+    ascii(`SUBTOTAL: ${money(subtotal)}\n`) +
+    ascii(`ENTREGA: ${money(deliveryFee)}\n`) +
+    ascii(`DESCONTO: ${money(discount)}\n`) +
+    ascii(`TOTAL: ${money(total)}\n\n`) +
+    (deliveryQr
+      ? "\x1b\x61\x01QR ENTREGA\n" + deliveryQr + "\n\x1b\x61\x00"
+      : "") +
+    "\n\n\x1b\x45\x00\x1d\x56\x41\x03";
+
+  if (mobile) {
+    popup.close();
+    openEscPosInRawbt(escPos);
+    return;
+  }
+
+  if (ADMIN_QZ_ENABLED) {
+    try {
+      await printEscPosWithQz(escPos);
+      popup.close();
+      return;
+    } catch (error) {
+      popup.close();
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível imprimir pelo QZ Tray.",
+      );
+      return;
+    }
+  }
 
   writePopupHtml(
     popup,
@@ -553,6 +630,9 @@ export function AdminPreordersClient() {
 
   return (
     <main className="min-h-screen bg-slate-100 pb-20 text-slate-900">
+      {ADMIN_QZ_ENABLED ? (
+        <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
+      ) : null}
       <header className="border-b border-slate-200 bg-white px-4 py-5 shadow-sm">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -639,7 +719,7 @@ export function AdminPreordersClient() {
                             <button type="button" onClick={() => void cancelOrder(order)} disabled={saving === `order_cancel-${order.id}`} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><Ban size={16} />Cancelar e retirar da agenda</button>
                           </div>
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-black text-emerald-800"><span>Sinal: {money(order.valor_sinal)}</span><span>Saldo: {money(order.saldo_restante)}</span></div>
-                          <button type="button" onClick={() => printPreorder(order)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white"><Printer size={17} />Imprimir comanda</button>
+                          <button type="button" onClick={() => void printPreorder(order)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white"><Printer size={17} />Imprimir comanda</button>
                           {whatsapp ? <a href={whatsapp.href} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase text-white"><MessageCircle size={17} />{whatsapp.label}</a> : null}
                         </article>;
                       })}
