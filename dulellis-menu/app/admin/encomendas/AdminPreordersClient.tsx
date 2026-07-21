@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Script from "next/script";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -30,13 +29,8 @@ import {
 } from "@/lib/admin-order-print";
 import {
   openEscPosInRawbt,
-  printEscPosWithQz,
   qrCodeEscPos,
 } from "@/lib/admin-direct-print";
-import {
-  ADMIN_QZ_ENABLED,
-  QZ_TRAY_SCRIPT_URL,
-} from "@/lib/admin-print-config";
 
 const WEEKDAYS = [
   ["domingo", "Dom"], ["segunda", "Seg"], ["terca", "Ter"], ["quarta", "Qua"],
@@ -261,7 +255,7 @@ function isMobilePrintEnvironment() {
   );
 }
 
-async function printPreorder(order: Order) {
+function printPreorder(order: Order) {
   const mobile = isMobilePrintEnvironment();
   const token = mobile
     ? `${ORDER_PRINT_BRIDGE_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -375,21 +369,6 @@ async function printPreorder(order: Order) {
     return;
   }
 
-  let browserFallback = !ADMIN_QZ_ENABLED;
-  if (ADMIN_QZ_ENABLED) {
-    try {
-      await printEscPosWithQz(escPos);
-      popup?.close();
-      return;
-    } catch (error) {
-      browserFallback = true;
-      console.warn("QZ Tray indisponível; usando impressão do navegador.", error);
-      window.alert(
-        "O QZ Tray não está conectado. A impressão será aberta pelo navegador.",
-      );
-    }
-  }
-
   writePopupHtml(
     popup,
     renderOrderReceiptHtml(
@@ -419,7 +398,7 @@ async function printPreorder(order: Order) {
           : null,
         items,
       },
-      { visualize: browserFallback, mobilePreview: mobile },
+      { visualize: true, mobilePreview: mobile },
     ),
   );
   popup?.focus();
@@ -634,9 +613,6 @@ export function AdminPreordersClient() {
 
   return (
     <main className="min-h-screen bg-slate-100 pb-20 text-slate-900">
-      {ADMIN_QZ_ENABLED ? (
-        <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
-      ) : null}
       <header className="border-b border-slate-200 bg-white px-4 py-5 shadow-sm">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
