@@ -57,11 +57,44 @@ export async function GET(request: NextRequest) {
       { status: schemaMissing(error.message) ? 503 : 500 },
     );
   }
+  const customerIds = Array.from(new Set(
+    (orders.data || [])
+      .map((order) => Number(order.cliente_id || 0))
+      .filter((id) => Number.isInteger(id) && id > 0),
+  ));
+  const customers = customerIds.length
+    ? await supabase
+      .from("clientes")
+      .select("id,endereco,numero,bairro,cidade,cep,ponto_referencia")
+      .in("id", customerIds)
+    : { data: [], error: null };
+  if (customers.error) {
+    return NextResponse.json(
+      { ok: false, error: customers.error.message },
+      { status: 500 },
+    );
+  }
+  const customersById = new Map(
+    (customers.data || []).map((customer) => [Number(customer.id), customer]),
+  );
+  const ordersWithCustomerAddress = (orders.data || []).map((order) => {
+    const customer = customersById.get(Number(order.cliente_id || 0));
+    if (!customer) return order;
+    return {
+      ...order,
+      endereco: customer.endereco || order.endereco,
+      numero: customer.numero || order.numero,
+      bairro: customer.bairro || order.bairro,
+      cidade: customer.cidade || order.cidade,
+      cep: customer.cep || order.cep,
+      ponto_referencia: customer.ponto_referencia || order.ponto_referencia,
+    };
+  });
   return NextResponse.json({
     ok: true,
     data: {
       config: config.data || null,
-      encomendas: orders.data || [],
+      encomendas: ordersWithCustomerAddress,
       produtos: products.data || [],
       bloqueios: blocks.data || [],
       capacidades: capacities.data || [],

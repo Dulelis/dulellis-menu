@@ -3038,11 +3038,14 @@ function AdminPageContent() {
   const completarPedidoComCliente = useCallback(
     (pedido: any) => {
       const whatsappPedido = normalizarNumero(String(pedido?.whatsapp || ""));
-      if (!whatsappPedido) return pedido;
+      const clienteIdPedido = Number(pedido?.cliente_id || 0);
+      if (!whatsappPedido && clienteIdPedido <= 0) return pedido;
 
       const clienteRelacionado = clientes.find(
         (cliente) =>
-          normalizarNumero(String(cliente?.whatsapp || "")) === whatsappPedido,
+          (clienteIdPedido > 0 && Number(cliente?.id || 0) === clienteIdPedido) ||
+          (Boolean(whatsappPedido) &&
+            normalizarNumero(String(cliente?.whatsapp || "")) === whatsappPedido),
       );
       if (!clienteRelacionado) return pedido;
       const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(pedido);
@@ -3057,22 +3060,26 @@ function AdminPageContent() {
           pedido?.whatsapp || clienteRelacionado?.whatsapp || "",
         ),
         cep: retiradaNoBalcao
-          ? String(pedido?.cep || "")
+          ? String(clienteRelacionado?.cep || pedido?.cep || "")
           : String(pedido?.cep || clienteRelacionado?.cep || ""),
         endereco: retiradaNoBalcao
-          ? String(pedido?.endereco || "Retirada no balcão")
+          ? String(clienteRelacionado?.endereco || pedido?.endereco || "")
           : String(pedido?.endereco || clienteRelacionado?.endereco || ""),
         numero: retiradaNoBalcao
-          ? String(pedido?.numero || "")
+          ? String(clienteRelacionado?.numero || pedido?.numero || "")
           : String(pedido?.numero || clienteRelacionado?.numero || ""),
         bairro: retiradaNoBalcao
-          ? String(pedido?.bairro || "")
+          ? String(clienteRelacionado?.bairro || pedido?.bairro || "")
           : String(pedido?.bairro || clienteRelacionado?.bairro || ""),
         cidade: retiradaNoBalcao
-          ? String(pedido?.cidade || "")
+          ? String(clienteRelacionado?.cidade || pedido?.cidade || "")
           : String(pedido?.cidade || clienteRelacionado?.cidade || ""),
         ponto_referencia: retiradaNoBalcao
-          ? String(pedido?.ponto_referencia || "")
+          ? String(
+              clienteRelacionado?.ponto_referencia ||
+                pedido?.ponto_referencia ||
+                "",
+            )
           : String(
               pedido?.ponto_referencia ||
                 clienteRelacionado?.ponto_referencia ||

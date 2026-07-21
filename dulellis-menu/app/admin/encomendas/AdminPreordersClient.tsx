@@ -343,7 +343,7 @@ function printPreorder(order: Order) {
     ascii(`DATA: ${order.created_at ? new Date(order.created_at).toLocaleString("pt-BR") : "Nao informada"}\n`) +
     ascii(`CLIENTE: ${order.cliente_nome || "Cliente"}\n`) +
     ascii(`WHATSAPP: ${order.whatsapp || "Nao informado"}\n`) +
-    ascii(`ENDERECO: ${receiptType === "Retirada" ? "Retirada na Dulelis" : address || "Nao informado"}\n`) +
+    ascii(`ENDERECO: ${address || "Nao informado"}\n`) +
     ascii(`BAIRRO: ${order.bairro || "Nao informado"}\n`) +
     ascii(`CIDADE: ${order.cidade || "Nao informado"}\n`) +
     ascii(`CEP: ${order.cep || "Nao informado"}\n`) +
@@ -380,7 +380,7 @@ function printPreorder(order: Order) {
           : "Não informada",
         customerName: String(order.cliente_nome || "Cliente"),
         whatsapp: String(order.whatsapp || "Não informado"),
-        address: receiptType === "Retirada" ? "Retirada na Dulelis" : address || "Não informado",
+        address: address || "Não informado",
         neighborhood: String(order.bairro || "Não informado"),
         city: String(order.cidade || "Não informado"),
         cep: String(order.cep || "Não informado"),
