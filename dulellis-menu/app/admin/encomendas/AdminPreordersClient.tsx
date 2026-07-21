@@ -326,6 +326,7 @@ async function printPreorder(order: Order) {
 
   const ascii = (value: unknown) =>
     String(value ?? "")
+      .replace(/[\u00a0\u202f]/g, " ")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^\x20-\x7e\n]/g, "?");
@@ -374,12 +375,14 @@ async function printPreorder(order: Order) {
     return;
   }
 
+  let browserFallback = !ADMIN_QZ_ENABLED;
   if (ADMIN_QZ_ENABLED) {
     try {
       await printEscPosWithQz(escPos);
       popup?.close();
       return;
     } catch (error) {
+      browserFallback = true;
       console.warn("QZ Tray indisponível; usando impressão do navegador.", error);
       window.alert(
         "O QZ Tray não está conectado. A impressão será aberta pelo navegador.",
@@ -416,7 +419,7 @@ async function printPreorder(order: Order) {
           : null,
         items,
       },
-      { visualize: mobile, mobilePreview: mobile },
+      { visualize: browserFallback, mobilePreview: mobile },
     ),
   );
   popup?.focus();
