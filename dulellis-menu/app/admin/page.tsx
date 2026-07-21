@@ -26,6 +26,7 @@ import {
   type QzPrinterTarget,
 } from "@/lib/admin-print-config";
 import {
+  ORDER_PRINT_BRIDGE_PREFIX,
   renderOrderPrintLoadingHtml,
   renderOrderRawbtLaunchHtml,
   renderOrderReceiptHtml,
@@ -3320,14 +3321,21 @@ function AdminPageContent() {
     ): Window | null => {
       if (typeof window === "undefined") return null;
 
-      const popupFeatures = detectarAmbienteImpressaoMovel()
+      const ambienteMovel = detectarAmbienteImpressaoMovel();
+      const popupFeatures = ambienteMovel
         ? undefined
         : options.visualizacao
           ? "width=520,height=820"
           : "width=420,height=760";
+      const tokenImpressao = ambienteMovel
+        ? `${ORDER_PRINT_BRIDGE_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2)}`
+        : "_blank";
+      const urlImpressao = ambienteMovel
+        ? `/admin/impressao?token=${encodeURIComponent(tokenImpressao)}`
+        : "";
       const popup = popupFeatures
-        ? window.open("", "_blank", popupFeatures)
-        : window.open("", "_blank");
+        ? window.open(urlImpressao, tokenImpressao, popupFeatures)
+        : window.open(urlImpressao, tokenImpressao);
 
       prepararPopupImpressao(
         popup,
