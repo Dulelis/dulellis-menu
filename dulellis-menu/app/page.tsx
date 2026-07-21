@@ -1076,6 +1076,8 @@ function ClientePageContent() {
     () => carrinho.reduce((acc, i) => acc + i.preco * i.qtd, 0),
     [carrinho],
   );
+  const retiradaNoBalcao = tipoEntrega === TIPO_RETIRADA_BALCAO;
+  const taxaEntregaEfetiva = retiradaNoBalcao ? 0 : taxaEntrega;
   const promocoesAtivasHoje = useMemo(() => {
     const hoje = dataHojeISO();
     return promocoes.filter((promo) => {
@@ -1143,20 +1145,19 @@ function ClientePageContent() {
     const promoFrete = promocoesAtivasHoje.find((promo) => String(promo.tipo || "") === "frete_gratis");
     const minimoFrete = Number(promoFrete?.valor_minimo_pedido || 0);
     if (promoFrete && subtotal >= minimoFrete) {
-      descontoTotal += taxaEntrega;
+      descontoTotal += taxaEntregaEfetiva;
     }
 
-    return Math.min(descontoTotal, subtotal + taxaEntrega);
-  }, [aniversarioHoje, carrinho, promocoesAtivasHoje, subtotal, taxaEntrega]);
+    return Math.min(descontoTotal, subtotal + taxaEntregaEfetiva);
+  }, [aniversarioHoje, carrinho, promocoesAtivasHoje, subtotal, taxaEntregaEfetiva]);
   const subtotalComPromocao = useMemo(
     () => Math.max(0, subtotal - Math.min(descontoPromocoes, subtotal)),
     [descontoPromocoes, subtotal],
   );
   const totalGeral = useMemo(
-    () => Math.max(0, subtotal + taxaEntrega - descontoPromocoes),
-    [descontoPromocoes, subtotal, taxaEntrega],
+    () => Math.max(0, subtotal + taxaEntregaEfetiva - descontoPromocoes),
+    [descontoPromocoes, subtotal, taxaEntregaEfetiva],
   );
-  const retiradaNoBalcao = tipoEntrega === TIPO_RETIRADA_BALCAO;
   const trocoParaValor = useMemo(() => parseValorMonetario(trocoPara), [trocoPara]);
   const trocoParaPreenchido = trocoPara.trim().length > 0;
   const trocoParaInvalido =
@@ -1954,6 +1955,10 @@ function ClientePageContent() {
       setTipoEntrega(proximoTipo);
 
       if (proximoTipo === TIPO_RETIRADA_BALCAO) {
+        // Invalida uma consulta de CEP ainda em andamento para ela nao restaurar
+        // uma taxa de entrega depois que o cliente escolheu retirar na loja.
+        buscaCepRequestIdRef.current += 1;
+        setBuscandoCep(false);
         setDistanciaKm(null);
         setTaxaEntrega(0);
         setMsgTaxa("Retirada no balcão na loja.");
