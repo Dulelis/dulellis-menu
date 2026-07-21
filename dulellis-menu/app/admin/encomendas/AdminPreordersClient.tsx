@@ -269,16 +269,18 @@ async function printPreorder(order: Order) {
   const printUrl = mobile
     ? `/admin/impressao?token=${encodeURIComponent(token)}`
     : "";
-  const popup = window.open(printUrl, token);
-  if (!popup) {
+  const popup = mobile ? null : window.open(printUrl, token);
+  if (!mobile && !popup) {
     window.alert("Permita pop-ups para abrir a comanda da encomenda.");
     return;
   }
 
-  writePopupHtml(
-    popup,
-    renderOrderPrintLoadingHtml({ orderId: order.id }),
-  );
+  if (popup) {
+    writePopupHtml(
+      popup,
+      renderOrderPrintLoadingHtml({ orderId: order.id }),
+    );
+  }
 
   const details = orderDetails(order);
   const items = (order.itens || []).map((item, index) => {
@@ -368,7 +370,6 @@ async function printPreorder(order: Order) {
     "\n\n\x1b\x45\x00\x1d\x56\x41\x03";
 
   if (mobile) {
-    popup.close();
     openEscPosInRawbt(escPos);
     return;
   }
@@ -376,16 +377,13 @@ async function printPreorder(order: Order) {
   if (ADMIN_QZ_ENABLED) {
     try {
       await printEscPosWithQz(escPos);
-      popup.close();
+      popup?.close();
       return;
     } catch (error) {
-      popup.close();
+      console.warn("QZ Tray indisponível; usando impressão do navegador.", error);
       window.alert(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível imprimir pelo QZ Tray.",
+        "O QZ Tray não está conectado. A impressão será aberta pelo navegador.",
       );
-      return;
     }
   }
 
@@ -413,12 +411,15 @@ async function printPreorder(order: Order) {
         deliveryFee: money(deliveryFee),
         discount: money(discount),
         total: money(total),
+        qrCodeUrl: receiptType === "Entrega"
+          ? `https://quickchart.io/qr?size=160&margin=1&text=${encodeURIComponent(`${window.location.origin}/entrega?pedido=${order.id}`)}`
+          : null,
         items,
       },
       { visualize: mobile, mobilePreview: mobile },
     ),
   );
-  popup.focus();
+  popup?.focus();
 }
 
 export function AdminPreordersClient() {

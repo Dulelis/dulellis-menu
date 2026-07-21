@@ -28,7 +28,6 @@ import {
 import {
   ORDER_PRINT_BRIDGE_PREFIX,
   renderOrderPrintLoadingHtml,
-  renderOrderRawbtLaunchHtml,
   renderOrderReceiptHtml,
   writePopupHtml,
 } from "@/lib/admin-order-print";
@@ -3328,6 +3327,13 @@ function AdminPageContent() {
       if (typeof window === "undefined") return null;
 
       const ambienteMovel = detectarAmbienteImpressaoMovel();
+      if (
+        ambienteMovel &&
+        deveUsarRawbtNoCelular() &&
+        !options.visualizacao
+      ) {
+        return null;
+      }
       const popupFeatures = ambienteMovel
         ? undefined
         : options.visualizacao
@@ -3356,6 +3362,7 @@ function AdminPageContent() {
     },
     [
       detectarAmbienteImpressaoMovel,
+      deveUsarRawbtNoCelular,
       deveUsarVisualizacaoManualImpressao,
     ],
   );
@@ -3443,26 +3450,7 @@ function AdminPageContent() {
         : null;
 
       if (!visualizar && rawbtLinks) {
-        if (!popup || popup.closed) {
-          popup = abrirPopupImpressaoPedido(Number(pedido?.id || 0), {
-            aguardandoQz: false,
-            visualizacao: false,
-          });
-        }
-
-        if (popup && !popup.closed) {
-          writePopupHtml(
-            popup,
-            renderOrderRawbtLaunchHtml({
-              orderId: pedidoCompleto?.id ?? "",
-              intentUrl: rawbtLinks.intentUrl,
-              schemeUrl: rawbtLinks.schemeUrl,
-            }),
-          );
-          popup.focus();
-          return;
-        }
-
+        if (popup && !popup.closed) popup.close();
         window.location.href = rawbtLinks.intentUrl;
         return;
       }

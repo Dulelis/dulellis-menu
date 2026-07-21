@@ -13,6 +13,7 @@ export async function proxy(request: NextRequest) {
   if (
     pathname === "/admin/login" ||
     pathname === "/admin/instalar" ||
+    pathname === "/admin/impressao" ||
     pathname === "/admin/offline" ||
     pathname === "/admin/manifest.webmanifest"
   ) {
