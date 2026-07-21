@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     supabase.from("configuracoes_encomendas").select("*").order("id").limit(1).maybeSingle(),
     supabase
       .from("pedidos")
-      .select("id,cliente_id,cliente_nome,whatsapp,itens,total,taxa_entrega,forma_pagamento,status_pedido,status_pagamento,tipo_recebimento,agendado_para,status_producao,valor_sinal,saldo_restante,detalhes_encomenda,observacao,created_at")
+      .select("id,cliente_id,cliente_nome,whatsapp,itens,total,taxa_entrega,forma_pagamento,status_pedido,status_pagamento,tipo_recebimento,agendado_para,status_producao,valor_sinal,saldo_restante,detalhes_encomenda,observacao,created_at,endereco,numero,bairro,cidade,cep,ponto_referencia")
       .eq("tipo_pedido", "encomenda")
       .order("agendado_para", { ascending: true })
       .limit(500),

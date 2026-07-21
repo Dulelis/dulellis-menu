@@ -14,12 +14,19 @@ import {
   MessageCircle,
   PackageCheck,
   Plus,
+  Printer,
   RefreshCw,
   Save,
   Settings,
   ShoppingBag,
   Trash2,
 } from "lucide-react";
+import {
+  ORDER_PRINT_BRIDGE_PREFIX,
+  renderOrderPrintLoadingHtml,
+  renderOrderReceiptHtml,
+  writePopupHtml,
+} from "@/lib/admin-order-print";
 
 const WEEKDAYS = [
   ["domingo", "Dom"], ["segunda", "Seg"], ["terca", "Ter"], ["quarta", "Qua"],
@@ -63,12 +70,15 @@ type Order = {
   status_pagamento?: string;
   valor_sinal?: number;
   saldo_restante?: number;
+  forma_pagamento?: string;
+  created_at?: string;
   detalhes_encomenda?: Record<string, unknown>;
   observacao?: string;
   endereco?: string;
   numero?: string;
   bairro?: string;
   cidade?: string;
+  cep?: string;
   ponto_referencia?: string;
 };
 
@@ -227,6 +237,111 @@ function cancellationReason(order: Order) {
     ? details.cancelamento as Record<string, unknown>
     : {};
   return String(cancellation.motivo || "");
+}
+
+function isMobilePrintEnvironment() {
+  const userAgent = String(window.navigator.userAgent || "");
+  const platform = String(window.navigator.platform || "");
+  const touch = Number(window.navigator.maxTouchPoints || 0) > 0;
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)").matches === true;
+  return (
+    /android|iphone|ipad|ipod|windows phone/i.test(userAgent) ||
+    (platform === "MacIntel" && touch) ||
+    (touch && coarsePointer)
+  );
+}
+
+function printPreorder(order: Order) {
+  const mobile = isMobilePrintEnvironment();
+  const token = mobile
+    ? `${ORDER_PRINT_BRIDGE_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2)}`
+    : "_blank";
+  const printUrl = mobile
+    ? `/admin/impressao?token=${encodeURIComponent(token)}`
+    : "";
+  const popup = window.open(printUrl, token);
+  if (!popup) {
+    window.alert("Permita pop-ups para abrir a comanda da encomenda.");
+    return;
+  }
+
+  writePopupHtml(
+    popup,
+    renderOrderPrintLoadingHtml({ orderId: order.id }),
+  );
+
+  const details = orderDetails(order);
+  const items = (order.itens || []).map((item, index) => {
+    const detail = details.items.find(
+      (candidate) => candidate.name === String(item.nome || ""),
+    ) || details.items[index];
+    const customizations = detail?.customizations
+      .filter(([key]) => key !== "foto_referencia")
+      .map(([key, value]) => `${key.replaceAll("_", " ")}: ${String(value)}`) || [];
+    const complements = [
+      detail?.unit ? `Unidade: ${detail.unit}` : "",
+      ...customizations,
+    ].filter(Boolean);
+    return {
+      quantity: Number(item.qtd || 1),
+      name: complements.length
+        ? `${String(item.nome || detail?.name || "Item")} | ${complements.join(" | ")}`
+        : String(item.nome || detail?.name || "Item"),
+      total: money(Number(item.preco || 0) * Number(item.qtd || 0)),
+    };
+  });
+  const subtotal = (order.itens || []).reduce(
+    (sum, item) => sum + Number(item.preco || 0) * Number(item.qtd || 0),
+    0,
+  );
+  const deliveryFee = Math.max(0, Number(order.taxa_entrega || 0));
+  const total = Math.max(0, Number(order.total || 0));
+  const discount = Math.max(0, subtotal + deliveryFee - total);
+  const scheduledAt = order.agendado_para ? new Date(order.agendado_para) : null;
+  const scheduleText = scheduledAt && Number.isFinite(scheduledAt.getTime())
+    ? scheduledAt.toLocaleString("pt-BR", { timeZone: SAO_PAULO_TIME_ZONE })
+    : "Não informado";
+  const receiptType = String(order.tipo_recebimento || "retirada").toLowerCase() === "entrega"
+    ? "Entrega"
+    : "Retirada";
+  const observation = [
+    `Agendamento: ${scheduleText}`,
+    `Recebimento: ${receiptType}`,
+    details.event ? `Evento: ${details.event}` : "",
+    String(order.observacao || "").trim(),
+  ].filter(Boolean).join(" | ");
+  const address = [order.endereco, order.numero].filter(Boolean).join(", ");
+
+  writePopupHtml(
+    popup,
+    renderOrderReceiptHtml(
+      {
+        orderId: order.id,
+        orderType: "ENCOMENDA",
+        createdAt: order.created_at
+          ? new Date(order.created_at).toLocaleString("pt-BR")
+          : "Não informada",
+        customerName: String(order.cliente_nome || "Cliente"),
+        whatsapp: String(order.whatsapp || "Não informado"),
+        address: receiptType === "Retirada" ? "Retirada na Dulelis" : address || "Não informado",
+        neighborhood: String(order.bairro || "Não informado"),
+        city: String(order.cidade || "Não informado"),
+        cep: String(order.cep || "Não informado"),
+        referencePoint: String(order.ponto_referencia || "Não informado"),
+        observation,
+        paymentTitle: String(order.forma_pagamento || "Não informado"),
+        paymentStatus: String(order.status_pagamento || "Não informado"),
+        paymentDetail: `Sinal: ${money(order.valor_sinal)} | Saldo: ${money(order.saldo_restante)}`,
+        subtotal: money(subtotal),
+        deliveryFee: money(deliveryFee),
+        discount: money(discount),
+        total: money(total),
+        items,
+      },
+      { visualize: mobile, mobilePreview: mobile },
+    ),
+  );
+  popup.focus();
 }
 
 export function AdminPreordersClient() {
@@ -524,6 +639,7 @@ export function AdminPreordersClient() {
                             <button type="button" onClick={() => void cancelOrder(order)} disabled={saving === `order_cancel-${order.id}`} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><Ban size={16} />Cancelar e retirar da agenda</button>
                           </div>
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-black text-emerald-800"><span>Sinal: {money(order.valor_sinal)}</span><span>Saldo: {money(order.saldo_restante)}</span></div>
+                          <button type="button" onClick={() => printPreorder(order)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white"><Printer size={17} />Imprimir comanda</button>
                           {whatsapp ? <a href={whatsapp.href} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase text-white"><MessageCircle size={17} />{whatsapp.label}</a> : null}
                         </article>;
                       })}
