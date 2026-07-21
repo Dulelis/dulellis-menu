@@ -29,6 +29,11 @@ export type OrderReceiptData = {
   items: OrderReceiptItem[];
 };
 
+export const ORDER_PRINT_BRIDGE_PREFIX = "dulelis-order-print-";
+
+export const orderPrintStorageKey = (token: string) =>
+  `${ORDER_PRINT_BRIDGE_PREFIX}html:${token}`;
+
 type RenderOrderReceiptOptions = {
   visualize?: boolean;
   mobilePreview?: boolean;
@@ -76,6 +81,21 @@ export function writePopupHtml(
   html: string,
 ) {
   if (!popup || popup.closed) return false;
+
+  try {
+    const token = String(popup.name || "");
+    if (token.startsWith(ORDER_PRINT_BRIDGE_PREFIX)) {
+      const storageKey = orderPrintStorageKey(token);
+      window.localStorage.setItem(storageKey, html);
+      popup.postMessage(
+        { type: "dulelis-order-print-html", token, html },
+        window.location.origin,
+      );
+      return true;
+    }
+  } catch (error) {
+    console.warn("Nao foi possivel enviar o cupom para a aba de impressao.", error);
+  }
 
   popup.document.open();
   popup.document.write(html);
@@ -229,7 +249,7 @@ export function renderOrderRawbtLaunchHtml(
           }
         </style>
       </head>
-      <body>
+      <body data-order-print-ready="true">
         <div class="box">
           <h1>Abrindo RawBT</h1>
           <p>Pedido #${renderText(orderId)}</p>
@@ -612,7 +632,7 @@ export function renderOrderReceiptHtml(
           }
         </style>
       </head>
-      <body class="${visualize ? "preview-mode" : ""}">
+      <body data-order-print-ready="true" class="${visualize ? "preview-mode" : ""}">
         ${toolbarHtml}
         <article class="receipt">
           <header class="receipt-header">
