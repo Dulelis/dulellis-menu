@@ -954,6 +954,9 @@ function AdminPageContent() {
     null,
   );
   const [resetandoVitrine, setResetandoVitrine] = useState(false);
+  const [resetVitrineAberto, setResetVitrineAberto] = useState(false);
+  const [resetVitrineConfirmacao, setResetVitrineConfirmacao] = useState("");
+  const [resetVitrineSenha, setResetVitrineSenha] = useState("");
   const recarregarRealtimeRef = useRef<number | null>(null);
   const entregadoresRef = useRef<any[]>([]);
   const qzConectandoRef = useRef<Promise<void> | null>(null);
@@ -1011,6 +1014,7 @@ function AdminPageContent() {
     const res = await fetch("/api/admin/db", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify(body),
     });
     const json = (await res.json().catch(() => ({}))) as {
@@ -4802,11 +4806,12 @@ function AdminPageContent() {
   };
 
   const resetarDadosVitrine = async () => {
-    if (
-      !confirm(
-        "Deseja resetar os dados públicos da vitrine? Isso removerá clientes cadastrados, pedidos e tokens de recuperação de senha.",
-      )
-    ) {
+    if (resetVitrineConfirmacao.trim() !== "EXCLUIR CLIENTES E PEDIDOS") {
+      alert("Digite exatamente EXCLUIR CLIENTES E PEDIDOS para confirmar.");
+      return;
+    }
+    if (!resetVitrineSenha) {
+      alert("Digite novamente a senha administrativa.");
       return;
     }
 
@@ -4815,6 +4820,11 @@ function AdminPageContent() {
       const res = await fetch("/api/admin/reset-vitrine", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          confirmation: resetVitrineConfirmacao.trim(),
+          adminPassword: resetVitrineSenha,
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -4830,6 +4840,9 @@ function AdminPageContent() {
       setClienteHistoricoAbertoId(null);
       setPedidosSelecionadosPorCliente({});
       setPedidosSelecionadosVendas([]);
+      setResetVitrineAberto(false);
+      setResetVitrineConfirmacao("");
+      setResetVitrineSenha("");
       await carregarDados();
       alert(json.message || "Dados públicos da vitrine removidos com sucesso.");
     } catch (error: any) {
@@ -5621,6 +5634,65 @@ function AdminPageContent() {
       {ADMIN_QZ_ENABLED ? (
         <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
       ) : null}
+      {resetVitrineAberto ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 print:hidden" role="dialog" aria-modal="true" aria-labelledby="reset-vitrine-title">
+          <form
+            className="w-full max-w-lg rounded-[2rem] bg-white p-6 shadow-2xl sm:p-8"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void resetarDadosVitrine();
+            }}
+          >
+            <h2 id="reset-vitrine-title" className="text-xl font-black text-red-700">
+              Exclusão geral da vitrine
+            </h2>
+            <p className="mt-3 text-sm font-medium leading-6 text-slate-700">
+              Esta operação fará um backup e removerá definitivamente todos os clientes, pedidos e tokens de recuperação de senha. Estoque e configurações não serão apagados.
+            </p>
+            <label className="mt-6 block text-xs font-black uppercase tracking-wider text-slate-600">
+              Digite EXCLUIR CLIENTES E PEDIDOS
+              <input
+                autoFocus
+                value={resetVitrineConfirmacao}
+                onChange={(event) => setResetVitrineConfirmacao(event.target.value)}
+                autoComplete="off"
+                className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-sm font-bold outline-none focus:border-red-500"
+              />
+            </label>
+            <label className="mt-4 block text-xs font-black uppercase tracking-wider text-slate-600">
+              Confirme a senha administrativa
+              <input
+                type="password"
+                value={resetVitrineSenha}
+                onChange={(event) => setResetVitrineSenha(event.target.value)}
+                autoComplete="current-password"
+                className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-sm font-bold outline-none focus:border-red-500"
+              />
+            </label>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={resetandoVitrine}
+                onClick={() => {
+                  setResetVitrineAberto(false);
+                  setResetVitrineConfirmacao("");
+                  setResetVitrineSenha("");
+                }}
+                className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={resetandoVitrine || resetVitrineConfirmacao.trim() !== "EXCLUIR CLIENTES E PEDIDOS" || !resetVitrineSenha}
+                className="rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resetandoVitrine ? "Criando backup..." : "Fazer backup e excluir"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       <aside className="admin-app-sidebar w-full bg-slate-900 text-white p-4 lg:w-64 lg:p-6 print:hidden">
         <h2 className="text-xl font-black text-pink-500 italic mb-4 text-center tracking-tighter lg:text-2xl lg:mb-10">
           DULELIS
@@ -5721,7 +5793,7 @@ function AdminPageContent() {
             {activeTab === "painel" && (
               <button
                 type="button"
-                onClick={() => void resetarDadosVitrine()}
+                onClick={() => setResetVitrineAberto(true)}
                 disabled={resetandoVitrine}
                 className="w-full sm:w-auto bg-red-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-red-700 transition-all disabled:opacity-60"
               >
@@ -6108,7 +6180,7 @@ function AdminPageContent() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void resetarDadosVitrine()}
+                  onClick={() => setResetVitrineAberto(true)}
                   disabled={resetandoVitrine}
                   className="w-full rounded-2xl bg-red-600 px-6 py-4 text-sm font-black uppercase tracking-widest text-white shadow-lg transition-all hover:bg-red-700 disabled:opacity-60 lg:w-auto"
                 >
