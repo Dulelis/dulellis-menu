@@ -293,25 +293,35 @@ body {
   animation: gentleBlink 2.8s ease-in-out infinite;
 }
 
-@keyframes pwaSplashFloat {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
+@keyframes pwaSplashEmblemReveal {
+  0% {
+    opacity: 0.98;
+    transform: scale(2.45);
   }
-  50% {
-    transform: translateY(-6px) scale(1.02);
+  72% {
+    opacity: 1;
+    transform: scale(0.72);
+  }
+  86% {
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(0.76);
   }
 }
 
-@keyframes pwaSplashGlow {
-  0%,
-  100% {
-    opacity: 0.6;
-    transform: scale(0.96);
+@keyframes pwaSplashHaloReveal {
+  0% {
+    opacity: 0;
+    transform: scale(1.5);
   }
-  50% {
-    opacity: 1;
-    transform: scale(1.04);
+  60% {
+    opacity: 0.75;
+  }
+  100% {
+    opacity: 0.5;
+    transform: scale(0.9);
   }
 }
 
@@ -320,12 +330,34 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.pwa-splash-logo {
-  animation: pwaSplashFloat 2.2s ease-in-out infinite;
+.pwa-splash-emblem {
+  animation: pwaSplashEmblemReveal 1.55s cubic-bezier(0.2, 0.82, 0.24, 1) both;
+  will-change: transform, opacity;
 }
 
-.pwa-splash-glow {
-  animation: pwaSplashGlow 2s ease-in-out infinite;
+.pwa-splash-emblem-closing {
+  animation: none;
+  transform: scale(0.68);
+  transition: transform 450ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.pwa-splash-halo {
+  animation: pwaSplashHaloReveal 1.4s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pwa-splash-emblem,
+  .pwa-splash-halo {
+    animation: none;
+  }
+
+  .pwa-splash-emblem {
+    transform: scale(0.76);
+  }
+
+  .pwa-splash-emblem-closing {
+    transition: none;
+  }
 }
 
 .app-bottom-nav {

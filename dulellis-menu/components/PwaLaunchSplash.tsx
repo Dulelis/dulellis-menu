@@ -1,11 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-const MIN_SPLASH_MS = 1200;
-const EXIT_ANIMATION_MS = 380;
+const MIN_SPLASH_MS = 1650;
+const EXIT_ANIMATION_MS = 450;
 
 type NavigatorWithStandalone = Navigator & {
   standalone?: boolean;
@@ -65,44 +64,30 @@ export function PwaLaunchSplash({ loading }: { loading: boolean }) {
     };
   }, [isClosing]);
 
-  if (!isVisible) {
-    return null;
-  }
+  if (!isVisible) return null;
 
   return (
     <div
-      className={`pwa-splash-shell fixed inset-0 z-[120] flex items-center justify-center bg-white px-6 transition-all duration-500 ${
-        isClosing ? "pointer-events-none opacity-0 scale-[1.02]" : "opacity-100 scale-100"
+      className={`pwa-splash-shell fixed inset-0 z-[120] flex items-center justify-center overflow-hidden bg-[#fdf9ef] transition-opacity duration-500 ${
+        isClosing ? "pointer-events-none opacity-0" : "opacity-100"
       }`}
+      role="status"
+      aria-label="Abrindo o aplicativo Dulelis"
     >
-      <div className="relative w-full max-w-sm overflow-hidden rounded-[2.8rem] border border-white/80 bg-white/88 p-8 text-center shadow-[0_28px_70px_rgba(138,75,29,0.16)] backdrop-blur-xl">
-        <div className="pwa-splash-glow absolute inset-x-8 top-5 h-28 rounded-full bg-pink-200/60 blur-3xl" />
-        <div className="relative mx-auto flex w-full max-w-[240px] items-center justify-center">
-          <Image
-            src="/logo.png"
-            alt="Dulelis"
-            width={240}
-            height={108}
-            className="pwa-splash-logo h-auto w-full object-contain drop-shadow-md"
-            priority
-          />
-        </div>
-        <p className="mt-6 text-[11px] font-black uppercase tracking-[0.32em] text-pink-500">
-          App Dulelis
-        </p>
-        <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-900">
-          Abrindo seu cardápio
-        </h2>
-        <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
-          Bolos, doces e salgados com visual de app para pedir mais rápido no celular.
-        </p>
-        <div className="mt-7 flex items-center justify-center gap-3 rounded-[1.6rem] bg-amber-50 px-4 py-3">
-          <Loader2 className="animate-spin text-pink-500" size={18} />
-          <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-600">
-            {loading ? "Sincronizando vitrine" : "Tudo pronto"}
-          </span>
-        </div>
+      <div className="pwa-splash-halo absolute h-[72vw] max-h-[34rem] w-[72vw] max-w-[34rem] rounded-full bg-[#f3ddbd]/75 blur-3xl" />
+      <div className="relative flex items-center justify-center">
+        <Image
+          src="/dulelis-app-icon-1024.png"
+          alt="Dulelis Confeitaria"
+          width={1024}
+          height={1024}
+          className={`pwa-splash-emblem h-auto w-[84vw] max-w-[29rem] object-contain drop-shadow-[0_22px_32px_rgba(104,64,25,0.2)] ${
+            isClosing ? "pwa-splash-emblem-closing" : ""
+          }`}
+          priority
+        />
       </div>
+      <span className="sr-only">{loading ? "Carregando a vitrine" : "Aplicativo pronto"}</span>
     </div>
   );
 }
