@@ -1,6 +1,6 @@
-const STATIC_CACHE = "dulellis-static-v5";
-const RUNTIME_CACHE = "dulellis-runtime-v5";
-const IMAGE_CACHE = "dulellis-images-v5";
+const STATIC_CACHE = "dulellis-static-v6";
+const RUNTIME_CACHE = "dulellis-runtime-v6";
+const IMAGE_CACHE = "dulellis-images-v6";
 const OFFLINE_URL = "/offline";
 const APP_SHELL = [
   "/",
@@ -8,10 +8,10 @@ const APP_SHELL = [
   "/manifest.webmanifest",
   "/favicon.ico",
   "/logo.png",
-  "/icon-192.png",
-  "/icon-512.png",
-  "/icon-512-maskable.png",
-  "/apple-touch-icon.png",
+  "/icon-192-v2.png",
+  "/icon-512-v2.png",
+  "/icon-512-maskable-v2.png",
+  "/apple-touch-icon-v2.png",
 ];
 
 self.addEventListener("install", (event) => {
