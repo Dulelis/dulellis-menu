@@ -11,6 +11,8 @@ const PRODUCTION_STATUSES = new Set([
   "finalizada",
 ]);
 
+const CANCELLED_RETENTION_DAYS = 15;
+
 function schemaMissing(message?: string) {
   const normalized = String(message || "").toLowerCase();
   return normalized.includes("does not exist") || normalized.includes("could not find") || normalized.includes("schema cache");
@@ -29,11 +31,26 @@ export async function GET(request: NextRequest) {
   const supabase = getServiceSupabase();
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase nao configurado." }, { status: 500 });
 
+  const cleanup = await supabase.rpc("admin_cleanup_cancelled_preorders", {
+    retention_days: CANCELLED_RETENTION_DAYS,
+  });
+  if (cleanup.error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: schemaMissing(cleanup.error.message)
+          ? "Execute sql/upgrade_cancelled_preorders_retention.sql no Supabase."
+          : cleanup.error.message,
+      },
+      { status: schemaMissing(cleanup.error.message) ? 503 : 500 },
+    );
+  }
+
   const [config, orders, products, blocks, capacities] = await Promise.all([
     supabase.from("configuracoes_encomendas").select("*").order("id").limit(1).maybeSingle(),
     supabase
       .from("pedidos")
-      .select("id,cliente_id,cliente_nome,whatsapp,itens,total,taxa_entrega,forma_pagamento,status_pedido,status_pagamento,tipo_recebimento,agendado_para,status_producao,valor_sinal,saldo_restante,detalhes_encomenda,observacao,created_at,endereco,numero,bairro,cidade,cep,ponto_referencia")
+      .select("id,cliente_id,cliente_nome,whatsapp,itens,total,taxa_entrega,forma_pagamento,status_pedido,status_pagamento,tipo_recebimento,agendado_para,status_producao,cancelado_em,valor_sinal,saldo_restante,detalhes_encomenda,observacao,created_at,endereco,numero,bairro,cidade,cep,ponto_referencia")
       .eq("tipo_pedido", "encomenda")
       .order("agendado_para", { ascending: true })
       .limit(500),
@@ -98,6 +115,7 @@ export async function GET(request: NextRequest) {
       produtos: products.data || [],
       bloqueios: blocks.data || [],
       capacidades: capacities.data || [],
+      retencao_cancelados_dias: CANCELLED_RETENTION_DAYS,
     },
   });
 }
@@ -146,6 +164,7 @@ export async function POST(request: NextRequest) {
         .update({
           status_producao: "cancelada",
           status_pedido: "cancelado",
+          cancelado_em: now,
           detalhes_encomenda: {
             ...details,
             cancelamento: {
@@ -178,7 +197,7 @@ export async function POST(request: NextRequest) {
       }
       const { data, error } = await supabase
         .from("pedidos")
-        .update({ status_producao: "aguardando_confirmacao", status_pedido: "aguardando_aceite" })
+        .update({ status_producao: "aguardando_confirmacao", status_pedido: "aguardando_aceite", cancelado_em: null })
         .eq("id", id)
         .eq("tipo_pedido", "encomenda")
         .eq("status_producao", "cancelada")
