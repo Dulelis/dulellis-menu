@@ -8,7 +8,6 @@ const APP_SHELL = [
   "/manifest.webmanifest",
   "/favicon.ico",
   "/logo.png",
-  "/dulelis-app-icon-1024.png",
   "/icon-192-v3.png",
   "/icon-512-v3.png",
   "/icon-512-maskable-v3.png",
