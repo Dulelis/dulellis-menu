@@ -293,41 +293,6 @@ body {
   animation: gentleBlink 2.8s ease-in-out infinite;
 }
 
-@keyframes pwaSplashFloat {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    transform: translateY(-6px) scale(1.02);
-  }
-}
-
-@keyframes pwaSplashGlow {
-  0%,
-  100% {
-    opacity: 0.6;
-    transform: scale(0.96);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.04);
-  }
-}
-
-.pwa-splash-shell {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.pwa-splash-logo {
-  animation: pwaSplashFloat 2.2s ease-in-out infinite;
-}
-
-.pwa-splash-glow {
-  animation: pwaSplashGlow 2s ease-in-out infinite;
-}
-
 .app-bottom-nav {
   padding-bottom: 0.45rem;
   padding-bottom: calc(0.45rem + constant(safe-area-inset-bottom));

@@ -8,7 +8,6 @@ import { AppBottomNav } from "@/components/AppBottomNav";
 import { PropagandaFrame } from "@/components/PropagandaFrame";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
-import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
 import { validateCustomerFullName } from "@/lib/customer-name-policy";
 import { CUSTOMER_PASSWORD_RULES_TEXT, validateCustomerPassword } from "@/lib/customer-password-policy";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
@@ -3244,7 +3243,6 @@ function ClientePageContent() {
       className="app-page min-h-[100dvh] bg-white font-sans text-slate-900"
       data-has-cart={temAtalhoCarrinho ? "true" : "false"}
     >
-      <PwaLaunchSplash loading={loading} />
       {exibindoTransicaoMercadoPago ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
           <div className="w-full max-w-sm rounded-[2.8rem] bg-white px-7 py-8 text-center shadow-2xl">
