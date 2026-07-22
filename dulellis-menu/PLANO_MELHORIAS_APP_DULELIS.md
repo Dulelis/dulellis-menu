@@ -146,6 +146,25 @@ Hoje o saldo é derivado dos dados de cancelamento dos pedidos. Deve existir um 
 - [ ] Testar pagamento pendente, aprovado, rejeitado e cancelado.
 - [ ] Garantir que somente pedidos pagos e confirmados entrem na impressão.
 
+### 7.1. Retenção de encomendas canceladas
+
+**Prioridade:** alta
+**Status:** [~] Em andamento
+
+- [x] Registrar uma data própria para o cancelamento.
+- [x] Manter encomendas canceladas por 15 dias.
+- [x] Excluir automaticamente somente cancelados com prazo vencido.
+- [x] Não excluir pedidos ativos, finalizados ou cancelamentos recentes.
+- [x] Limpar a data de cancelamento quando a encomenda voltar para a agenda.
+- [x] Registrar a limpeza automática no histórico administrativo.
+- [x] Mostrar na tela a data do cancelamento e os dias restantes.
+- [x] Instalar `sql/upgrade_cancelled_preorders_retention.sql` no Supabase.
+- [x] Validar a função de limpeza sem remover cancelamentos dentro do prazo.
+
+**Implementação em 21/07/2026:** a limpeza é transacional e executada ao abrir ou atualizar a agenda administrativa. Cancelados antigos sem data válida recebem uma nova janela conservadora de 15 dias; quando existe a data original no histórico, ela é preservada.
+
+**Instalação confirmada em 21/07/2026:** a coluna `cancelado_em` e a função `admin_cleanup_cancelled_preorders` responderam no Supabase. O teste de instalação usou uma retenção segura de 100 anos e não removeu registros.
+
 ---
 
 ## Fase 3 — Banco de dados, auditoria e infraestrutura

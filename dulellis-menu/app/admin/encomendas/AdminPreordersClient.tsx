@@ -71,6 +71,7 @@ type Order = {
   tipo_recebimento?: string;
   agendado_para?: string;
   status_producao?: string;
+  cancelado_em?: string;
   status_pagamento?: string;
   valor_sinal?: number;
   saldo_restante?: number;
@@ -117,7 +118,7 @@ type ProductOptions = {
 
 type Block = { id: number; inicio: string; fim: string; motivo?: string; ativo?: boolean };
 type Capacity = { id: number; data: string; hora_inicio: string; hora_fim: string; capacidade_total: number; observacao?: string };
-type AdminData = { config: Config; encomendas: Order[]; produtos: Product[]; bloqueios: Block[]; capacidades: Capacity[] };
+type AdminData = { config: Config; encomendas: Order[]; produtos: Product[]; bloqueios: Block[]; capacidades: Capacity[]; retencao_cancelados_dias?: number };
 
 function money(value?: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
@@ -243,6 +244,17 @@ function cancellationReason(order: Order) {
   return String(cancellation.motivo || "");
 }
 
+function cancellationRetentionLabel(order: Order, retentionDays = 15) {
+  const cancelledAt = new Date(String(order.cancelado_em || ""));
+  if (!Number.isFinite(cancelledAt.getTime())) return "Exclusão em até 15 dias";
+  const expiresAt = cancelledAt.getTime() + retentionDays * 24 * 60 * 60 * 1000;
+  const remainingDays = Math.max(0, Math.ceil((expiresAt - Date.now()) / (24 * 60 * 60 * 1000)));
+  const cancelledLabel = cancelledAt.toLocaleDateString("pt-BR");
+  return remainingDays === 1
+    ? `Cancelado em ${cancelledLabel} · exclui amanhã`
+    : `Cancelado em ${cancelledLabel} · exclui em ${remainingDays} dias`;
+}
+
 function isMobilePrintEnvironment() {
   const userAgent = String(window.navigator.userAgent || "");
   const platform = String(window.navigator.platform || "");
@@ -255,16 +267,18 @@ function isMobilePrintEnvironment() {
   );
 }
 
-function printPreorder(order: Order) {
+function printPreorder(order: Order, destination: "app" | "browser" = "browser") {
   const mobile = isMobilePrintEnvironment();
-  const token = mobile
+  const usePrintApp = mobile && destination === "app";
+  const useBrowserBridge = mobile && destination === "browser";
+  const token = useBrowserBridge
     ? `${ORDER_PRINT_BRIDGE_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2)}`
     : "_blank";
-  const printUrl = mobile
+  const printUrl = useBrowserBridge
     ? `/admin/impressao?token=${encodeURIComponent(token)}`
     : "";
-  const popup = mobile ? null : window.open(printUrl, token);
-  if (!mobile && !popup) {
+  const popup = usePrintApp ? null : window.open(printUrl, token);
+  if (!usePrintApp && !popup) {
     window.alert("Permita pop-ups para abrir a comanda da encomenda.");
     return;
   }
@@ -364,7 +378,7 @@ function printPreorder(order: Order) {
       : "") +
     "\n\n\x1b\x45\x00\x1d\x56\x41\x03";
 
-  if (mobile) {
+  if (usePrintApp) {
     openEscPosInRawbt(escPos);
     return;
   }
@@ -413,6 +427,7 @@ export function AdminPreordersClient() {
   const [error, setError] = useState("");
   const [newOrderAlert, setNewOrderAlert] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [mobilePrintEnvironment, setMobilePrintEnvironment] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
   const knownOrderIdsRef = useRef<Set<number> | null>(null);
   const [blockForm, setBlockForm] = useState({ inicio: "", fim: "", motivo: "" });
@@ -460,6 +475,10 @@ export function AdminPreordersClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setMobilePrintEnvironment(isMobilePrintEnvironment());
+  }, []);
 
   useEffect(() => {
     if (tab !== "agenda") return;
@@ -699,7 +718,14 @@ export function AdminPreordersClient() {
                             <button type="button" onClick={() => void cancelOrder(order)} disabled={saving === `order_cancel-${order.id}`} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><Ban size={16} />Cancelar e retirar da agenda</button>
                           </div>
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-black text-emerald-800"><span>Sinal: {money(order.valor_sinal)}</span><span>Saldo: {money(order.saldo_restante)}</span></div>
-                          <button type="button" onClick={() => void printPreorder(order)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white"><Printer size={17} />Imprimir comanda</button>
+                          {mobilePrintEnvironment ? (
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                              <button type="button" onClick={() => void printPreorder(order, "app")} className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white"><Printer size={17} />Imprimir pelo app</button>
+                              <button type="button" onClick={() => void printPreorder(order, "browser")} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-slate-900 bg-white px-4 py-3 text-xs font-black uppercase text-slate-900"><Printer size={17} />Imprimir pelo navegador</button>
+                            </div>
+                          ) : (
+                            <button type="button" onClick={() => void printPreorder(order, "browser")} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white"><Printer size={17} />Imprimir comanda</button>
+                          )}
                           {whatsapp ? <a href={whatsapp.href} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase text-white"><MessageCircle size={17} />{whatsapp.label}</a> : null}
                         </article>;
                       })}
@@ -773,7 +799,7 @@ export function AdminPreordersClient() {
           <section className="mt-6 space-y-4">
             <div className="rounded-3xl bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3"><Ban className="text-rose-600" /><div><h2 className="text-xl font-black">Itens cancelados</h2><p className="text-sm font-bold text-slate-500">Edite os dados, registre o motivo ou devolva a encomenda para a agenda.</p></div></div>
+                <div className="flex items-center gap-3"><Ban className="text-rose-600" /><div><h2 className="text-xl font-black">Itens cancelados</h2><p className="text-sm font-bold text-slate-500">Os cancelados ficam registrados por 15 dias. Depois desse prazo, são excluídos automaticamente.</p></div></div>
                 <span className="rounded-full bg-rose-100 px-4 py-2 text-xs font-black uppercase text-rose-700">{cancelledOrders.length} cancelados</span>
               </div>
             </div>
@@ -781,7 +807,7 @@ export function AdminPreordersClient() {
             {cancelledOrders.map((order) => (
               <article key={order.id} className="rounded-3xl border border-rose-100 bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div><p className="text-[10px] font-black uppercase tracking-wider text-rose-600">Pedido #{order.id} cancelado</p><p className="mt-1 font-black text-slate-800">{money(order.total)}</p></div>
+                  <div><p className="text-[10px] font-black uppercase tracking-wider text-rose-600">Pedido #{order.id} cancelado</p><p className="mt-1 font-black text-slate-800">{money(order.total)}</p><p className="mt-1 text-[10px] font-bold text-slate-500">{cancellationRetentionLabel(order, Number(data?.retencao_cancelados_dias || 15))}</p></div>
                   <button type="button" onClick={() => void action("order_restore", order.id)} disabled={saving === `order_restore-${order.id}`} className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><RefreshCw size={16} />Voltar para a agenda</button>
                 </div>
 
