@@ -20,15 +20,20 @@ function estaEmModoApp() {
 }
 
 export function PwaLaunchSplash({ loading }: { loading: boolean }) {
-  const [isVisible, setIsVisible] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
+  const [isStandaloneReady, setIsStandaloneReady] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const startedAtRef = useRef(0);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      if (!estaEmModoApp()) return;
+      if (!estaEmModoApp()) {
+        setIsVisible(false);
+        return;
+      }
+
       startedAtRef.current = Date.now();
-      setIsVisible(true);
+      setIsStandaloneReady(true);
     });
 
     return () => window.cancelAnimationFrame(frame);
@@ -57,7 +62,9 @@ export function PwaLaunchSplash({ loading }: { loading: boolean }) {
 
   return (
     <div
-      className={`pwa-splash-shell fixed inset-0 z-[120] flex items-center justify-center overflow-hidden bg-[#fdf9ef] ${
+      className={`pwa-splash-shell fixed inset-0 z-[120] items-center justify-center overflow-hidden bg-[#fdf9ef] ${
+        isStandaloneReady ? "pwa-splash-shell-active" : ""
+      } ${
         isClosing ? "pwa-splash-shell-closing pointer-events-none" : ""
       }`}
       role="status"

@@ -294,16 +294,17 @@ body {
 }
 
 @keyframes pwaSplashGrandReveal {
-  0% {
-    opacity: 0.96;
-    transform: scale(3.6);
-  }
-  68% {
+  0%,
+  10% {
     opacity: 1;
-    transform: scale(0.82);
+    transform: scale(0.26);
   }
-  84% {
-    transform: scale(1.02);
+  58% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  78% {
+    transform: scale(0.84);
   }
   100% {
     opacity: 1;
@@ -314,7 +315,7 @@ body {
 @keyframes pwaSplashHaloReveal {
   0% {
     opacity: 0;
-    transform: scale(1.65);
+    transform: scale(0.3);
   }
   100% {
     opacity: 0.62;
@@ -355,8 +356,19 @@ body {
 }
 
 .pwa-splash-shell {
+  display: none;
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pwa-splash-shell-active {
+  display: flex;
+}
+
+@media (display-mode: standalone) {
+  .pwa-splash-shell {
+    display: flex;
+  }
 }
 
 .pwa-splash-shell-closing {
@@ -369,7 +381,7 @@ body {
 }
 
 .pwa-splash-emblem-closing {
-  animation: pwaSplashSpiralExit 1.1s cubic-bezier(0.36, 0, 0.66, -0.56) forwards;
+  animation: pwaSplashSpiralExit 1.1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 .pwa-splash-halo {
