@@ -44,7 +44,6 @@ const WHATSAPP_LOJA_ACOMPANHAMENTO_LABEL = "(47) 99237-5871";
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
 const CIDADE_ATENDIDA = "Navegantes";
-const CATEGORIAS = ["Todos", "Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais", "Personalizado"];
 const ORDEM_VITRINE_CATEGORIAS = ["Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais", "Personalizado"];
 const DESCRICOES_CATEGORIA: Record<string, string> = {
   Bolos: "Bolos",
@@ -2909,6 +2908,23 @@ function ClientePageContent() {
       }, {}),
     [carrinho],
   );
+  const categoriasDisponiveis = useMemo(
+    () =>
+      ORDEM_VITRINE_CATEGORIAS.filter((categoria) =>
+        produtos.some(
+          (produto) =>
+            produto.categoria === categoria &&
+            (produto.quantidade > 0 || (quantidadesCarrinho[produto.id] ?? 0) > 0),
+        ),
+      ),
+    [produtos, quantidadesCarrinho],
+  );
+
+  useEffect(() => {
+    if (categoriaAtiva === "Todos" || categoriasDisponiveis.includes(categoriaAtiva)) return;
+    setCategoriaAtiva("Todos");
+  }, [categoriaAtiva, categoriasDisponiveis]);
+
   const produtosFiltrados = useMemo(
     () => {
       const base = produtos
@@ -2930,10 +2946,10 @@ function ClientePageContent() {
   );
   const secoesVitrine = useMemo(() => {
     if (categoriaAtiva === "Todos") {
-      return ORDEM_VITRINE_CATEGORIAS.map((categoria) => ({
-        categoria,
-        itens: produtosFiltrados.filter((produto) => produto.categoria === categoria),
-      }));
+      return categoriasDisponiveis.map((categoria) => ({
+          categoria,
+          itens: produtosFiltrados.filter((produto) => produto.categoria === categoria),
+        }));
     }
 
     return [
@@ -2942,7 +2958,7 @@ function ClientePageContent() {
         itens: produtosFiltrados,
       },
     ];
-  }, [categoriaAtiva, produtosFiltrados]);
+  }, [categoriaAtiva, categoriasDisponiveis, produtosFiltrados]);
   const resumoPromocaoProduto = useCallback(
     (produtoId: number) => {
       const promo = promocoesAtivasHoje.find(
@@ -3265,10 +3281,10 @@ function ClientePageContent() {
       ) : null}
       <header
         ref={topoVitrineRef}
-        className="app-topbar relative overflow-hidden border-b border-pink-50 bg-white p-8 text-center"
+        className="app-topbar relative overflow-hidden border-b border-pink-50 bg-white px-4 pb-4 pt-5 text-center sm:px-8 sm:pb-6"
       >
         <div className="absolute top-0 left-0 w-full h-1 bg-amber-600"></div>
-        <div className="absolute top-4 right-4 z-10 flex gap-2">
+        <div className="absolute right-3 top-3 z-10 flex gap-2 sm:right-4 sm:top-4">
           {!sessaoCliente ? (
             <button
               type="button"
@@ -3289,23 +3305,24 @@ function ClientePageContent() {
             </button>
           )}
         </div>
-        <div className="flex flex-col items-center justify-center gap-2 pt-9 sm:pt-2">
+        <div className="flex flex-col items-center justify-center gap-1 pt-7 sm:pt-2">
           <Image
             src="/logo.png"
             alt="Dulelis Confeitaria"
             width={320}
             height={144}
-            className="h-auto w-full max-w-[260px] object-contain drop-shadow-sm sm:max-w-[340px]"
+            className="h-auto w-full max-w-[210px] object-contain drop-shadow-sm sm:max-w-[280px]"
             priority
           />
           <p className="inline-flex items-baseline justify-center gap-2 text-slate-400 uppercase tracking-normal">
-            <span className="text-lg font-black text-pink-500 sm:text-xl">Delivery</span>
+            <span className="text-base font-black text-pink-500 sm:text-lg">Delivery</span>
             <span className="text-[11px] font-bold sm:text-xs">artesanal</span>
           </p>
         </div>
-        <div className="max-w-xl mx-auto mt-4 flex items-center justify-between gap-3">
-          <div className="text-left min-h-[20px]">
-            {sessaoCliente?.nome ? (
+        {sessaoCliente ? (
+          <div className="mx-auto mt-3 flex max-w-xl items-center justify-between gap-3">
+            <div className="min-h-[20px] text-left">
+              {sessaoCliente.nome ? (
               <div>
                 <p className="text-base sm:text-lg font-black text-slate-800 leading-none">
                   Olá, {primeiroNome(sessaoCliente.nome)}
@@ -3316,27 +3333,24 @@ function ClientePageContent() {
                   </p>
                 ) : null}
               </div>
+              ) : null}
+            </div>
+            {podeAcompanharPedido ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setModalAcompanhamentoAberto(true);
+                  setPedidosAcompanhamento([]);
+                  setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
+                }}
+                className="rounded-2xl bg-slate-900 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-lg transition-all sm:text-xs"
+              >
+                Acompanhar pedido
+              </button>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (!sessaoCliente || !podeAcompanharPedido) return;
-              setModalAcompanhamentoAberto(true);
-              setPedidosAcompanhamento([]);
-              setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
-            }}
-            disabled={!sessaoCliente || !podeAcompanharPedido}
-            className={`px-5 py-3 rounded-2xl font-black uppercase text-[11px] tracking-[0.18em] shadow-lg transition-all sm:text-xs ${
-              sessaoCliente && podeAcompanharPedido
-                ? "bg-slate-900 text-white"
-                : "bg-slate-200 text-slate-500 shadow-none"
-            }`}
-          >
-            Acompanhar meu pedido
-          </button>
-        </div>
-        <div className="mx-auto mt-4 max-w-xl">
+        ) : null}
+        <div className="mx-auto mt-3 max-w-xl">
           <ServiceModeSwitcher active="delivery" />
         </div>
         <PwaInstallPrompt />
@@ -3379,7 +3393,7 @@ function ClientePageContent() {
           </div>
           <div
             ref={destaquesVitrineRef}
-            className="max-w-xl mx-auto rounded-2xl bg-amber-700 text-white px-4 py-3 shadow-lg h-[336px] flex flex-col"
+            className="mx-auto flex h-[236px] max-w-xl flex-col rounded-2xl bg-amber-700 px-3 py-2.5 text-white shadow-lg sm:h-[280px] sm:px-4 sm:py-3"
           >
             <div className="h-3 mb-2">
               {mensagensVitrine.length > 1 && (
@@ -3420,7 +3434,7 @@ function ClientePageContent() {
               )}
             </div>
             <div
-              className="relative mt-1 rounded-xl overflow-hidden border border-white/10 h-60 sm:h-64 bg-white/5"
+              className="relative mt-1 h-40 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-48"
               onContextMenu={(event) => event.preventDefault()}
               onTouchStart={pausarBannerNoToque}
               onTouchEnd={retomarBannerAoSoltar}
@@ -3472,7 +3486,7 @@ function ClientePageContent() {
                 ) : null}
               </div>
             </div>
-            <div className="h-7 mt-2">
+            <div className="mt-1.5 h-6">
               {slideAtualVitrine?.botao_link && (
                 <button
                   type="button"
@@ -3490,8 +3504,9 @@ function ClientePageContent() {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 py-3 px-3 sm:flex sm:justify-center sm:gap-3 sm:overflow-x-auto sm:py-4 sm:px-6 sm:no-scrollbar">
-        {CATEGORIAS.map((cat) => (
+        {categoriasDisponiveis.length > 0 ? (
+          <div className="grid grid-cols-3 gap-2 px-3 py-3 sm:flex sm:justify-center sm:gap-3 sm:overflow-x-auto sm:px-6 sm:py-4 sm:no-scrollbar">
+          {["Todos", ...categoriasDisponiveis].map((cat) => (
           <button
             key={cat}
             type="button"
@@ -3500,8 +3515,9 @@ function ClientePageContent() {
           >
             {cat}
           </button>
-        ))}
-        </div>
+          ))}
+          </div>
+        ) : null}
       </div>
 
       <style jsx global>{`
@@ -3523,15 +3539,27 @@ function ClientePageContent() {
             />
             <Loader2 className="animate-spin text-pink-500" size={30} />
           </div>
+        ) : produtosFiltrados.length === 0 ? (
+          <section className="rounded-[1.8rem] border border-amber-200 bg-amber-50 px-5 py-7 text-center">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-700">
+              Vitrine em atualização
+            </p>
+            <h2 className="mt-2 text-xl font-black text-slate-800">
+              Novos produtos estarão disponíveis em breve.
+            </h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-600">
+              Confira novamente daqui a pouco ou fale com a Dulelis para saber das novidades.
+            </p>
+          </section>
         ) : (
           secoesVitrine.map((secao) => (
             <section key={secao.categoria} className="space-y-3">
-              <div className="overflow-hidden rounded-[1.8rem] border border-pink-200 bg-white shadow-[0_10px_22px_rgba(138,75,29,0.08)]">
-                <div className="bg-amber-700 px-5 py-3 text-center">
-                  <p className="text-[11px] font-black uppercase tracking-[0.34em] text-white">
-                    {DESCRICOES_CATEGORIA[secao.categoria] || secao.categoria}
-                  </p>
-                </div>
+              <div className="flex items-center gap-3 px-1">
+                <div className="h-px flex-1 bg-amber-200" />
+                <h2 className="text-[11px] font-black uppercase tracking-[0.26em] text-amber-800">
+                  {DESCRICOES_CATEGORIA[secao.categoria] || secao.categoria}
+                </h2>
+                <div className="h-px flex-1 bg-amber-200" />
               </div>
 
               {secao.itens.length > 0 ? (
@@ -3618,24 +3646,6 @@ function ClientePageContent() {
                     </div>
                   </div>
                 ))
-              ) : secao.categoria === "Produtos naturais" ? (
-                <div className="rounded-[1.8rem] border border-emerald-200 bg-amber-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(138,75,29,0.08)]">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-500">
-                    Em construção
-                  </p>
-                  <p className="mt-2 text-lg font-black text-slate-800">
-                    Produtos naturais em construção. Estamos preparando essa novidade para você.
-                  </p>
-                </div>
-              ) : secao.categoria === "Personalizado" ? (
-                <div className="rounded-[1.8rem] border border-amber-200 bg-amber-50 px-5 py-6 text-center shadow-[0_10px_24px_rgba(138,75,29,0.08)]">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-600">
-                    Em produção
-                  </p>
-                  <p className="mt-2 text-lg font-black text-slate-800">
-                    Personalizados em produção. Estamos preparando essa novidade para você.
-                  </p>
-                </div>
               ) : null}
             </section>
           ))
