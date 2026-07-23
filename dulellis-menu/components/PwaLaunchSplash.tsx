@@ -62,7 +62,7 @@ export function PwaLaunchSplash({ loading }: { loading: boolean }) {
 
   return (
     <div
-      className={`pwa-splash-shell fixed inset-0 z-[120] items-center justify-center overflow-hidden bg-[#fdf9ef] ${
+      className={`pwa-splash-shell fixed inset-0 z-[120] items-center justify-center overflow-hidden bg-white ${
         isStandaloneReady ? "pwa-splash-shell-active" : ""
       } ${
         isClosing ? "pwa-splash-shell-closing pointer-events-none" : ""
@@ -70,13 +70,12 @@ export function PwaLaunchSplash({ loading }: { loading: boolean }) {
       role="status"
       aria-label="Abrindo o aplicativo Dulelis"
     >
-      <div className="pwa-splash-halo absolute h-[88vw] max-h-[39rem] w-[88vw] max-w-[39rem] rounded-full bg-[#efd3aa]/80 blur-3xl" />
       <Image
-        src="/dulelis-app-icon-1024.png"
+        src="/logo.png"
         alt="Dulelis Confeitaria"
-        width={1024}
-        height={1024}
-        className={`pwa-splash-emblem relative h-auto w-[96vw] max-w-[34rem] object-contain drop-shadow-[0_28px_38px_rgba(104,64,25,0.24)] ${
+        width={1190}
+        height={534}
+        className={`pwa-splash-emblem relative h-auto w-[90vw] max-w-[34rem] object-contain drop-shadow-[0_24px_32px_rgba(219,39,119,0.14)] ${
           isClosing ? "pwa-splash-emblem-closing" : ""
         }`}
         priority
