@@ -886,7 +886,7 @@ export function PreordersPageClient() {
         ) : null}
 
         {catalog && catalog.produtos.length > 0 ? (
-          <nav id="catalogo-encomendas" className="overflow-x-auto rounded-[1.5rem] border border-pink-100 bg-white p-2.5 shadow-[0_6px_18px_rgba(138,75,29,0.07)]" aria-label="Categorias de encomendas">
+          <nav id="catalogo-encomendas" className="no-scrollbar overflow-x-auto rounded-[1.5rem] border border-pink-100 bg-white p-2.5 shadow-[0_6px_18px_rgba(138,75,29,0.07)]" aria-label="Categorias de encomendas">
             <div className="flex min-w-max gap-2">{categories.map((category, index) => {
               const colors = CATEGORY_COLOR_CLASSES[index % CATEGORY_COLOR_CLASSES.length];
               return <button key={category} type="button" onClick={() => setSelectedCategory(category)} className={`rounded-xl px-4 py-2.5 text-xs font-extrabold uppercase tracking-[0.04em] transition-all ${activeCategory === category ? `${colors.active} ring-2 ring-white` : colors.idle}`}>{category}</button>;
