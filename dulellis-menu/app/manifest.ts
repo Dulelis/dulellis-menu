@@ -11,23 +11,23 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#fdf9ef",
-    theme_color: "#8a4b1d",
+    background_color: "#ffffff",
+    theme_color: "#ffffff",
     lang: "pt-BR",
     categories: ["food", "shopping", "lifestyle"],
     icons: [
       {
-        src: "/icon-192-v3.png",
+        src: "/icon-192.png",
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: "/icon-512-v3.png",
+        src: "/icon-512.png",
         sizes: "512x512",
         type: "image/png",
       },
       {
-        src: "/icon-512-maskable-v3.png",
+        src: "/icon-512-maskable.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

@@ -370,10 +370,10 @@ textarea {
 @keyframes pwaSplashBackdropExit {
   0%,
   46% {
-    background-color: #fdf9ef;
+    background-color: #ffffff;
   }
   100% {
-    background-color: rgb(253 249 239 / 0%);
+    background-color: rgb(255 255 255 / 0%);
   }
 }
 
