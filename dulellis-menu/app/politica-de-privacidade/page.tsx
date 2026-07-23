@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ArrowLeft, Mail, ShieldCheck } from "lucide-react";
 import {
   PRIVACY_POLICY_EFFECTIVE_DATE,
   PRIVACY_POLICY_VERSION,
@@ -94,41 +95,48 @@ const secoes = [
 
 export default function PoliticaDePrivacidadePage() {
   return (
-    <main className="min-h-screen bg-white px-4 py-10 text-slate-800">
+    <main className="min-h-screen bg-gradient-to-b from-pink-50 via-white to-amber-50 px-4 py-6 text-slate-800 sm:py-10">
       <div className="mx-auto max-w-4xl">
-        <div className="rounded-[2rem] border border-amber-200 bg-white/90 p-6 shadow-sm backdrop-blur">
-          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-rose-500">
-            Política de Privacidade
-          </p>
+        <Link href="/" className="mb-4 inline-flex items-center gap-2 text-xs font-extrabold text-slate-600"><ArrowLeft size={15} /> Voltar ao cardápio</Link>
+        <header className="rounded-[2rem] border border-pink-100 bg-white p-6 shadow-[0_14px_40px_rgba(138,75,29,0.09)] sm:p-8">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-pink-50 text-pink-600"><ShieldCheck size={25} /></div>
+          <p className="mt-5 text-[10px] font-extrabold uppercase tracking-[0.2em] text-pink-600">Privacidade e transparência</p>
           <h1 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">
-            Política de Privacidade
+            Como cuidamos dos seus dados
           </h1>
-          <p className="mt-4 text-sm font-medium leading-7 text-slate-600">
+          <p className="mt-4 max-w-3xl text-sm font-semibold leading-7 text-slate-600">
             Este documento estabelece, de forma transparente, as regras aplicáveis ao tratamento de
             dados pessoais realizado pela Dulelis confeitaria, constituinte legal Edinelso Jose Pasa,
             CNPJ 43.782.331/0001-33, no contexto do cadastro de clientes, autenticação de conta,
             atendimento e realização de pedidos.
           </p>
-          <div className="mt-5 flex flex-wrap gap-3 text-xs font-black uppercase tracking-widest text-slate-500">
-            <span className="rounded-full bg-slate-100 px-4 py-2">Versão {PRIVACY_POLICY_VERSION}</span>
-            <span className="rounded-full bg-slate-100 px-4 py-2">Vigência {PRIVACY_POLICY_EFFECTIVE_DATE}</span>
+          <div className="mt-5 flex flex-wrap gap-2 text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-600">
+            <span className="rounded-full bg-slate-100 px-3 py-2">Versão {PRIVACY_POLICY_VERSION}</span>
+            <span className="rounded-full bg-slate-100 px-3 py-2">Vigência {PRIVACY_POLICY_EFFECTIVE_DATE}</span>
           </div>
+        </header>
+
+        <div className="mt-5 flex items-start gap-3 rounded-2xl border border-pink-100 bg-pink-50 p-5 text-sm font-semibold leading-6 text-pink-950">
+          <Mail className="mt-0.5 shrink-0 text-pink-600" size={20} />
+          <p>Controladora dos dados: Dulelis confeitaria, constituinte legal Edinelso Jose Pasa, CNPJ 43.782.331/0001-33. Para assuntos de privacidade, escreva para <a className="font-extrabold text-pink-700 underline decoration-pink-300 underline-offset-4" href="mailto:administracao@dulelisdelivery.com.br">administracao@dulelisdelivery.com.br</a>.</p>
         </div>
 
-        <div className="mt-6 rounded-[2rem] border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold leading-6 text-rose-700">
-          Controladora dos dados: Dulelis confeitaria, constituinte legal Edinelso Jose Pasa, CNPJ
-          43.782.331/0001-33. Contato para assuntos de privacidade e atendimento ao titular:
-          administracao@dulelisdelivery.com.br.
-        </div>
+        <nav aria-label="Índice da política" className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+          <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">Neste documento</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {secoes.map((secao, idx) => <a key={secao.titulo} href={`#secao-${idx + 1}`} className="rounded-xl bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-pink-50 hover:text-pink-700">{secao.titulo}</a>)}
+          </div>
+        </nav>
 
-        <div className="mt-8 space-y-5">
+        <div className="mt-5 space-y-4">
           {secoes.map((secao, idx) => (
-            <section key={`secao-${idx}`} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-black text-slate-800">{secao.titulo}</h2>
+            <section id={`secao-${idx + 1}`} key={`secao-${idx}`} className="scroll-mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.04)] sm:p-6">
+              <h2 className="text-lg font-black text-slate-900 sm:text-xl">{secao.titulo}</h2>
               <ul className="mt-4 space-y-3 text-sm font-medium leading-7 text-slate-600">
                 {secao.itens.map((item, itemIdx) => (
-                  <li key={`item-${idx}-${itemIdx}`} className="rounded-2xl bg-slate-50 px-4 py-3">
-                    {item}
+                  <li key={`item-${idx}-${itemIdx}`} className="flex items-start gap-3 border-t border-slate-100 pt-3 first:border-0 first:pt-0">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-pink-400" />
+                    <span>{item}</span>
                   </li>
                 ))}
               </ul>
@@ -136,12 +144,12 @@ export default function PoliticaDePrivacidadePage() {
           ))}
         </div>
 
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Link
             href="/"
-            className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-black uppercase tracking-widest text-white"
+            className="inline-flex items-center gap-2 rounded-xl bg-pink-600 px-5 py-3.5 text-sm font-extrabold uppercase tracking-[0.08em] text-white"
           >
-            Voltar para o pedido
+            <ArrowLeft size={17} /> Voltar para o pedido
           </Link>
         </div>
       </div>
