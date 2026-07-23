@@ -456,6 +456,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Mantem o pedido principal sincronizado com a entrega. Sem esta atualizacao,
+    // pedidos ja entregues continuavam aparecendo ao cliente como "saiu para entrega".
+    const { error: erroPedidoFinalizado } = await supabase
+      .from("pedidos")
+      .update({ status_pedido: "finalizado" })
+      .eq("id", pedidoId);
+
+    if (erroPedidoFinalizado) {
+      console.error("Entrega finalizada, mas o status do pedido nao foi sincronizado:", erroPedidoFinalizado);
+    }
+
     return NextResponse.json({
       ok: true,
       data: { entrega: serializarEntregaPublica((entregaFinalizada || null) as Record<string, unknown> | null) },

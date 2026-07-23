@@ -270,7 +270,12 @@ function pedidoEstaEmAberto(pedido: PedidoStatus) {
     "recusado",
     "recusada",
   ]);
-  return !encerrados.has(statusPedido) && !encerrados.has(statusProducao);
+  const statusEncerrado = (status: string) => {
+    if (encerrados.has(status)) return true;
+    const partes = status.split(/[^a-z0-9]+/).filter(Boolean);
+    return partes.some((parte) => encerrados.has(parte));
+  };
+  return !statusEncerrado(statusPedido) && !statusEncerrado(statusProducao);
 }
 
 export async function GET(request: Request) {
@@ -389,6 +394,29 @@ export async function GET(request: Request) {
       new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime(),
     );
     break;
+  }
+
+  // Entregas antigas podiam ser finalizadas sem atualizar status_pedido.
+  // Consulta a fonte real da entrega para que elas tambem deixem de aparecer.
+  const idsPedidos = pedidosFinais
+    .map((pedido) => Number(pedido.id || 0))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (idsPedidos.length > 0) {
+    const { data: entregas, error: erroEntregas } = await supabase
+      .from("entregas")
+      .select("pedido_id,status,concluido_em")
+      .in("pedido_id", idsPedidos);
+
+    if (!erroEntregas) {
+      const pedidosEntregues = new Set(
+        ((entregas || []) as Array<{ pedido_id?: number | null; status?: string | null; concluido_em?: string | null }>)
+          .filter((entrega) =>
+            normalizarTexto(String(entrega.status || "")) === "finalizada" || Boolean(entrega.concluido_em),
+          )
+          .map((entrega) => Number(entrega.pedido_id || 0)),
+      );
+      pedidosFinais = pedidosFinais.filter((pedido) => !pedidosEntregues.has(Number(pedido.id || 0)));
+    }
   }
 
   if (!pedidosFinais.length) {
