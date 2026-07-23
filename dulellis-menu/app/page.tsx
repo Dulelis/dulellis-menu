@@ -651,7 +651,19 @@ async function buscarPedidosAcompanhamento(whatsappBase: string) {
     throw new Error(json.error || "Falha ao consultar pedido.");
   }
 
-  return Array.isArray(json.data) ? json.data : [];
+  if (!Array.isArray(json.data)) return [];
+
+  const statusEncerrado = (status: string) => {
+    const partes = normalizarTexto(status).split(/[^a-z0-9]+/).filter(Boolean);
+    const encerrados = new Set([
+      "cancelado", "cancelada", "finalizado", "finalizada", "concluido", "concluida", "entregue", "recusado", "recusada",
+    ]);
+    return partes.some((parte) => encerrados.has(parte));
+  };
+
+  return json.data.filter(
+    (pedido) => !statusEncerrado(pedido.status_pedido) && !statusEncerrado(String(pedido.status_producao || "")),
+  );
 }
 
 function PainelAcompanhamentoPedido({
