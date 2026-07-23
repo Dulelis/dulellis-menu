@@ -134,13 +134,13 @@ export function PwaInstallPrompt() {
   }
 
   const tituloInstalacao = installEvent
-    ? "Instale a Dulelis na tela inicial"
+    ? "Instale a Dulelis"
     : precisaSafariNoIos
       ? "Abra este link no Safari para instalar no iPhone"
       : "Adicione a Dulelis a tela inicial do iPhone";
 
   const descricaoInstalacao = installEvent
-    ? "Abra em tela cheia, com icone proprio e acesso mais rapido como um app."
+    ? "Acesso rápido, em tela cheia e com ícone próprio."
     : precisaSafariNoIos
       ? "No iOS, a instalacao como app acontece pelo Safari. Abra o site no Safari e use Compartilhar."
       : "No Safari, toque em Compartilhar, depois em Adicionar a Tela de Inicio e ative Abrir como App.";
@@ -152,70 +152,53 @@ export function PwaInstallPrompt() {
       : ["Toque em Compartilhar.", "Toque em Adicionar a Tela de Inicio.", "Ative Abrir como App e confirme."];
 
   return (
-    <div className="mx-auto mt-4 flex max-w-xl flex-col gap-2">
+    <div className="mx-auto mt-3 flex max-w-xl flex-col gap-2">
       {showInstallCard && (
-        <div className="rounded-[1.8rem] border border-pink-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(138,75,29,0.12)]">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-2xl bg-pink-600 p-3 text-white shadow-lg shadow-pink-200/80">
+        <div className="rounded-[1.4rem] border border-pink-200 bg-white px-3 py-3 shadow-[0_8px_20px_rgba(138,75,29,0.1)]">
+          <div className="flex items-center gap-2.5">
+            <div className="shrink-0 rounded-xl bg-pink-600 p-2.5 text-white shadow-md shadow-pink-200/70">
               {installEvent ? <Download size={18} /> : <Share2 size={18} />}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-pink-500">
-                Modo app
-              </p>
-              <p className="mt-1 text-sm font-black text-slate-800">{tituloInstalacao}</p>
-              <p className="mt-1 text-xs font-bold leading-5 text-slate-500">
+              <p className="text-sm font-black text-slate-800">{tituloInstalacao}</p>
+              <p className="mt-0.5 line-clamp-2 text-[11px] font-bold leading-4 text-slate-500">
                 {descricaoInstalacao}
               </p>
-              {passosInstalacao.length > 0 && (
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {passosInstalacao.map((passo, index) => (
-                    <div
-                      key={passo}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
-                    >
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-pink-600">
-                        Passo {index + 1}
-                      </p>
-                      <p className="mt-1 text-xs font-bold leading-5 text-slate-700">{passo}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {installEvent ? (
-                  <button
-                    type="button"
-                    onClick={() => void instalarApp()}
-                    className="rounded-full bg-pink-600 px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-pink-200/70 transition-transform active:scale-[0.98]"
-                  >
-                    Instalar app
-                  </button>
-                ) : precisaSafariNoIos ? (
-                  <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600">
-                    Abra no Safari
-                  </span>
-                ) : (
-                  <>
-                    <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600">
-                      Compartilhar &gt; Tela Inicial
-                    </span>
-                    <span className="rounded-full border border-pink-100 bg-pink-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-pink-700">
-                      Abrir como app
-                    </span>
-                  </>
-                )}
-              </div>
             </div>
+            {installEvent ? (
+              <button
+                type="button"
+                onClick={() => void instalarApp()}
+                className="shrink-0 rounded-full bg-pink-600 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-md shadow-pink-200/70 transition-transform active:scale-[0.98]"
+              >
+                Instalar
+              </button>
+            ) : (
+              <span className="shrink-0 rounded-full bg-pink-50 px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.1em] text-pink-700">
+                {precisaSafariNoIos ? "Safari" : "iPhone"}
+              </span>
+            )}
             <button
               type="button"
               onClick={dismissCard}
-              className="rounded-full bg-white p-2 text-slate-400 transition-colors hover:text-slate-600"
+              className="shrink-0 rounded-full bg-white p-1.5 text-slate-400 transition-colors hover:text-slate-600"
               aria-label="Fechar aviso de instalacao"
             >
               <X size={16} />
             </button>
           </div>
+          {passosInstalacao.length > 0 ? (
+            <details className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-left">
+              <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.14em] text-pink-700">
+                Como instalar
+              </summary>
+              <ol className="mt-2 space-y-1 pl-4 text-xs font-bold leading-5 text-slate-700">
+                {passosInstalacao.map((passo) => (
+                  <li key={passo} className="list-decimal">{passo}</li>
+                ))}
+              </ol>
+            </details>
+          ) : null}
         </div>
       )}
 

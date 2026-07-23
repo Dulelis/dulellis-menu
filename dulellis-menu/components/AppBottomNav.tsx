@@ -41,8 +41,8 @@ export function AppBottomNav({
 
   const items: NavItem[] = [
     { id: "home", label: "Inicio", icon: House, onClick: onHome },
-    { id: "highlights", label: "Destaques", icon: Sparkles, onClick: onHighlights },
-    { id: "menu", label: "Cardapio", icon: UtensilsCrossed, onClick: onMenu },
+    { id: "highlights", label: "Ofertas", icon: Sparkles, onClick: onHighlights },
+    { id: "menu", label: "Menu", icon: UtensilsCrossed, onClick: onMenu },
     { id: "order", label: orderLabel, icon: ShoppingBag, onClick: onOrder, badge: orderBadge },
   ];
 
@@ -93,7 +93,7 @@ export function AppBottomNav({
               key={item.id}
               type="button"
               onClick={item.onClick}
-              className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[1.35rem] px-2 py-2.5 transition-all ${
+              className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[1.35rem] px-1 py-2.5 transition-all sm:px-2 ${
                 active ? "bg-pink-600 text-white shadow-lg shadow-pink-200/80" : "text-slate-500"
               }`}
             >
@@ -109,7 +109,7 @@ export function AppBottomNav({
                   </span>
                 ) : null}
               </span>
-              <span className="max-w-full truncate text-[10px] font-black uppercase tracking-[0.18em]">
+              <span className="max-w-full truncate text-[9px] font-black uppercase tracking-[0.1em] sm:text-[10px] sm:tracking-[0.16em]">
                 {item.label}
               </span>
             </button>
