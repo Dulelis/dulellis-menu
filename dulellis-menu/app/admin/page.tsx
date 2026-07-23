@@ -87,6 +87,47 @@ const STATUSS_PEDIDO_FLUXO_OPERACIONAL_ADMIN = [
   "em_preparo",
   "saiu_entrega",
 ] as const;
+const ADMIN_VENDAS_TIME_ZONE = "America/Sao_Paulo";
+
+function obterChaveDataVenda(valor: unknown) {
+  const data = valor instanceof Date ? valor : new Date(String(valor || ""));
+  if (!Number.isFinite(data.getTime())) return "";
+
+  const partes = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: ADMIN_VENDAS_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(data);
+  const parte = (tipo: Intl.DateTimeFormatPartTypes) =>
+    partes.find((item) => item.type === tipo)?.value || "";
+  const ano = parte("year");
+  const mes = parte("month");
+  const dia = parte("day");
+  return ano && mes && dia ? `${ano}-${mes}-${dia}` : "";
+}
+
+function formatarChaveDataVenda(chave: string) {
+  const [ano, mes, dia] = chave.split("-").map(Number);
+  if (!ano || !mes || !dia) return "Data não informada";
+  return new Date(ano, mes - 1, dia, 12).toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+type VendaEmEdicao = {
+  id: number;
+  cliente_nome: string;
+  whatsapp: string;
+  total: string;
+  forma_pagamento: string;
+  status_pagamento: string;
+  status_pedido: string;
+  observacao: string;
+};
 
 type QzGlobal = {
   websocket?: {
@@ -947,6 +988,12 @@ function AdminPageContent() {
   const [pedidosSelecionadosVendas, setPedidosSelecionadosVendas] = useState<
     number[]
   >([]);
+  const [dataVendasSelecionada, setDataVendasSelecionada] = useState(() =>
+    obterChaveDataVenda(new Date()),
+  );
+  const [vendaEmEdicao, setVendaEmEdicao] =
+    useState<VendaEmEdicao | null>(null);
+  const [salvandoVenda, setSalvandoVenda] = useState(false);
   const [entregasSelecionadas, setEntregasSelecionadas] = useState<number[]>(
     [],
   );
@@ -3983,20 +4030,25 @@ function AdminPageContent() {
     (acc, p) => acc + (Number(p.total) || 0),
     0,
   );
-  const { inicioDia, fimDia } = React.useMemo(() => {
-    const inicio = new Date();
-    inicio.setHours(0, 0, 0, 0);
-    const fim = new Date(inicio);
-    fim.setDate(fim.getDate() + 1);
-    return { inicioDia: inicio, fimDia: fim };
-  }, []);
+  const diasComVendas = React.useMemo(() => {
+    const quantidades = new Map<string, number>();
+    pedidos.forEach((pedido) => {
+      if (!pedido?.created_at || !pedidoContaNoFluxoOperacionalAdmin(pedido)) {
+        return;
+      }
+      const chave = obterChaveDataVenda(pedido.created_at);
+      if (!chave) return;
+      quantidades.set(chave, (quantidades.get(chave) || 0) + 1);
+    });
+    return Array.from(quantidades.entries())
+      .map(([data, quantidade]) => ({ data, quantidade }))
+      .sort((a, b) => b.data.localeCompare(a.data));
+  }, [pedidos]);
   const pedidosDoDia = pedidos.filter((p) => {
     if (!p.created_at) return false;
-    const dataPedido = new Date(p.created_at);
     return (
       pedidoContaNoFluxoOperacionalAdmin(p) &&
-      dataPedido >= inicioDia &&
-      dataPedido < fimDia
+      obterChaveDataVenda(p.created_at) === dataVendasSelecionada
     );
   });
   const faturamentoDia = pedidosDoDia.reduce(
@@ -4107,14 +4159,22 @@ function AdminPageContent() {
       );
   }, [entregadores, entregas, pedidos]);
 
+  const { inicioDiaEntregas, fimDiaEntregas } = React.useMemo(() => {
+    const inicio = new Date();
+    inicio.setHours(0, 0, 0, 0);
+    const fim = new Date(inicio);
+    fim.setDate(fim.getDate() + 1);
+    return { inicioDiaEntregas: inicio, fimDiaEntregas: fim };
+  }, []);
+
   const entregasDoDia = React.useMemo(() => {
     return entregasDetalhadas.filter((entrega) => {
       const base = String(entrega?.aceito_em || entrega?.created_at || "");
       if (!base) return false;
       const data = new Date(base);
-      return data >= inicioDia && data < fimDia;
+      return data >= inicioDiaEntregas && data < fimDiaEntregas;
     });
-  }, [entregasDetalhadas, fimDia, inicioDia]);
+  }, [entregasDetalhadas, fimDiaEntregas, inicioDiaEntregas]);
 
   const resumoEntregadoresHoje = React.useMemo(() => {
     return entregadores.map((entregador) => {
@@ -4776,6 +4836,80 @@ function AdminPageContent() {
         .map((pedido) => Number(pedido.id))
         .filter((id) => Number.isFinite(id)),
     );
+  };
+
+  const selecionarDataVendas = (data: string) => {
+    setDataVendasSelecionada(data);
+    setPedidosSelecionadosVendas([]);
+  };
+
+  const abrirEdicaoVendaSelecionada = () => {
+    if (pedidosSelecionadosVendas.length !== 1) {
+      alert("Selecione exatamente uma venda para editar.");
+      return;
+    }
+    const pedido = pedidos.find(
+      (item) => Number(item.id) === pedidosSelecionadosVendas[0],
+    );
+    if (!pedido) {
+      alert("A venda selecionada não foi encontrada.");
+      return;
+    }
+
+    setVendaEmEdicao({
+      id: Number(pedido.id),
+      cliente_nome: String(pedido.cliente_nome || ""),
+      whatsapp: String(pedido.whatsapp || ""),
+      total: Number(pedido.total || 0).toFixed(2),
+      forma_pagamento: String(pedido.forma_pagamento || ""),
+      status_pagamento: String(pedido.status_pagamento || ""),
+      status_pedido: normalizarStatusPedidoAdmin(pedido),
+      observacao: String(pedido.observacao || ""),
+    });
+  };
+
+  const salvarEdicaoVenda = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!vendaEmEdicao) return;
+
+    const total = Number(vendaEmEdicao.total.replace(",", "."));
+    if (!Number.isFinite(total) || total < 0) {
+      alert("Informe um valor total válido.");
+      return;
+    }
+    if (!vendaEmEdicao.cliente_nome.trim()) {
+      alert("Informe o nome do cliente.");
+      return;
+    }
+
+    setSalvandoVenda(true);
+    try {
+      await adminDb({
+        action: "update_eq",
+        table: "pedidos",
+        payload: {
+          cliente_nome: vendaEmEdicao.cliente_nome.trim(),
+          whatsapp: vendaEmEdicao.whatsapp.trim(),
+          total: Math.round(total * 100) / 100,
+          forma_pagamento: vendaEmEdicao.forma_pagamento.trim(),
+          status_pagamento: vendaEmEdicao.status_pagamento,
+          status_pedido: vendaEmEdicao.status_pedido,
+          observacao: vendaEmEdicao.observacao.trim(),
+        },
+        eq: { column: "id", value: vendaEmEdicao.id },
+      });
+      setVendaEmEdicao(null);
+      await carregarDados();
+      alert("Venda atualizada com sucesso.");
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar a venda.",
+      );
+    } finally {
+      setSalvandoVenda(false);
+    }
   };
 
   const excluirVendasSelecionadas = async () => {
@@ -5838,17 +5972,6 @@ function AdminPageContent() {
                 className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all"
               >
                 <PlusCircle size={20} /> Nova Promoção
-              </button>
-            )}
-            {activeTab === "vendas" && (
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = "/admin/vendas";
-                }}
-                className="w-full sm:w-auto bg-white text-slate-700 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm border border-slate-200 hover:bg-slate-50 transition-all"
-              >
-                <TrendingUp size={18} /> Mais em vendas
               </button>
             )}
             {activeTab === "propagandas" && (
@@ -7850,11 +7973,11 @@ function AdminPageContent() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-black text-slate-500 uppercase tracking-widest">
-                  Vendas do Dia
+                  Vendas por data
                 </h2>
                 <p className="mt-1 text-sm font-bold text-slate-400">
-                  Tela focada em aceitar, imprimir e acompanhar todas as vendas
-                  do dia.
+                  Consulte qualquer dia com vendas e selecione os registros para
+                  editar, excluir ou imprimir.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
@@ -7871,14 +7994,23 @@ function AdminPageContent() {
                   Desmarcar
                 </button>
                 <button
+                  onClick={abrirEdicaoVendaSelecionada}
+                  disabled={pedidosSelecionadosVendas.length !== 1}
+                  className="w-full sm:w-auto bg-amber-50 text-amber-800 border border-amber-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-amber-100 transition-all disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Pencil size={18} /> Editar
+                </button>
+                <button
                   onClick={() => void excluirVendasSelecionadas()}
-                  className="w-full sm:w-auto bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all"
+                  disabled={!pedidosSelecionadosVendas.length}
+                  className="w-full sm:w-auto bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <Trash2 size={18} /> Excluir
                 </button>
                 <button
                   onClick={imprimirVendasSelecionadasPlanilha}
-                  className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all"
+                  disabled={!pedidosSelecionadosVendas.length}
+                  className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <Printer size={18} /> Imprimir Vendas
                 </button>
@@ -7892,11 +8024,65 @@ function AdminPageContent() {
                 </button>
               </div>
             </div>
+            <section className="rounded-[2rem] border border-pink-200 bg-gradient-to-br from-white to-pink-50 p-5 shadow-sm">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_auto] lg:items-end">
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-600">
+                    <CalendarDays size={16} className="text-pink-600" />
+                    Escolher uma data
+                  </span>
+                  <input
+                    type="date"
+                    value={dataVendasSelecionada}
+                    onChange={(event) =>
+                      selecionarDataVendas(event.target.value)
+                    }
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 font-black text-slate-800 outline-none transition focus:border-pink-400 focus:ring-4 focus:ring-pink-100"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-600">
+                    Dias que tiveram vendas
+                  </span>
+                  <select
+                    value={
+                      diasComVendas.some(
+                        (item) => item.data === dataVendasSelecionada,
+                      )
+                        ? dataVendasSelecionada
+                        : ""
+                    }
+                    onChange={(event) =>
+                      selecionarDataVendas(event.target.value)
+                    }
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-700 outline-none transition focus:border-pink-400 focus:ring-4 focus:ring-pink-100"
+                  >
+                    <option value="">Selecione um dia com vendas</option>
+                    {diasComVendas.map((item) => (
+                      <option key={item.data} value={item.data}>
+                        {formatarChaveDataVenda(item.data)} — {item.quantidade}{" "}
+                        venda(s)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => selecionarDataVendas(obterChaveDataVenda(new Date()))}
+                  className="rounded-2xl border border-pink-200 bg-white px-5 py-3 font-black text-pink-700 transition hover:bg-pink-100"
+                >
+                  Ir para hoje
+                </button>
+              </div>
+              <p className="mt-4 text-sm font-black capitalize text-slate-700">
+                Exibindo {formatarChaveDataVenda(dataVendasSelecionada)}
+              </p>
+            </section>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
               <div className="p-5 rounded-[2rem] border border-pink-200 bg-pink-50">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-black text-slate-700 uppercase tracking-widest text-xs">
-                    Vendas do Dia
+                    Vendas da data
                   </p>
                   <ShoppingBag size={18} className="text-pink-500" />
                 </div>
@@ -7960,7 +8146,7 @@ function AdminPageContent() {
                   {pedidosSelecionadosVendas.length}
                 </p>
                 <p className="text-sm font-bold text-slate-500">
-                  prontas para imprimir
+                  para editar, excluir ou imprimir
                 </p>
               </div>
               <div className="rounded-[2rem] border border-violet-200 bg-violet-50 p-5">
@@ -8042,7 +8228,7 @@ function AdminPageContent() {
             <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <h3 className="font-black text-base text-slate-800">
-                  Todas as vendas do dia
+                  Vendas de {formatarChaveDataVenda(dataVendasSelecionada)}
                 </h3>
                 <p className="text-xs font-black uppercase tracking-widest text-slate-400">
                   {pedidosDoDia.length} registro(s)
@@ -8337,7 +8523,7 @@ function AdminPageContent() {
                     })
                   ) : (
                     <p className="text-slate-400 italic text-sm text-center py-10">
-                      Sem vendas hoje.
+                      Sem vendas nesta data.
                     </p>
                   )}
                 </div>
@@ -8518,6 +8704,197 @@ function AdminPageContent() {
           </div>
         )}
       </main>
+
+      {vendaEmEdicao ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 print:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="editar-venda-title"
+        >
+          <form
+            onSubmit={salvarEdicaoVenda}
+            className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[2rem] bg-white p-5 shadow-2xl sm:p-8"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-pink-600">
+                  Venda #{vendaEmEdicao.id}
+                </p>
+                <h2
+                  id="editar-venda-title"
+                  className="mt-1 text-2xl font-black text-slate-900"
+                >
+                  Editar venda
+                </h2>
+                <p className="mt-1 text-sm font-bold text-slate-500">
+                  Altere os dados abaixo e salve no registro original.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVendaEmEdicao(null)}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black uppercase text-slate-500 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="ml-1 text-xs font-black uppercase tracking-wider text-slate-500">
+                  Cliente
+                </span>
+                <input
+                  autoFocus
+                  required
+                  value={vendaEmEdicao.cliente_nome}
+                  onChange={(event) =>
+                    setVendaEmEdicao({
+                      ...vendaEmEdicao,
+                      cliente_nome: event.target.value,
+                    })
+                  }
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-800 outline-none focus:border-pink-400"
+                />
+              </label>
+              <label className="block">
+                <span className="ml-1 text-xs font-black uppercase tracking-wider text-slate-500">
+                  WhatsApp
+                </span>
+                <input
+                  value={vendaEmEdicao.whatsapp}
+                  onChange={(event) =>
+                    setVendaEmEdicao({
+                      ...vendaEmEdicao,
+                      whatsapp: event.target.value,
+                    })
+                  }
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-800 outline-none focus:border-pink-400"
+                />
+              </label>
+              <label className="block">
+                <span className="ml-1 text-xs font-black uppercase tracking-wider text-slate-500">
+                  Total da venda
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={vendaEmEdicao.total}
+                  onChange={(event) =>
+                    setVendaEmEdicao({
+                      ...vendaEmEdicao,
+                      total: event.target.value,
+                    })
+                  }
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-800 outline-none focus:border-pink-400"
+                />
+              </label>
+              <label className="block">
+                <span className="ml-1 text-xs font-black uppercase tracking-wider text-slate-500">
+                  Forma de pagamento
+                </span>
+                <input
+                  value={vendaEmEdicao.forma_pagamento}
+                  onChange={(event) =>
+                    setVendaEmEdicao({
+                      ...vendaEmEdicao,
+                      forma_pagamento: event.target.value,
+                    })
+                  }
+                  placeholder="Pix, dinheiro, cartão..."
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-800 outline-none focus:border-pink-400"
+                />
+              </label>
+              <label className="block">
+                <span className="ml-1 text-xs font-black uppercase tracking-wider text-slate-500">
+                  Status do pedido
+                </span>
+                <select
+                  value={vendaEmEdicao.status_pedido}
+                  onChange={(event) =>
+                    setVendaEmEdicao({
+                      ...vendaEmEdicao,
+                      status_pedido: event.target.value,
+                    })
+                  }
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-800 outline-none focus:border-pink-400"
+                >
+                  {Object.entries(STATUS_PEDIDO_LABELS).map(
+                    ([valor, rotulo]) => (
+                      <option key={valor} value={valor}>
+                        {rotulo}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <label className="block">
+                <span className="ml-1 text-xs font-black uppercase tracking-wider text-slate-500">
+                  Status do pagamento
+                </span>
+                <select
+                  value={vendaEmEdicao.status_pagamento}
+                  onChange={(event) =>
+                    setVendaEmEdicao({
+                      ...vendaEmEdicao,
+                      status_pagamento: event.target.value,
+                    })
+                  }
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-800 outline-none focus:border-pink-400"
+                >
+                  <option value="">Não informado</option>
+                  <option value="pending">Pendente</option>
+                  <option value="approved">Aprovado</option>
+                  <option value="paid">Pago</option>
+                  <option value="rejected">Recusado</option>
+                  <option value="cancelled">Cancelado</option>
+                </select>
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="ml-1 text-xs font-black uppercase tracking-wider text-slate-500">
+                  Observação
+                </span>
+                <textarea
+                  rows={4}
+                  value={vendaEmEdicao.observacao}
+                  onChange={(event) =>
+                    setVendaEmEdicao({
+                      ...vendaEmEdicao,
+                      observacao: event.target.value,
+                    })
+                  }
+                  className="mt-2 w-full resize-y rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-800 outline-none focus:border-pink-400"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setVendaEmEdicao(null)}
+                className="rounded-2xl border border-slate-200 bg-white p-4 font-black text-slate-600 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={salvandoVenda}
+                className="flex items-center justify-center gap-2 rounded-2xl bg-pink-600 p-4 font-black text-white shadow-lg shadow-pink-100 hover:bg-pink-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {salvandoVenda ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Save size={18} />
+                )}
+                {salvandoVenda ? "Salvando..." : "Salvar alterações"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {/* MODAL DE PRODUTOS */}
       {mostrarModalEstoque && (
