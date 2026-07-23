@@ -85,6 +85,7 @@ type Order = {
   cidade?: string;
   cep?: string;
   ponto_referencia?: string;
+  baixa_retirada_token?: string;
 };
 
 type Product = {
@@ -341,9 +342,13 @@ function printPreorder(order: Order, destination: "app" | "browser" = "browser")
   const itemLines = items.length
     ? items.map((item) => ascii(`${item.quantity}x ${item.name} ${item.total}`)).join("\n")
     : "ITENS NAO INFORMADOS";
-  const deliveryQr = receiptType === "Entrega"
-    ? qrCodeEscPos(`${window.location.origin}/entrega?pedido=${order.id}`)
-    : "";
+  const qrTargetUrl = receiptType === "Entrega"
+    ? `${window.location.origin}/entrega?pedido=${order.id}`
+    : order.baixa_retirada_token
+      ? `${window.location.origin}/baixa-encomenda?pedido=${order.id}&token=${encodeURIComponent(order.baixa_retirada_token)}`
+      : "";
+  const orderQr = qrTargetUrl ? qrCodeEscPos(qrTargetUrl) : "";
+  const qrTitle = receiptType === "Entrega" ? "QR ENTREGA" : "QR BAIXA RETIRADA";
   const escPos =
     "\x1b\x40" +
     "\x1b\x61\x01" +
@@ -373,8 +378,8 @@ function printPreorder(order: Order, destination: "app" | "browser" = "browser")
     ascii(`ENTREGA: ${money(deliveryFee)}\n`) +
     ascii(`DESCONTO: ${money(discount)}\n`) +
     ascii(`TOTAL: ${money(total)}\n\n`) +
-    (deliveryQr
-      ? "\x1b\x61\x01QR ENTREGA\n" + deliveryQr + "\n\x1b\x61\x00"
+    (orderQr
+      ? `\x1b\x61\x01${qrTitle}\n` + orderQr + "\n\x1b\x61\x00"
       : "") +
     "\n\n\x1b\x45\x00\x1d\x56\x41\x03";
 
@@ -407,9 +412,13 @@ function printPreorder(order: Order, destination: "app" | "browser" = "browser")
         deliveryFee: money(deliveryFee),
         discount: money(discount),
         total: money(total),
-        qrCodeUrl: receiptType === "Entrega"
-          ? `https://quickchart.io/qr?size=160&margin=1&text=${encodeURIComponent(`${window.location.origin}/entrega?pedido=${order.id}`)}`
+        qrCodeUrl: qrTargetUrl
+          ? `https://quickchart.io/qr?size=160&margin=1&text=${encodeURIComponent(qrTargetUrl)}`
           : null,
+        qrCodeTitle: qrTitle,
+        qrCodeDescription: receiptType === "Entrega"
+          ? "Escaneie para aceitar e abrir a entrega"
+          : "Escaneie para confirmar a retirada uma unica vez",
         items,
       },
       { visualize: true, mobilePreview: mobile },

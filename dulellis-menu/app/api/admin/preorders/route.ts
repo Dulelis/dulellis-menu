@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isAdminRequestAuthorized } from "@/lib/admin-request";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { enforceSameOriginForWrite } from "@/lib/request-security";
+import { buildPreorderCompletionToken } from "@/lib/preorder-completion-token";
 
 const PRODUCTION_STATUSES = new Set([
   "aguardando_confirmacao",
@@ -96,9 +97,11 @@ export async function GET(request: NextRequest) {
   );
   const ordersWithCustomerAddress = (orders.data || []).map((order) => {
     const customer = customersById.get(Number(order.cliente_id || 0));
-    if (!customer) return order;
+    const completionToken = buildPreorderCompletionToken(Number(order.id || 0));
+    if (!customer) return { ...order, baixa_retirada_token: completionToken };
     return {
       ...order,
+      baixa_retirada_token: completionToken,
       endereco: customer.endereco || order.endereco,
       numero: customer.numero || order.numero,
       bairro: customer.bairro || order.bairro,
