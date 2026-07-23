@@ -3289,7 +3289,7 @@ function ClientePageContent() {
             <button
               type="button"
               onClick={() => setModalAuthAberto(true)}
-              className="px-3 py-2 rounded-xl bg-slate-900 text-white font-black uppercase text-[9px] tracking-widest flex items-center gap-2"
+              className="flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-white"
             >
               <LogIn size={14} />
               Login para pedir
@@ -3298,7 +3298,7 @@ function ClientePageContent() {
             <button
               type="button"
               onClick={() => void sairSessaoCliente()}
-              className="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-black uppercase text-[9px] tracking-widest flex items-center gap-2"
+              className="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-700"
             >
               <LogOut size={14} />
               Sair
@@ -3316,7 +3316,7 @@ function ClientePageContent() {
           />
           <p className="inline-flex items-baseline justify-center gap-2 text-slate-400 uppercase tracking-normal">
             <span className="text-base font-black text-pink-500 sm:text-lg">Delivery</span>
-            <span className="text-[11px] font-bold sm:text-xs">artesanal</span>
+            <span className="text-xs font-semibold text-slate-600">artesanal</span>
           </p>
         </div>
         {sessaoCliente ? (
@@ -3343,7 +3343,7 @@ function ClientePageContent() {
                   setPedidosAcompanhamento([]);
                   setWhatsappAcompanhamento(normalizarNumero(cliente.whatsapp));
                 }}
-                className="rounded-2xl bg-slate-900 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-lg transition-all sm:text-xs"
+                className="rounded-2xl bg-slate-900 px-4 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.07em] text-white shadow-[0_6px_16px_rgba(38,22,15,0.14)] transition-all sm:text-xs"
               >
                 Acompanhar pedido
               </button>
@@ -3368,14 +3368,14 @@ function ClientePageContent() {
                     : "border-red-200/60 bg-red-50"
                 }`}
               >
-              <div className={`flex items-center gap-1.5 font-black uppercase tracking-wider ${fechandoAgora ? "text-base text-yellow-900" : "text-[11px] text-slate-700"}`}>
+              <div className={`flex items-center gap-1.5 font-extrabold uppercase tracking-[0.06em] ${fechandoAgora ? "text-base text-yellow-900" : "text-xs text-slate-700"}`}>
                 <Clock3 size={fechandoAgora ? 18 : 14} />
                 Horário: {statusHorario.faixa}
               </div>
-              <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+              <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-600">
                 Dias: {diasFuncionamentoTexto}
               </p>
-              <p className={`${fechandoAgora ? "text-sm font-black text-yellow-900" : "text-[10px] font-bold text-slate-600"} mt-0.5`}>
+              <p className={`${fechandoAgora ? "text-sm font-extrabold text-yellow-900" : "text-[11px] font-semibold text-slate-600"} mt-0.5`}>
                 {fechandoAgora ? `Estamos fechando (${minutosParaFecharAviso} min)` : statusHorario.mensagem}
               </p>
               {fechandoAgora && (
@@ -3393,7 +3393,7 @@ function ClientePageContent() {
           </div>
           <div
             ref={destaquesVitrineRef}
-            className="mx-auto flex h-[236px] max-w-xl flex-col rounded-2xl bg-amber-700 px-3 py-2.5 text-white shadow-lg sm:h-[280px] sm:px-4 sm:py-3"
+            className="mx-auto flex h-[236px] max-w-xl flex-col rounded-2xl bg-amber-700 px-3 py-2.5 text-white shadow-[0_8px_24px_rgba(109,53,23,0.16)] sm:h-[280px] sm:px-4 sm:py-3"
           >
             <div className="h-3 mb-2">
               {mensagensVitrine.length > 1 && (
@@ -3495,7 +3495,7 @@ function ClientePageContent() {
                     if (!link) return;
                     window.open(link, "_blank", "noopener,noreferrer");
                   }}
-                  className="rounded-xl bg-white/20 hover:bg-white/30 transition-colors px-3 py-1.5 text-[10px] font-black uppercase tracking-wider"
+                  className="rounded-xl bg-white/20 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.06em] transition-colors hover:bg-white/30"
                 >
                   {String(slideAtualVitrine?.botao_texto || "").trim() || "Abrir link"}
                 </button>
@@ -3511,7 +3511,7 @@ function ClientePageContent() {
             key={cat}
             type="button"
             onClick={() => setCategoriaAtiva(cat)}
-            className={`px-1 py-2 rounded-full font-black text-[9px] text-center whitespace-nowrap transition-all uppercase tracking-wide border-2 sm:px-7 sm:py-2.5 sm:text-[10px] sm:tracking-widest ${categoriaAtiva === cat ? "bg-pink-600 border-pink-600 text-white shadow-lg" : "bg-white border-amber-100 text-slate-500"}`}
+            className={`rounded-full border px-1 py-2 text-center text-[10px] font-extrabold uppercase tracking-[0.04em] transition-all sm:px-7 sm:py-2.5 sm:text-[11px] ${categoriaAtiva === cat ? "border-pink-600 bg-pink-600 text-white shadow-[0_5px_14px_rgba(189,43,109,0.18)]" : "border-amber-100 bg-white text-slate-600"}`}
           >
             {cat}
           </button>
@@ -3541,7 +3541,7 @@ function ClientePageContent() {
           </div>
         ) : produtosFiltrados.length === 0 ? (
           <section className="rounded-[1.8rem] border border-amber-200 bg-amber-50 px-5 py-7 text-center">
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-700">
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-amber-700">
               Vitrine em atualização
             </p>
             <h2 className="mt-2 text-xl font-black text-slate-800">
@@ -3556,7 +3556,7 @@ function ClientePageContent() {
             <section key={secao.categoria} className="space-y-3">
               <div className="flex items-center gap-3 px-1">
                 <div className="h-px flex-1 bg-amber-200" />
-                <h2 className="text-[11px] font-black uppercase tracking-[0.26em] text-amber-800">
+                <h2 className="text-xs font-extrabold uppercase tracking-[0.12em] text-amber-800">
                   {DESCRICOES_CATEGORIA[secao.categoria] || secao.categoria}
                 </h2>
                 <div className="h-px flex-1 bg-amber-200" />
@@ -3564,7 +3564,7 @@ function ClientePageContent() {
 
               {secao.itens.length > 0 ? (
                 secao.itens.map((prod) => (
-                  <div key={prod.id} className="group flex items-center gap-3 p-3 rounded-[1.8rem] border bg-white border-amber-100 shadow-[0_8px_18px_rgba(138,75,29,0.06)] transition-all active:scale-[0.98]">
+                  <div key={prod.id} className="group flex items-center gap-3 rounded-[1.5rem] border border-amber-100 bg-white p-3 shadow-[0_6px_18px_rgba(138,75,29,0.06)] transition-all active:scale-[0.98]">
                     <div className="w-16 h-16 rounded-[1.1rem] bg-amber-50 overflow-hidden shrink-0 border border-amber-100">
                       {prod.imagem_url ? (
                         <Image
@@ -3589,7 +3589,7 @@ function ClientePageContent() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="min-w-0">
-                        <span className="text-[7px] font-black text-pink-500 uppercase tracking-[0.22em] bg-pink-50/80 px-2 py-0.5 rounded-full">
+                        <span className="rounded-full bg-pink-50/80 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.08em] text-pink-700">
                           {prod.categoria}
                         </span>
                         {resumoPromocaoProduto(prod.id) && (
@@ -3597,14 +3597,14 @@ function ClientePageContent() {
                             {renderResumoPromocao(resumoPromocaoProduto(prod.id))}
                           </span>
                         )}
-                        <h3 className="font-black text-slate-800 text-[clamp(0.86rem,3vw,1.2rem)] leading-[1.08] mt-1 tracking-[-0.01em] whitespace-nowrap">
+                        <h3 className="mt-1 truncate text-[clamp(0.95rem,3vw,1.2rem)] font-extrabold leading-[1.15] tracking-[-0.01em] text-slate-800">
                           {prod.nome}
                         </h3>
-                        <p className="text-[11px] leading-[1.25] text-slate-500 mt-1 line-clamp-2">
+                        <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-[1.35] text-slate-600">
                           {String(prod.descricao || "").trim() || "Confira essa delícia da Dulelis."}
                         </p>
                         {Number(prod.quantidade ?? 0) === 1 && (
-                          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-orange-500 mt-1">
+                          <p className="mt-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-orange-600">
                             Última unidade
                           </p>
                         )}
@@ -3636,7 +3636,7 @@ function ClientePageContent() {
                             <button
                               type="button"
                               onClick={() => setModalAuthAberto(true)}
-                              className="text-[10px] font-black uppercase tracking-wider text-slate-500 bg-slate-100 px-3 py-2 rounded-xl"
+                              className="rounded-xl bg-slate-100 px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.05em] text-slate-600"
                             >
                               Entrar para pedir
                             </button>
@@ -3657,7 +3657,7 @@ function ClientePageContent() {
           <p className="text-sm font-black text-pink-700 tracking-tight">
             Dulelis Confeitaria - desde 2014
           </p>
-          <p className="mt-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.06em] text-slate-600">
             A pausa perfeita para adoçar seu dia.
           </p>
         </div>

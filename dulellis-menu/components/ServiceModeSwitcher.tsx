@@ -14,7 +14,7 @@ export function ServiceModeSwitcher({ active }: ServiceModeSwitcherProps) {
   return (
     <nav
       aria-label="Escolha entre delivery e encomendas"
-      className="mx-auto grid w-full max-w-xl grid-cols-2 gap-2 rounded-[1.6rem] border border-pink-100 bg-white/95 p-2 shadow-lg shadow-pink-100/50"
+      className="mx-auto grid w-full max-w-xl grid-cols-2 gap-2 rounded-[1.4rem] border border-pink-100 bg-white/95 p-1.5 shadow-[0_8px_24px_rgba(138,75,29,0.08)]"
     >
       {items.map(({ id, label, href, Icon }) => {
         const selected = id === active;
@@ -23,9 +23,9 @@ export function ServiceModeSwitcher({ active }: ServiceModeSwitcherProps) {
             key={id}
             href={href}
             aria-current={selected ? "page" : undefined}
-            className={`flex min-h-12 items-center justify-center gap-2 rounded-[1.2rem] px-3 py-3 text-center text-[11px] font-black uppercase tracking-[0.12em] transition-colors ${
+            className={`flex min-h-12 items-center justify-center gap-2 rounded-[1.05rem] px-3 py-3 text-center text-xs font-extrabold uppercase tracking-[0.06em] transition-colors ${
               selected
-                ? "bg-pink-600 text-white shadow-md shadow-pink-200"
+                ? "bg-pink-600 text-white shadow-[0_6px_16px_rgba(189,43,109,0.2)]"
                 : "bg-pink-50 text-pink-700 hover:bg-pink-100"
             }`}
           >

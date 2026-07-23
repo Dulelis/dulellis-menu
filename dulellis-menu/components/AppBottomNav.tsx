@@ -81,7 +81,7 @@ export function AppBottomNav({
   return (
     <div
       ref={navRef}
-      className="app-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-pink-100/80 bg-white/95 shadow-[0_-16px_36px_rgba(138,75,29,0.1)] backdrop-blur-xl"
+      className="app-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-pink-100/80 bg-white/95 shadow-[0_-10px_28px_rgba(138,75,29,0.08)] backdrop-blur-xl"
     >
       <nav className="app-bottom-nav-inner mx-auto flex w-full max-w-xl items-center gap-1 px-3 py-2 sm:px-4">
         {items.map((item) => {
@@ -94,7 +94,7 @@ export function AppBottomNav({
               type="button"
               onClick={item.onClick}
               className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[1.35rem] px-1 py-2.5 transition-all sm:px-2 ${
-                active ? "bg-pink-600 text-white shadow-lg shadow-pink-200/80" : "text-slate-500"
+                active ? "bg-pink-600 text-white shadow-[0_7px_18px_rgba(189,43,109,0.22)]" : "text-slate-600"
               }`}
             >
               <span className="relative flex h-9 w-9 items-center justify-center rounded-2xl bg-white/12">
@@ -109,7 +109,7 @@ export function AppBottomNav({
                   </span>
                 ) : null}
               </span>
-              <span className="max-w-full truncate text-[9px] font-black uppercase tracking-[0.1em] sm:text-[10px] sm:tracking-[0.16em]">
+              <span className="max-w-full truncate text-[10px] font-extrabold uppercase tracking-[0.06em] sm:text-[11px] sm:tracking-[0.08em]">
                 {item.label}
               </span>
             </button>

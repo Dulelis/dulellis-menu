@@ -154,14 +154,14 @@ export function PwaInstallPrompt() {
   return (
     <div className="mx-auto mt-3 flex max-w-xl flex-col gap-2">
       {showInstallCard && (
-        <div className="rounded-[1.4rem] border border-pink-200 bg-white px-3 py-3 shadow-[0_8px_20px_rgba(138,75,29,0.1)]">
-          <div className="flex items-center gap-2.5">
+        <div className="relative rounded-[1.35rem] border border-pink-100 bg-white px-3 py-3 shadow-[0_6px_18px_rgba(138,75,29,0.07)]">
+          <div className="flex items-center gap-2.5 pr-6">
             <div className="shrink-0 rounded-xl bg-pink-600 p-2.5 text-white shadow-md shadow-pink-200/70">
               {installEvent ? <Download size={18} /> : <Share2 size={18} />}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-black text-slate-800">{tituloInstalacao}</p>
-              <p className="mt-0.5 line-clamp-2 text-[11px] font-bold leading-4 text-slate-500">
+              <p className="text-sm font-extrabold text-slate-800">{tituloInstalacao}</p>
+              <p className="mt-0.5 line-clamp-2 text-xs font-semibold leading-4 text-slate-600 max-[359px]:hidden">
                 {descricaoInstalacao}
               </p>
             </div>
@@ -169,7 +169,7 @@ export function PwaInstallPrompt() {
               <button
                 type="button"
                 onClick={() => void instalarApp()}
-                className="shrink-0 rounded-full bg-pink-600 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-md shadow-pink-200/70 transition-transform active:scale-[0.98]"
+                className="shrink-0 rounded-full bg-pink-600 px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.06em] text-white shadow-[0_5px_14px_rgba(189,43,109,0.2)] transition-transform active:scale-[0.98]"
               >
                 Instalar
               </button>
@@ -181,7 +181,7 @@ export function PwaInstallPrompt() {
             <button
               type="button"
               onClick={dismissCard}
-              className="shrink-0 rounded-full bg-white p-1.5 text-slate-400 transition-colors hover:text-slate-600"
+              className="absolute right-1.5 top-1.5 rounded-full bg-white p-1.5 text-slate-400 transition-colors hover:text-slate-600"
               aria-label="Fechar aviso de instalacao"
             >
               <X size={16} />
@@ -189,7 +189,7 @@ export function PwaInstallPrompt() {
           </div>
           {passosInstalacao.length > 0 ? (
             <details className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-left">
-              <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.14em] text-pink-700">
+              <summary className="cursor-pointer text-[11px] font-extrabold uppercase tracking-[0.08em] text-pink-700">
                 Como instalar
               </summary>
               <ol className="mt-2 space-y-1 pl-4 text-xs font-bold leading-5 text-slate-700">

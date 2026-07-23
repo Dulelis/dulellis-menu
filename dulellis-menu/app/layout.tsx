@@ -1,6 +1,13 @@
 import type { Metadata, Viewport } from "next";
+import { Nunito_Sans } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
 import "./globals.css";
+
+const appFont = Nunito_Sans({
+  subsets: ["latin"],
+  variable: "--font-dulelis",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -49,7 +56,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-br">
-      <body className="bg-white text-slate-900 antialiased">
+      <body className={`${appFont.variable} bg-white text-slate-900 antialiased`}>
         <PwaRegistration />
         {children}
       </body>
