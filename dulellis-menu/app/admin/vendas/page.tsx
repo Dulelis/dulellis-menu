@@ -145,12 +145,34 @@ function statusLabel(value: unknown) {
     "Não informado";
 }
 
+function normalizePaymentMethod(value: unknown) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function paymentCategory(value: unknown) {
+  const method = normalizePaymentMethod(value);
+  if (method.includes("pix")) return "pix";
+  if (method.includes("dinheiro")) return "dinheiro";
+  if (
+    method.includes("cartao") ||
+    method.includes("credito") ||
+    method.includes("debito")
+  ) {
+    return "cartao";
+  }
+  return "outros";
+}
+
 export default function AdminVendasPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
-  const [period, setPeriod] = useState<"day" | "month">("day");
+  const [period, setPeriod] = useState<"day" | "week" | "month">("day");
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [editing, setEditing] = useState<VendaEdicao | null>(null);
@@ -221,7 +243,29 @@ export default function AdminVendasPage() {
       pedidos.filter((order) => dateKey(order.created_at) === selectedDate),
     [pedidos, selectedDate],
   );
-  const periodOrders = period === "day" ? dayOrders : monthOrders;
+  const weekRange = useMemo(() => {
+    const selected = parseDateKey(selectedDate);
+    const mondayOffset = (selected.getDay() + 6) % 7;
+    const start = new Date(selected);
+    start.setDate(selected.getDate() - mondayOffset);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return { start: dateKey(start), end: dateKey(end) };
+  }, [selectedDate]);
+  const weekOrders = useMemo(
+    () =>
+      pedidos.filter((order) => {
+        const key = dateKey(order.created_at);
+        return key >= weekRange.start && key <= weekRange.end;
+      }),
+    [pedidos, weekRange],
+  );
+  const periodOrders =
+    period === "day"
+      ? dayOrders
+      : period === "week"
+        ? weekOrders
+        : monthOrders;
   const visibleOrders = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("pt-BR");
     if (!term) return periodOrders;
@@ -270,18 +314,30 @@ export default function AdminVendasPage() {
   }, [periodOrders]);
 
   const paymentSummary = useMemo(() => {
-    const values = new Map<string, { count: number; total: number }>();
+    const values = new Map<
+      string,
+      { key: string; name: string; count: number; total: number }
+    >([
+      ["pix", { key: "pix", name: "Pix", count: 0, total: 0 }],
+      ["dinheiro", { key: "dinheiro", name: "Dinheiro", count: 0, total: 0 }],
+      ["cartao", { key: "cartao", name: "Cartão", count: 0, total: 0 }],
+      ["outros", { key: "outros", name: "Outros", count: 0, total: 0 }],
+    ]);
     periodOrders.forEach((order) => {
-      const name = String(order.forma_pagamento || "Não informado");
-      const current = values.get(name) || { count: 0, total: 0 };
+      const key = paymentCategory(order.forma_pagamento);
+      const current = values.get(key)!;
       current.count += 1;
       current.total += Number(order.total || 0);
-      values.set(name, current);
     });
-    return Array.from(values.entries())
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.total - a.total);
-  }, [periodOrders]);
+    return Array.from(values.values())
+      .filter((item) => item.key !== "outros" || item.count > 0)
+      .map((item) => ({
+        ...item,
+        percentage: metrics.revenue
+          ? (item.total / metrics.revenue) * 100
+          : 0,
+      }));
+  }, [metrics.revenue, periodOrders]);
 
   const monthMovement = useMemo(() => {
     const [year, month] = selectedMonth.split("-").map(Number);
@@ -407,6 +463,18 @@ export default function AdminVendasPage() {
     }
   };
 
+  const monthLabel = parseDateKey(`${selectedMonth}-01`).toLocaleDateString(
+    "pt-BR",
+    { month: "long", year: "numeric" },
+  );
+  const weekLabel = `${formatDateKey(weekRange.start, true)} até ${formatDateKey(weekRange.end, true)}`;
+  const periodLabel =
+    period === "day"
+      ? formatDateKey(selectedDate)
+      : period === "week"
+        ? `Semana de ${weekLabel}`
+        : monthLabel;
+
   const printReport = (specificOrders?: Pedido[]) => {
     const reportOrders =
       specificOrders ||
@@ -437,16 +505,39 @@ export default function AdminVendasPage() {
         (order) => `<tr><td>#${order.id}</td><td>${escapeHtml(order.created_at ? new Date(order.created_at).toLocaleString("pt-BR") : "")}</td><td>${escapeHtml(order.cliente_nome || "Cliente")}</td><td>${escapeHtml(order.forma_pagamento || "Não informado")}</td><td>${escapeHtml(statusLabel(order.status_pedido))}</td><td>${escapeHtml(money(order.total))}</td></tr>`,
       )
       .join("");
+    const reportPayments = ["pix", "dinheiro", "cartao", "outros"]
+      .map((key) => {
+        const orders = reportOrders.filter(
+          (order) => paymentCategory(order.forma_pagamento) === key,
+        );
+        return {
+          name:
+            key === "pix"
+              ? "Pix"
+              : key === "dinheiro"
+                ? "Dinheiro"
+                : key === "cartao"
+                  ? "Cartão"
+                  : "Outros",
+          count: orders.length,
+          total: orders.reduce(
+            (sum, order) => sum + Number(order.total || 0),
+            0,
+          ),
+        };
+      })
+      .filter((item) => item.count > 0)
+      .map(
+        (item) =>
+          `<tr><td>${item.name}</td><td>${item.count}</td><td>${escapeHtml(money(item.total))}</td><td>${reportTotal ? ((item.total / reportTotal) * 100).toFixed(1) : "0"}%</td></tr>`,
+      )
+      .join("");
     popup.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Controle de vendas</title><style>
       body{font-family:Arial,sans-serif;color:#172033;margin:28px}h1{margin:0;font-size:25px}h2{margin-top:28px;font-size:17px}.muted{color:#64748b;font-size:12px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:20px 0}.card{border:1px solid #ddd;border-radius:12px;padding:12px}.card b{display:block;font-size:20px;margin-top:5px}table{width:100%;border-collapse:collapse;font-size:11px;margin-top:10px}th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left}th{background:#f8fafc;text-transform:uppercase;font-size:9px}@media print{body{margin:10mm}.no-print{display:none}}
-    </style></head><body><h1>Dulelis — Controle de vendas</h1><p class="muted">${escapeHtml(period === "day" ? formatDateKey(selectedDate) : parseDateKey(`${selectedMonth}-01`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }))} • Gerado em ${escapeHtml(new Date().toLocaleString("pt-BR"))}</p><div class="cards"><div class="card">Vendas<b>${reportOrders.length}</b></div><div class="card">Faturamento<b>${escapeHtml(money(reportTotal))}</b></div><div class="card">Ticket médio<b>${escapeHtml(money(reportTotal / reportOrders.length))}</b></div></div><h2>Produtos vendidos</h2><table><thead><tr><th>#</th><th>Produto</th><th>Quantidade</th><th>Pedidos</th><th>Soma</th></tr></thead><tbody>${productRows || "<tr><td colspan='5'>Itens não informados</td></tr>"}</tbody></table><h2>Movimento de vendas</h2><table><thead><tr><th>Pedido</th><th>Data</th><th>Cliente</th><th>Pagamento</th><th>Status</th><th>Total</th></tr></thead><tbody>${orderRows}</tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);
+    </style></head><body><h1>Dulelis — Controle de vendas</h1><p class="muted">${escapeHtml(periodLabel)} • Gerado em ${escapeHtml(new Date().toLocaleString("pt-BR"))}</p><div class="cards"><div class="card">Total de vendas<b>${reportOrders.length}</b></div><div class="card">Faturamento<b>${escapeHtml(money(reportTotal))}</b></div><div class="card">Ticket médio<b>${escapeHtml(money(reportTotal / reportOrders.length))}</b></div></div><h2>Recebimentos por forma de pagamento</h2><table><thead><tr><th>Forma</th><th>Vendas</th><th>Valor</th><th>Participação</th></tr></thead><tbody>${reportPayments}</tbody></table><h2>Produtos vendidos</h2><table><thead><tr><th>#</th><th>Produto</th><th>Quantidade</th><th>Pedidos</th><th>Soma</th></tr></thead><tbody>${productRows || "<tr><td colspan='5'>Itens não informados</td></tr>"}</tbody></table><h2>Movimento de vendas</h2><table><thead><tr><th>Pedido</th><th>Data</th><th>Cliente</th><th>Pagamento</th><th>Status</th><th>Total</th></tr></thead><tbody>${orderRows}</tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`);
     popup.document.close();
   };
 
-  const monthLabel = parseDateKey(`${selectedMonth}-01`).toLocaleDateString(
-    "pt-BR",
-    { month: "long", year: "numeric" },
-  );
   const leastSold = productRanking.length
     ? [...productRanking].sort(
         (a, b) => a.quantity - b.quantity || a.revenue - b.revenue,
@@ -505,10 +596,10 @@ export default function AdminVendasPage() {
                   Período analisado
                 </p>
                 <h2 className="mt-1 text-xl font-black capitalize text-slate-900">
-                  {period === "day" ? formatDateKey(selectedDate) : monthLabel}
+                  {periodLabel}
                 </h2>
               </div>
-              <div className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
+              <div className="grid grid-cols-3 rounded-2xl bg-slate-100 p-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -518,6 +609,16 @@ export default function AdminVendasPage() {
                   className={`rounded-xl px-4 py-2.5 text-xs font-black ${period === "day" ? "bg-white text-rose-700 shadow-sm" : "text-slate-500"}`}
                 >
                   Dia
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPeriod("week");
+                    setSelectedIds([]);
+                  }}
+                  className={`rounded-xl px-4 py-2.5 text-xs font-black ${period === "week" ? "bg-white text-rose-700 shadow-sm" : "text-slate-500"}`}
+                >
+                  Semana
                 </button>
                 <button
                   type="button"
@@ -535,8 +636,8 @@ export default function AdminVendasPage() {
             <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Metric
                 icon={<ShoppingBag size={18} />}
-                label="Vendas"
-                value={String(periodOrders.length)}
+                label="Total de vendas"
+                value={`${periodOrders.length} venda(s)`}
                 tone="rose"
               />
               <Metric
@@ -700,25 +801,51 @@ export default function AdminVendasPage() {
               Recebimentos
             </p>
             <h2 className="mt-1 text-xl font-black text-slate-900">
-              Formas de pagamento
+              Pix, dinheiro e cartão
             </h2>
+            <p className="mt-1 text-xs font-bold text-slate-400">
+              Quantidade e valor recebido no período selecionado.
+            </p>
             <div className="mt-4 space-y-3">
-              {paymentSummary.map((item) => (
-                <div
-                  key={item.name}
-                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-black text-slate-800">{item.name}</p>
-                    <p className="font-black text-emerald-700">
-                      {money(item.total)}
-                    </p>
+              {paymentSummary.map((item) => {
+                const colors =
+                  item.key === "pix"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : item.key === "dinheiro"
+                      ? "border-amber-200 bg-amber-50 text-amber-700"
+                      : item.key === "cartao"
+                        ? "border-blue-200 bg-blue-50 text-blue-700"
+                        : "border-slate-200 bg-slate-50 text-slate-700";
+                return (
+                  <div
+                    key={item.name}
+                    className={`rounded-2xl border p-4 ${colors}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-black">{item.name}</p>
+                        <p className="mt-1 text-xs font-bold opacity-75">
+                          {item.count} venda(s)
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black">{money(item.total)}</p>
+                        <p className="mt-1 text-xs font-black">
+                          {item.percentage.toFixed(1)}% do total
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/80">
+                      <div
+                        className="h-full rounded-full bg-current transition-all"
+                        style={{
+                          width: `${Math.min(100, item.percentage)}%`,
+                        }}
+                      />
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs font-bold text-slate-400">
-                    {item.count} venda(s)
-                  </p>
-                </div>
-              ))}
+                );
+              })}
               {!paymentSummary.length ? (
                 <p className="py-10 text-center text-sm font-bold text-slate-400">
                   Sem recebimentos no período.
@@ -738,7 +865,7 @@ export default function AdminVendasPage() {
                 Movimento detalhado
               </p>
               <h2 className="mt-1 text-xl font-black capitalize text-slate-900">
-                Vendas de {period === "day" ? formatDateKey(selectedDate) : monthLabel}
+                Vendas — {periodLabel}
               </h2>
               <p className="mt-1 text-xs font-bold text-slate-400">
                 {visibleOrders.length} registro(s) • {selectedIds.length} selecionado(s)
