@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 @theme {
+  --font-sans: var(--font-dulelis), "Segoe UI", sans-serif;
+
   --color-slate-50: #fbf8f3;
   --color-slate-100: #f2eadf;
   --color-slate-200: #e6d6c3;
@@ -253,12 +255,32 @@
 html {
   background: #ffffff;
   scroll-padding-bottom: calc(var(--app-bottom-nav-height) + var(--app-bottom-page-gap));
+  text-rendering: optimizeLegibility;
 }
 
 body {
   min-height: 100vh;
   min-height: 100dvh;
   background: #ffffff;
+  font-family: var(--font-dulelis), "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: #f8c4dc;
+  color: #4d142d;
+}
+
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid rgb(220 61 132 / 38%);
+  outline-offset: 3px;
 }
 
 .app-page {
