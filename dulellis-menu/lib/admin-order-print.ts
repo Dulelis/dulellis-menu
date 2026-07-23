@@ -26,6 +26,8 @@ export type OrderReceiptData = {
   discount: string;
   total: string;
   qrCodeUrl?: string | null;
+  qrCodeTitle?: string | null;
+  qrCodeDescription?: string | null;
   items: OrderReceiptItem[];
 };
 
@@ -353,9 +355,9 @@ export function renderOrderReceiptHtml(
   const qrSectionHtml = data.qrCodeUrl
     ? `
       <section class="receipt-qr">
-        <div class="receipt-qr-title">QR ENTREGA</div>
-        <img id="maps-qrcode" alt="QR de entrega" />
-        <p>Escaneie para aceitar e abrir no Maps</p>
+        <div class="receipt-qr-title">${renderText(data.qrCodeTitle || "QR ENTREGA")}</div>
+        <img id="maps-qrcode" alt="${escapeHtml(data.qrCodeTitle || "QR de entrega")}" />
+        <p>${renderText(data.qrCodeDescription || "Escaneie para aceitar e abrir no Maps")}</p>
       </section>
     `
     : "";
