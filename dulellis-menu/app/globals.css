@@ -451,6 +451,15 @@ textarea {
   bottom: calc(var(--app-bottom-nav-height) + 0.75rem);
 }
 
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .admin-app-shell {
   min-height: 100vh;
   min-height: 100dvh;
