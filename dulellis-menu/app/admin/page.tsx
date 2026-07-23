@@ -13,6 +13,7 @@ import React, {
 import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 import { PropagandaFrame } from "@/components/PropagandaFrame";
+import { SalesCalendar } from "@/components/admin/SalesCalendar";
 import { PRECIFICACAO_PLANILHA_DADOS } from "@/lib/admin-pricing-workbook";
 import { parseOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { supabase } from "@/lib/supabase";
@@ -988,9 +989,12 @@ function AdminPageContent() {
   const [pedidosSelecionadosVendas, setPedidosSelecionadosVendas] = useState<
     number[]
   >([]);
-  const [dataVendasSelecionada, setDataVendasSelecionada] = useState(() =>
-    obterChaveDataVenda(new Date()),
-  );
+  const [dataVendasSelecionada, setDataVendasSelecionada] = useState(() => {
+    const dataUrl = String(searchParams.get("data") || "");
+    return /^\d{4}-\d{2}-\d{2}$/.test(dataUrl)
+      ? dataUrl
+      : obterChaveDataVenda(new Date());
+  });
   const [vendaEmEdicao, setVendaEmEdicao] =
     useState<VendaEmEdicao | null>(null);
   const [salvandoVenda, setSalvandoVenda] = useState(false);
@@ -4030,7 +4034,7 @@ function AdminPageContent() {
     (acc, p) => acc + (Number(p.total) || 0),
     0,
   );
-  const diasComVendas = React.useMemo(() => {
+  const vendasPorData = React.useMemo(() => {
     const quantidades = new Map<string, number>();
     pedidos.forEach((pedido) => {
       if (!pedido?.created_at || !pedidoContaNoFluxoOperacionalAdmin(pedido)) {
@@ -4040,9 +4044,7 @@ function AdminPageContent() {
       if (!chave) return;
       quantidades.set(chave, (quantidades.get(chave) || 0) + 1);
     });
-    return Array.from(quantidades.entries())
-      .map(([data, quantidade]) => ({ data, quantidade }))
-      .sort((a, b) => b.data.localeCompare(a.data));
+    return Object.fromEntries(quantidades);
   }, [pedidos]);
   const pedidosDoDia = pedidos.filter((p) => {
     if (!p.created_at) return false;
@@ -8020,64 +8022,15 @@ function AdminPageContent() {
                   }}
                   className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"
                 >
-                  <TrendingUp size={18} /> Outras Visoes
+                  <TrendingUp size={18} /> Central de vendas
                 </button>
               </div>
             </div>
-            <section className="rounded-[2rem] border border-pink-200 bg-gradient-to-br from-white to-pink-50 p-5 shadow-sm">
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_auto] lg:items-end">
-                <label className="block">
-                  <span className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-600">
-                    <CalendarDays size={16} className="text-pink-600" />
-                    Escolher uma data
-                  </span>
-                  <input
-                    type="date"
-                    value={dataVendasSelecionada}
-                    onChange={(event) =>
-                      selecionarDataVendas(event.target.value)
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 font-black text-slate-800 outline-none transition focus:border-pink-400 focus:ring-4 focus:ring-pink-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-600">
-                    Dias que tiveram vendas
-                  </span>
-                  <select
-                    value={
-                      diasComVendas.some(
-                        (item) => item.data === dataVendasSelecionada,
-                      )
-                        ? dataVendasSelecionada
-                        : ""
-                    }
-                    onChange={(event) =>
-                      selecionarDataVendas(event.target.value)
-                    }
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 font-bold text-slate-700 outline-none transition focus:border-pink-400 focus:ring-4 focus:ring-pink-100"
-                  >
-                    <option value="">Selecione um dia com vendas</option>
-                    {diasComVendas.map((item) => (
-                      <option key={item.data} value={item.data}>
-                        {formatarChaveDataVenda(item.data)} — {item.quantidade}{" "}
-                        venda(s)
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => selecionarDataVendas(obterChaveDataVenda(new Date()))}
-                  className="rounded-2xl border border-pink-200 bg-white px-5 py-3 font-black text-pink-700 transition hover:bg-pink-100"
-                >
-                  Ir para hoje
-                </button>
-              </div>
-              <p className="mt-4 text-sm font-black capitalize text-slate-700">
-                Exibindo {formatarChaveDataVenda(dataVendasSelecionada)}
-              </p>
-            </section>
+            <SalesCalendar
+              selectedDate={dataVendasSelecionada}
+              salesByDate={vendasPorData}
+              onSelectDate={selecionarDataVendas}
+            />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
               <div className="p-5 rounded-[2rem] border border-pink-200 bg-pink-50">
                 <div className="flex items-center justify-between mb-2">
