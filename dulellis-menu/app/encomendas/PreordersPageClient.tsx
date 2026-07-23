@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Clock3,
   FileImage,
-  LockKeyhole,
   Loader2,
   LogIn,
   MessageCircle,
@@ -239,6 +238,7 @@ export function PreordersPageClient() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<CustomerSession | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authOpen, setAuthOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [auth, setAuth] = useState({
@@ -412,7 +412,6 @@ export function PreordersPageClient() {
   );
 
   function changeQuantity(product: Product, delta: number) {
-    if (!session) return;
     setCart((current) => {
       const previous = current[product.id] || { qtd: 0, personalizacoes: {} };
       const limit = Math.max(0, Number(product.limite_por_encomenda || 0));
@@ -645,6 +644,7 @@ export function PreordersPageClient() {
 
   async function submitPreorder() {
     if (!session) {
+      setAuthOpen(true);
       document.getElementById("acesso-encomendas")?.scrollIntoView({ behavior: "smooth" });
       return;
     }
@@ -735,20 +735,20 @@ export function PreordersPageClient() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-pink-50 via-white to-amber-50 pb-32 text-slate-900">
-      <header className="px-4 pb-7 pt-6">
+      <header className="px-4 pb-5 pt-4">
         <div className="mx-auto max-w-xl">
           <ServiceModeSwitcher active="encomendas" />
-          <div className="mt-5 overflow-hidden rounded-[2.5rem] bg-slate-900 p-7 text-white shadow-2xl">
+          <div className="mt-4 overflow-hidden rounded-[2rem] bg-slate-900 p-6 text-white shadow-[0_12px_32px_rgba(38,22,15,0.16)]">
             <div className="flex items-center gap-3 text-pink-300">
               <CalendarDays size={24} />
               <p className="text-xs font-black uppercase tracking-[0.24em]">Agenda Dulelis</p>
             </div>
-            <h1 className="mt-4 text-4xl font-black leading-tight">Sua encomenda, preparada para o momento certo.</h1>
-            <p className="mt-4 text-sm font-bold leading-relaxed text-slate-300">
+            <h1 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">Sua encomenda, preparada para o momento certo.</h1>
+            <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-300">
               Escolha os produtos, personalize e reserve a data. A agenda funciona separadamente do horario do delivery.
             </p>
             {config ? (
-              <div className="mt-5 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-wider">
+              <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-extrabold uppercase tracking-[0.06em]">
                 <span className="rounded-full bg-white/10 px-3 py-2">Antecedencia: {minimumLeadHours}h</span>
                 <span className="rounded-full bg-white/10 px-3 py-2">Agenda: {String(config.hora_inicio || "").slice(0, 5)}–{String(config.hora_fim || "").slice(0, 5)}</span>
               </div>
@@ -757,7 +757,7 @@ export function PreordersPageClient() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-xl space-y-6 px-4">
+      <div className="mx-auto max-w-xl space-y-5 px-4">
         {loading ? (
           <div className="rounded-[2rem] bg-white p-8 text-center shadow-lg">
             <Loader2 className="mx-auto animate-spin text-pink-600" />
@@ -773,7 +773,7 @@ export function PreordersPageClient() {
           </div>
         ) : null}
 
-        <section id="acesso-encomendas" className="rounded-[2rem] border border-pink-100 bg-white p-6 shadow-lg">
+        <section id="acesso-encomendas" className="rounded-[1.6rem] border border-pink-100 bg-white p-5 shadow-[0_8px_24px_rgba(138,75,29,0.08)]">
           {session ? (
             <div className="flex items-start gap-4">
               <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-700"><User size={22} /></div>
@@ -785,10 +785,26 @@ export function PreordersPageClient() {
             </div>
           ) : (
             <div>
-              <div className="flex items-center gap-3"><LogIn className="text-pink-600" /><h2 className="text-xl font-black">Entre para encomendar</h2></div>
-              <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-pink-50 p-1.5">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-pink-50 p-2.5 text-pink-600"><LogIn size={20} /></div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg font-extrabold">Sua conta Dulelis</h2>
+                  <p className="mt-0.5 text-sm font-semibold text-slate-600">Escolha primeiro e entre antes de enviar.</p>
+                </div>
+              </div>
+              {!authOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setAuthOpen(true)}
+                  className="mt-4 w-full rounded-xl bg-pink-600 px-4 py-3 text-xs font-extrabold uppercase tracking-[0.06em] text-white"
+                >
+                  Entrar ou criar conta
+                </button>
+              ) : (
+                <>
+              <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-pink-50 p-1.5">
                 {(["login", "register"] as const).map((mode) => (
-                  <button key={mode} type="button" onClick={() => { setAuthMode(mode); setAuthError(""); }} className={`rounded-xl px-3 py-3 text-xs font-black uppercase ${authMode === mode ? "bg-white text-pink-700 shadow" : "text-slate-500"}`}>
+                  <button key={mode} type="button" onClick={() => { setAuthMode(mode); setAuthError(""); }} className={`rounded-lg px-3 py-2.5 text-xs font-extrabold uppercase tracking-[0.04em] ${authMode === mode ? "bg-white text-pink-700 shadow-sm" : "text-slate-600"}`}>
                     {mode === "login" ? "Entrar" : "Criar conta"}
                   </button>
                 ))}
@@ -813,16 +829,18 @@ export function PreordersPageClient() {
                   </>
                 ) : null}
                 {authError ? <p className="rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{authError}</p> : null}
-                <button type="button" onClick={() => void authenticate()} disabled={authLoading} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-pink-600 p-4 text-xs font-black uppercase tracking-widest text-white disabled:opacity-60">
+                <button type="button" onClick={() => void authenticate()} disabled={authLoading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-pink-600 p-4 text-xs font-extrabold uppercase tracking-[0.06em] text-white disabled:opacity-60">
                   {authLoading ? <Loader2 size={17} className="animate-spin" /> : null}{authMode === "login" ? "Entrar" : "Criar conta e entrar"}
                 </button>
               </div>
+                </>
+              )}
             </div>
           )}
         </section>
 
         {session && myOrders.length > 0 ? (
-          <section className="rounded-[2rem] border border-pink-100 bg-white p-6 shadow-lg">
+          <section className="rounded-[1.6rem] border border-pink-100 bg-white p-5 shadow-[0_8px_24px_rgba(138,75,29,0.08)]">
             <div className="flex items-center gap-3">
               <PackageCheck className="text-pink-600" />
               <h2 className="text-xl font-black">Minhas encomendas</h2>
@@ -868,10 +886,10 @@ export function PreordersPageClient() {
         ) : null}
 
         {catalog && catalog.produtos.length > 0 ? (
-          <nav id="catalogo-encomendas" className="overflow-x-auto rounded-[2rem] border border-pink-100 bg-white p-3 shadow-lg" aria-label="Categorias de encomendas">
+          <nav id="catalogo-encomendas" className="overflow-x-auto rounded-[1.5rem] border border-pink-100 bg-white p-2.5 shadow-[0_6px_18px_rgba(138,75,29,0.07)]" aria-label="Categorias de encomendas">
             <div className="flex min-w-max gap-2">{categories.map((category, index) => {
               const colors = CATEGORY_COLOR_CLASSES[index % CATEGORY_COLOR_CLASSES.length];
-              return <button key={category} type="button" onClick={() => setSelectedCategory(category)} className={`rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-wide shadow-sm transition-all ${activeCategory === category ? `${colors.active} scale-[1.03] ring-2 ring-white` : colors.idle}`}>{category}</button>;
+              return <button key={category} type="button" onClick={() => setSelectedCategory(category)} className={`rounded-xl px-4 py-2.5 text-xs font-extrabold uppercase tracking-[0.04em] transition-all ${activeCategory === category ? `${colors.active} ring-2 ring-white` : colors.idle}`}>{category}</button>;
             })}</div>
           </nav>
         ) : null}
@@ -883,7 +901,7 @@ export function PreordersPageClient() {
           const unit = String(product.opcoes_encomenda?.unidade || "unidade");
           const canAddReferencePhoto = acceptsReferencePhoto(product);
           return (
-            <article key={product.id} className="overflow-hidden rounded-[2rem] border border-pink-100 bg-white shadow-lg">
+            <article key={product.id} className="overflow-hidden rounded-[1.6rem] border border-pink-100 bg-white shadow-[0_8px_24px_rgba(138,75,29,0.08)]">
               {product.imagem_url ? (
                 <div className="relative h-48 w-full bg-pink-50"><Image src={product.imagem_url} alt={product.nome} fill sizes="(max-width: 640px) 100vw, 640px" className="object-cover" /></div>
               ) : null}
@@ -894,12 +912,11 @@ export function PreordersPageClient() {
                 <div className="mt-4 flex items-center justify-between gap-4">
                   <div><p className="text-xl font-black text-pink-600">{money(Number(product.preco || 0))}</p><p className="text-[10px] font-bold uppercase text-slate-400">por {unit}</p></div>
                   <div className="flex items-center gap-3 rounded-2xl bg-slate-900 p-2 text-white">
-                    <button type="button" onClick={() => changeQuantity(product, -1)} disabled={!session || !entry?.qtd} className="rounded-xl bg-white/10 p-2 disabled:cursor-not-allowed disabled:opacity-30"><Minus size={16} /></button>
+                    <button type="button" onClick={() => changeQuantity(product, -1)} disabled={!entry?.qtd} className="rounded-xl bg-white/10 p-2 disabled:cursor-not-allowed disabled:opacity-30"><Minus size={16} /></button>
                     <span className="min-w-12 text-center text-sm font-black">{quantity(entry?.qtd || 0)} {unit === "unidade" ? "" : unit}</span>
-                    <button type="button" onClick={() => changeQuantity(product, 1)} disabled={!session} aria-label={session ? `Adicionar ${product.nome}` : "Entre na sua conta para pedir"} className="rounded-xl bg-pink-600 p-2 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400">{session ? <Plus size={16} /> : <LockKeyhole size={16} />}</button>
+                    <button type="button" onClick={() => changeQuantity(product, 1)} aria-label={`Adicionar ${product.nome}`} className="rounded-xl bg-pink-600 p-2"><Plus size={16} /></button>
                   </div>
                 </div>
-                {!session ? <button type="button" onClick={() => document.getElementById("acesso-encomendas")?.scrollIntoView({ behavior: "smooth", block: "center" })} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs font-black uppercase tracking-wide text-amber-800"><LockKeyhole size={16} />Entre para poder pedir</button> : null}
                 {entry?.qtd ? (
                   <div className="mt-5 space-y-3 rounded-3xl bg-pink-50 p-4">
                     <p className="text-xs font-black uppercase tracking-widest text-pink-700">Personalize</p>
@@ -942,7 +959,7 @@ export function PreordersPageClient() {
         })}
 
         {catalog ? (
-          <section className="rounded-[2rem] border border-pink-100 bg-white p-6 shadow-lg">
+          <section className="rounded-[1.6rem] border border-pink-100 bg-white p-5 shadow-[0_8px_24px_rgba(138,75,29,0.08)]">
             <div className="flex items-center gap-3"><Clock3 className="text-pink-600" /><h2 className="text-xl font-black">Data e horario</h2></div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-black uppercase tracking-wider text-slate-500">Data
@@ -959,7 +976,7 @@ export function PreordersPageClient() {
         ) : null}
 
         {catalog ? (
-          <section className="rounded-[2rem] border border-pink-100 bg-white p-6 shadow-lg">
+          <section className="rounded-[1.6rem] border border-pink-100 bg-white p-5 shadow-[0_8px_24px_rgba(138,75,29,0.08)]">
             <h2 className="text-xl font-black">Como deseja receber?</h2>
             <div className="mt-4 grid grid-cols-2 gap-3">
               {config?.permite_retirada !== false ? <button type="button" onClick={() => setReceiptType("retirada")} className={`rounded-2xl border-2 p-4 text-xs font-black uppercase ${receiptType === "retirada" ? "border-pink-600 bg-pink-600 text-white" : "border-slate-100 bg-slate-50 text-slate-600"}`}><ShoppingBag className="mx-auto mb-2" />Retirada</button> : null}
@@ -1019,10 +1036,23 @@ export function PreordersPageClient() {
               <MessageCircle className="mt-0.5 shrink-0" size={20} />
               <p>Ao finalizar a encomenda, você poderá conversar pelo WhatsApp para acertar fotos, decoração e outros detalhes com a Dulelis.</p>
             </div>
-            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-900">
-              <input type="checkbox" checked={acceptedPaymentPolicy} onChange={(event) => setAcceptedPaymentPolicy(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-pink-600" />
-              <span><strong className="block font-black uppercase">Regra de pagamento e cancelamento</strong>{PREORDER_PAYMENT_POLICY_TEXT} Confirmo que li e estou de acordo.</span>
-            </label>
+            <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
+              <label className="flex cursor-pointer items-start gap-3 text-sm font-bold">
+                <input type="checkbox" checked={acceptedPaymentPolicy} onChange={(event) => setAcceptedPaymentPolicy(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-pink-600" />
+                <span>
+                  <strong className="block font-extrabold">Li e aceito as regras de pagamento e cancelamento.</strong>
+                  <span className="mt-1 block text-xs font-semibold text-amber-800">Necessário para enviar a encomenda.</span>
+                </span>
+              </label>
+              <details className="mt-3 border-t border-amber-200 pt-3">
+                <summary className="cursor-pointer text-xs font-extrabold uppercase tracking-[0.06em] text-amber-800">
+                  Ler regras completas
+                </summary>
+                <p className="mt-3 text-sm font-semibold leading-6 text-amber-900">
+                  {PREORDER_PAYMENT_POLICY_TEXT} Confirmo que li e estou de acordo.
+                </p>
+              </details>
+            </div>
             <input value={eventName} onChange={(event) => setEventName(event.target.value)} placeholder="Evento ou ocasiao (opcional)" className="mt-4 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Observacoes gerais da encomenda" className="mt-3 min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
           </section>
@@ -1033,8 +1063,8 @@ export function PreordersPageClient() {
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-pink-100 bg-white/95 p-3 backdrop-blur-xl">
           <div className="mx-auto flex max-w-xl items-center justify-between gap-4 rounded-[1.8rem] bg-slate-900 p-4 text-white shadow-2xl">
             <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{cartItems.reduce((sum, item) => sum + item.entry.qtd, 0)} itens</p><p className="truncate text-xl font-black text-pink-400">{money(subtotal)}{receiptType === "entrega" ? " + entrega" : ""}</p></div>
-            <button type="button" onClick={() => void submitPreorder()} disabled={!session || submitting || !selectedDate || !selectedTime || !acceptedPaymentPolicy} className="flex shrink-0 items-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-xs font-black uppercase tracking-wider disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400">
-              {submitting ? <Loader2 size={17} className="animate-spin" /> : <ChevronRight size={17} />}{editingOrderId ? "Salvar alterações" : "Enviar encomenda"}
+            <button type="button" onClick={() => void submitPreorder()} disabled={submitting || !selectedDate || !selectedTime || !acceptedPaymentPolicy} className="flex shrink-0 items-center gap-2 rounded-2xl bg-pink-600 px-5 py-4 text-xs font-black uppercase tracking-wider disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400">
+              {submitting ? <Loader2 size={17} className="animate-spin" /> : <ChevronRight size={17} />}{!session ? "Entrar e continuar" : editingOrderId ? "Salvar alterações" : "Enviar encomenda"}
             </button>
           </div>
         </div>
