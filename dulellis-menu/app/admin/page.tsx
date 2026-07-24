@@ -871,6 +871,14 @@ function AdminPageContent() {
   );
   const [catalogoInsumosRegistroId, setCatalogoInsumosRegistroId] = useState<number | null>(null);
   const [salvandoInsumos, setSalvandoInsumos] = useState(false);
+  const [cadastrandoInsumo, setCadastrandoInsumo] = useState(false);
+  const [novoInsumoPrecificacao, setNovoInsumoPrecificacao] = useState({
+    nome: "",
+    marca: "",
+    unidade: "g",
+    quantidadeEmbalagem: 1000,
+    precoCompra: 0,
+  });
   const [controleAdminAba] = useState<ControleAdminAba>("precificacao");
   const [receitaPlanilhaSelecionada, setReceitaPlanilhaSelecionada] = useState<string>(
     PRECIFICACAO_PLANILHA_DADOS.receitas[0]?.nome || "",
@@ -1924,13 +1932,16 @@ function AdminPageContent() {
     setInsumosPrecificacao((insumosAtuais) => insumosAtuais.filter((_item, itemIndice) => itemIndice !== indice));
   };
 
-  const salvarCatalogoInsumos = async () => {
+  const salvarCatalogoInsumos = async (
+    listaInsumos: InsumoPrecificacao[] = insumosPrecificacao,
+    mensagemSucesso = "Lista de insumos salva. As fichas passam a usar estes custos.",
+  ) => {
     setSalvandoInsumos(true);
     const payload = {
       nome: PRECIFICACAO_INSUMOS_NOME, estoque_id: null, unidade_rendimento: "catalogo",
       custo_ingredientes: 0, custo_embalagem: 0, custo_mao_obra: 0, custo_operacional: 0,
       margem_percentual: 0, preco_sugerido: 0, preco_venda: 0, ativo_vitrine: false,
-      observacoes: `${PRECIFICACAO_INSUMOS_PREFIXO}${JSON.stringify(insumosPrecificacao)}`,
+      observacoes: `${PRECIFICACAO_INSUMOS_PREFIXO}${JSON.stringify(listaInsumos)}`,
     };
     try {
       const resposta = catalogoInsumosRegistroId
@@ -1938,11 +1949,96 @@ function AdminPageContent() {
         : await adminDb({ action: "insert", table: "precificacao_produtos", values: [payload] });
       const idSalvo = Number(resposta?.data?.[0]?.id || catalogoInsumosRegistroId || 0);
       if (idSalvo) setCatalogoInsumosRegistroId(idSalvo);
-      alert("Lista de insumos salva. As fichas passam a usar estes custos.");
+      alert(mensagemSucesso);
+      return true;
     } catch (error: any) {
       alert(`Erro ao salvar insumos: ${error.message || "tente novamente."}`);
+      return false;
     } finally {
       setSalvandoInsumos(false);
+    }
+  };
+
+  const cadastrarNovoInsumoPrecificacao = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    const nome = novoInsumoPrecificacao.nome.trim();
+    const quantidadeEmbalagem = Number(
+      novoInsumoPrecificacao.quantidadeEmbalagem,
+    );
+    const precoCompra = Number(novoInsumoPrecificacao.precoCompra);
+
+    if (!nome) {
+      alert("Informe o nome do ingrediente.");
+      return;
+    }
+    if (!Number.isFinite(quantidadeEmbalagem) || quantidadeEmbalagem <= 0) {
+      alert("Informe uma quantidade válida para a embalagem.");
+      return;
+    }
+    if (!Number.isFinite(precoCompra) || precoCompra < 0) {
+      alert("Informe um preço de compra válido.");
+      return;
+    }
+    if (
+      insumosPrecificacao.some(
+        (insumo) =>
+          normalizarNomeInsumo(insumo.nome) === normalizarNomeInsumo(nome),
+      )
+    ) {
+      alert("Este ingrediente já está cadastrado na lista.");
+      return;
+    }
+
+    const novoInsumo: InsumoPrecificacao = {
+      id: `insumo-${Date.now()}-${normalizarNomeInsumo(nome).replace(/[^a-z0-9]+/g, "-")}`,
+      nome,
+      marca: novoInsumoPrecificacao.marca.trim(),
+      unidade: novoInsumoPrecificacao.unidade.trim() || "un",
+      quantidadeEmbalagem,
+      precoCompra,
+      custoUnitario: precoCompra / quantidadeEmbalagem,
+    };
+    const listaAtualizada = [...insumosPrecificacao, novoInsumo];
+
+    setCadastrandoInsumo(true);
+    setInsumosPrecificacao(listaAtualizada);
+    try {
+      const salvo = await salvarCatalogoInsumos(
+        listaAtualizada,
+        `Ingrediente "${nome}" cadastrado, salvo e adicionado à ficha atual.`,
+      );
+      if (salvo) {
+        setReceitaPlanilhaEditavel((receitaAtual) =>
+          recalcularReceitaPlanilhaEditavel({
+            ...receitaAtual,
+            ingredientes: [
+              ...receitaAtual.ingredientes,
+              {
+                nome: novoInsumo.nome,
+                quantidade: 0,
+                custoUnitario: novoInsumo.custoUnitario,
+                subtotal: 0,
+                insumoId: novoInsumo.id,
+                unidade: novoInsumo.unidade,
+              },
+            ],
+          }),
+        );
+        setReceitaPlanilhaEmEdicao(true);
+        setNovoInsumoPrecificacao({
+          nome: "",
+          marca: "",
+          unidade: novoInsumo.unidade,
+          quantidadeEmbalagem: 1000,
+          precoCompra: 0,
+        });
+      } else {
+        setInsumosPrecificacao(insumosPrecificacao);
+      }
+    } finally {
+      setCadastrandoInsumo(false);
     }
   };
 
@@ -6577,6 +6673,143 @@ function AdminPageContent() {
                     </div>
                     <ChevronDown className="shrink-0 text-amber-600 transition-transform group-open:rotate-180" />
                   </summary>
+                  <form
+                    onSubmit={cadastrarNovoInsumoPrecificacao}
+                    className="mt-5 rounded-2xl border border-pink-200 bg-pink-50 p-4"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-600">
+                          Novo ingrediente
+                        </p>
+                        <h3 className="mt-1 text-base font-black text-slate-900">
+                          Cadastrar item para usar na precificação
+                        </h3>
+                        <p className="mt-1 text-xs font-bold text-slate-500">
+                          O custo por g, ml ou unidade será calculado automaticamente.
+                        </p>
+                      </div>
+                      <p className="rounded-xl bg-white px-3 py-2 text-xs font-black text-emerald-700">
+                        Custo unitário:{" "}
+                        {formatarMoedaAdmin(
+                          Number(novoInsumoPrecificacao.quantidadeEmbalagem || 0) > 0
+                            ? Number(novoInsumoPrecificacao.precoCompra || 0) /
+                                Number(novoInsumoPrecificacao.quantidadeEmbalagem)
+                            : 0,
+                        )}
+                      </p>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                      <label className="block xl:col-span-2">
+                        <span className="ml-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Nome do ingrediente
+                        </span>
+                        <input
+                          required
+                          value={novoInsumoPrecificacao.nome}
+                          onChange={(event) =>
+                            setNovoInsumoPrecificacao((atual) => ({
+                              ...atual,
+                              nome: event.target.value,
+                            }))
+                          }
+                          placeholder="Ex.: Chocolate ao leite"
+                          className="mt-1.5 w-full rounded-xl border border-pink-200 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-pink-500"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="ml-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Marca
+                        </span>
+                        <input
+                          value={novoInsumoPrecificacao.marca}
+                          onChange={(event) =>
+                            setNovoInsumoPrecificacao((atual) => ({
+                              ...atual,
+                              marca: event.target.value,
+                            }))
+                          }
+                          placeholder="Opcional"
+                          className="mt-1.5 w-full rounded-xl border border-pink-200 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-pink-500"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="ml-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Unidade de uso
+                        </span>
+                        <select
+                          value={novoInsumoPrecificacao.unidade}
+                          onChange={(event) =>
+                            setNovoInsumoPrecificacao((atual) => ({
+                              ...atual,
+                              unidade: event.target.value,
+                            }))
+                          }
+                          className="mt-1.5 w-full rounded-xl border border-pink-200 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-pink-500"
+                        >
+                          <option value="g">Grama (g)</option>
+                          <option value="ml">Mililitro (ml)</option>
+                          <option value="un">Unidade (un)</option>
+                          <option value="kg">Quilograma (kg)</option>
+                          <option value="l">Litro (l)</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="ml-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Qtd. na embalagem
+                        </span>
+                        <input
+                          type="number"
+                          min="0.0001"
+                          step="0.01"
+                          required
+                          value={novoInsumoPrecificacao.quantidadeEmbalagem}
+                          onChange={(event) =>
+                            setNovoInsumoPrecificacao((atual) => ({
+                              ...atual,
+                              quantidadeEmbalagem: Number(event.target.value),
+                            }))
+                          }
+                          className="mt-1.5 w-full rounded-xl border border-pink-200 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-pink-500"
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                      <label className="block">
+                        <span className="ml-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Preço pago na embalagem
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          required
+                          value={novoInsumoPrecificacao.precoCompra}
+                          onChange={(event) =>
+                            setNovoInsumoPrecificacao((atual) => ({
+                              ...atual,
+                              precoCompra: Number(event.target.value),
+                            }))
+                          }
+                          className="mt-1.5 w-full rounded-xl border border-pink-200 bg-white p-3 text-sm font-bold text-slate-800 outline-none focus:border-pink-500"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={cadastrandoInsumo || salvandoInsumos}
+                        className="flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-5 py-3.5 text-sm font-black text-white shadow-sm hover:bg-pink-700 disabled:cursor-wait disabled:opacity-50"
+                      >
+                        {cadastrandoInsumo ? (
+                          <Loader2 size={18} className="animate-spin" />
+                        ) : (
+                          <PlusCircle size={18} />
+                        )}
+                        {cadastrandoInsumo
+                          ? "Salvando..."
+                          : "Cadastrar ingrediente"}
+                      </button>
+                    </div>
+                  </form>
                   <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-100">
                     <table className="w-full min-w-[950px] text-left text-sm">
                       <thead className="bg-amber-50 text-[10px] font-black uppercase tracking-widest text-amber-800">
@@ -6698,6 +6931,13 @@ function AdminPageContent() {
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={adicionarIngredienteReceitaPlanilha}
+                        className="flex items-center gap-2 rounded-xl bg-pink-600 px-3 py-2 text-xs font-black uppercase text-white hover:bg-pink-700"
+                      >
+                        <PlusCircle size={14} /> Adicionar ingrediente
+                      </button>
                       <button
                         type="button"
                         onClick={() => setReceitaPlanilhaEmEdicao(true)}
