@@ -325,7 +325,17 @@ type ReceitaPlanilhaEditavel = {
   marcado: boolean;
   disponivel_encomenda: boolean;
 };
-type AlarmeSomId = "classico" | "campainha" | "suave" | "urgente";
+type AlarmeSomId =
+  | "classico"
+  | "campainha"
+  | "ding_dong"
+  | "campainha_dupla"
+  | "sino_loja"
+  | "toque_curto"
+  | "melodico"
+  | "alerta_longo"
+  | "suave"
+  | "urgente";
 type AlarmeSomPreset = {
   label: string;
   vibracao: number[];
@@ -404,6 +414,175 @@ const ALARME_SONS_PEDIDOS: Record<AlarmeSomId, AlarmeSomPreset> = {
         frequencia: 1568,
         tipo: "sine",
         volume: 0.2,
+      },
+    ],
+  },
+  ding_dong: {
+    label: "Ding-dong",
+    vibracao: [180, 120, 260],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.42,
+        frequencia: 1046,
+        tipo: "sine",
+        volume: 0.28,
+      },
+      {
+        atraso: 0.48,
+        duracao: 0.58,
+        frequencia: 784,
+        tipo: "sine",
+        volume: 0.3,
+      },
+    ],
+  },
+  campainha_dupla: {
+    label: "Campainha dupla",
+    vibracao: [130, 70, 130, 180, 130, 70, 220],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.14,
+        frequencia: 988,
+        tipo: "triangle",
+        volume: 0.28,
+      },
+      {
+        atraso: 0.18,
+        duracao: 0.18,
+        frequencia: 1318,
+        tipo: "triangle",
+        volume: 0.3,
+      },
+      {
+        atraso: 0.56,
+        duracao: 0.14,
+        frequencia: 988,
+        tipo: "triangle",
+        volume: 0.28,
+      },
+      {
+        atraso: 0.74,
+        duracao: 0.24,
+        frequencia: 1318,
+        tipo: "triangle",
+        volume: 0.32,
+      },
+    ],
+  },
+  sino_loja: {
+    label: "Sino de loja",
+    vibracao: [240, 100, 360],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.55,
+        frequencia: 659,
+        tipo: "sine",
+        volume: 0.2,
+      },
+      {
+        atraso: 0,
+        duracao: 0.5,
+        frequencia: 988,
+        tipo: "sine",
+        volume: 0.14,
+      },
+      {
+        atraso: 0.45,
+        duracao: 0.65,
+        frequencia: 784,
+        tipo: "sine",
+        volume: 0.18,
+      },
+      {
+        atraso: 0.45,
+        duracao: 0.58,
+        frequencia: 1174,
+        tipo: "sine",
+        volume: 0.12,
+      },
+    ],
+  },
+  toque_curto: {
+    label: "Toque curto",
+    vibracao: [100, 55, 160],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.09,
+        frequencia: 1174,
+        tipo: "square",
+        volume: 0.25,
+      },
+      {
+        atraso: 0.14,
+        duracao: 0.12,
+        frequencia: 1396,
+        tipo: "square",
+        volume: 0.28,
+      },
+    ],
+  },
+  melodico: {
+    label: "Melódico",
+    vibracao: [100, 60, 100, 60, 220],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.16,
+        frequencia: 659,
+        tipo: "triangle",
+        volume: 0.22,
+      },
+      {
+        atraso: 0.2,
+        duracao: 0.16,
+        frequencia: 784,
+        tipo: "triangle",
+        volume: 0.23,
+      },
+      {
+        atraso: 0.4,
+        duracao: 0.16,
+        frequencia: 988,
+        tipo: "triangle",
+        volume: 0.25,
+      },
+      {
+        atraso: 0.62,
+        duracao: 0.32,
+        frequencia: 1318,
+        tipo: "triangle",
+        volume: 0.28,
+      },
+    ],
+  },
+  alerta_longo: {
+    label: "Alerta longo",
+    vibracao: [420, 120, 420],
+    passos: [
+      {
+        atraso: 0,
+        duracao: 0.46,
+        frequencia: 880,
+        tipo: "sawtooth",
+        volume: 0.22,
+      },
+      {
+        atraso: 0.54,
+        duracao: 0.46,
+        frequencia: 740,
+        tipo: "sawtooth",
+        volume: 0.24,
+      },
+      {
+        atraso: 1.08,
+        duracao: 0.58,
+        frequencia: 988,
+        tipo: "sawtooth",
+        volume: 0.26,
       },
     ],
   },
