@@ -1642,6 +1642,14 @@ function ClientePageContent() {
   }, [carregarDadosIniciais]);
 
   useEffect(() => {
+    void fetch("/api/public/storefront-view", {
+      method: "POST",
+      credentials: "same-origin",
+      keepalive: true,
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (!atualizacaoAutomaticaAtiva) return;
 
     const agendarVitrine = () => {
