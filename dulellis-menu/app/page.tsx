@@ -28,6 +28,7 @@ import {
   Minus,
   Phone,
   Plus,
+  RefreshCw,
   ShoppingBag,
   User,
   X,
@@ -880,6 +881,28 @@ function normalizarDiasSemana(dias?: string[] | null) {
   return unicosOrdenados.length > 0 ? unicosOrdenados : [...DIAS_SEMANA_CHAVES];
 }
 
+function lojaAbertaParaAtualizacaoAutomatica(
+  horario: HorarioFuncionamentoRow,
+  agora: Date,
+) {
+  if (horario.ativo === false) return false;
+  const abertura = normalizarHoraHHMM(horario.hora_abertura) || "08:00";
+  const fechamento = normalizarHoraHHMM(horario.hora_fechamento) || "18:00";
+  const diasSelecionados = normalizarDiasSemana(horario.dias_semana);
+  const chaveOperacional = obterChaveDiaOperacional(
+    agora,
+    abertura,
+    fechamento,
+  );
+  if (!diasSelecionados.includes(chaveOperacional)) return false;
+  const intervalo = obterIntervaloFuncionamento(agora, abertura, fechamento);
+  const agoraMs = agora.getTime();
+  return (
+    agoraMs >= intervalo.inicio.getTime() &&
+    agoraMs < intervalo.fim.getTime()
+  );
+}
+
 function normalizarLinkExterno(link: string) {
   const bruto = String(link || "").trim();
   if (!bruto) return "";
@@ -950,6 +973,7 @@ function ClientePageContent() {
   });
   const [agoraHorario, setAgoraHorario] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
+  const [atualizandoProdutos, setAtualizandoProdutos] = useState(false);
   const [estoqueEmAtualizacao, setEstoqueEmAtualizacao] = useState<Record<number, boolean>>({});
   const [abaCarrinho, setAbaCarrinho] = useState(false);
   const [passo, setPasso] = useState(1);
@@ -1277,6 +1301,25 @@ function ClientePageContent() {
       }
     }
   }, [aplicarVitrineCache]);
+
+  const atualizacaoAutomaticaAtiva = useMemo(
+    () =>
+      lojaAbertaParaAtualizacaoAutomatica(
+        horarioFuncionamento,
+        agoraHorario,
+      ),
+    [agoraHorario, horarioFuncionamento],
+  );
+
+  const atualizarProdutosManualmente = useCallback(async () => {
+    if (atualizandoProdutos) return;
+    setAtualizandoProdutos(true);
+    try {
+      await carregarDadosIniciais(false);
+    } finally {
+      setAtualizandoProdutos(false);
+    }
+  }, [atualizandoProdutos, carregarDadosIniciais]);
 
   const aplicarResultadoCep = useCallback(
     (
@@ -1611,6 +1654,8 @@ function ClientePageContent() {
   }, [carregarDadosIniciais]);
 
   useEffect(() => {
+    if (!atualizacaoAutomaticaAtiva) return;
+
     const agendarVitrine = () => {
       if (recarregarVitrineRef.current) {
         window.clearTimeout(recarregarVitrineRef.current);
@@ -1647,7 +1692,7 @@ function ClientePageContent() {
         void supabase.removeChannel(channel);
       }
     };
-  }, [carregarDadosIniciais]);
+  }, [atualizacaoAutomaticaAtiva, carregarDadosIniciais]);
 
   useEffect(() => {
     if (!abaCarrinho) return;
@@ -3380,15 +3425,36 @@ function ClientePageContent() {
                     : "border-red-200/60 bg-red-50"
                 }`}
               >
-              <div className={`flex items-center gap-1.5 font-extrabold uppercase tracking-[0.06em] ${fechandoAgora ? "text-base text-yellow-900" : "text-xs text-slate-700"}`}>
-                <Clock3 size={fechandoAgora ? 18 : 14} />
-                Horário: {statusHorario.faixa}
+              <div className="flex items-center justify-between gap-2">
+                <div className={`flex items-center gap-1.5 font-extrabold uppercase tracking-[0.06em] ${fechandoAgora ? "text-base text-yellow-900" : "text-xs text-slate-700"}`}>
+                  <Clock3 size={fechandoAgora ? 18 : 14} />
+                  Horário: {statusHorario.faixa}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void atualizarProdutosManualmente()}
+                  disabled={atualizandoProdutos}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-pink-200 bg-pink-50 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wide text-pink-700 transition hover:bg-pink-100 disabled:cursor-wait disabled:opacity-60 sm:text-[10px]"
+                  title="Buscar agora as alterações feitas nos produtos"
+                >
+                  <RefreshCw
+                    size={13}
+                    className={atualizandoProdutos ? "animate-spin" : ""}
+                  />
+                  {atualizandoProdutos ? "Atualizando" : "Atualizar produtos"}
+                </button>
               </div>
               <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-600">
                 Dias: {diasFuncionamentoTexto}
               </p>
               <p className={`${fechandoAgora ? "text-sm font-extrabold text-yellow-900" : "text-[11px] font-semibold text-slate-600"} mt-0.5`}>
                 {fechandoAgora ? `Estamos fechando (${minutosParaFecharAviso} min)` : statusHorario.mensagem}
+              </p>
+              <p className="mt-0.5 text-[10px] font-bold text-slate-400">
+                Atualização automática:{" "}
+                {atualizacaoAutomaticaAtiva
+                  ? "ativa enquanto a loja estiver aberta"
+                  : "pausada com a loja fechada"}
               </p>
               {fechandoAgora && (
                 <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-yellow-300/20 px-2 py-0.5 text-xs font-black uppercase tracking-wide text-yellow-900 animate-pulse">
