@@ -717,6 +717,22 @@ export function PreordersPageClient() {
   }
 
   if (confirmation) {
+    const whatsappOrderSummary = [
+      `Olá! Gostaria de acertar os valores e finalizar os detalhes da encomenda #${confirmation.pedido_id}.`,
+      "",
+      `*Encomenda #${confirmation.pedido_id}*`,
+      `Agendada para: ${new Date(confirmation.agendado_para).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`,
+      "",
+      "*Itens:*",
+      ...confirmation.itens.map(
+        (item) => `• ${quantity(item.quantidade)}x ${item.nome} — ${money(item.total)}`,
+      ),
+      "",
+      `Subtotal: ${money(confirmation.subtotal)}`,
+      `Entrega: ${money(confirmation.taxa_entrega)}`,
+      `*Total informado: ${money(confirmation.total)}*`,
+    ].join("\n");
+
     return (
       <main className="min-h-screen bg-gradient-to-b from-pink-50 via-white to-amber-50 px-4 py-8">
         <div className="mx-auto max-w-xl rounded-[2.5rem] border border-emerald-100 bg-white p-8 text-center shadow-2xl">
@@ -771,7 +787,7 @@ export function PreordersPageClient() {
           <p className="mt-5 text-sm font-bold text-slate-600">
             Os valores, a forma de pagamento e os detalhes da encomenda serão acertados diretamente pelo WhatsApp.
           </p>
-          <a href={buildDulelisWhatsappUrl(`Olá! Pedido #${confirmation.pedido_id}: gostaria de acertar os valores e finalizar os detalhes da encomenda pelo WhatsApp.`)} target="_blank" rel="noopener noreferrer" className="mt-7 flex w-full items-center justify-center gap-2 rounded-3xl bg-green-600 px-5 py-4 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-green-100">
+          <a href={buildDulelisWhatsappUrl(whatsappOrderSummary)} target="_blank" rel="noopener noreferrer" className="mt-7 flex w-full items-center justify-center gap-2 rounded-3xl bg-green-600 px-5 py-4 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-green-100">
             <MessageCircle size={19} />Finalizar detalhes no WhatsApp
           </a>
           <a
