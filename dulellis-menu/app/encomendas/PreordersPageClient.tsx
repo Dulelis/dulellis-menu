@@ -276,6 +276,14 @@ export function PreordersPageClient() {
     total: number;
     taxa_entrega: number;
     editado?: boolean;
+    subtotal: number;
+    itens: Array<{
+      id: number;
+      nome: string;
+      quantidade: number;
+      valor_unitario: number;
+      total: number;
+    }>;
   } | null>(null);
   const [myOrders, setMyOrders] = useState<PreorderOrder[]>([]);
 
@@ -681,7 +689,17 @@ export function PreordersPageClient() {
         error?: string;
       };
       if (!response.ok || json.ok === false || !json.data) throw new Error(json.error || "Falha ao enviar encomenda.");
-      setConfirmation(json.data);
+      setConfirmation({
+        ...json.data,
+        subtotal,
+        itens: cartItems.map(({ product, entry }) => ({
+          id: product.id,
+          nome: product.nome,
+          quantidade: entry.qtd,
+          valor_unitario: Number(product.preco || 0),
+          total: Number(product.preco || 0) * entry.qtd,
+        })),
+      });
       setCart({});
       setEditingOrderId(null);
       setAcceptedPaymentPolicy(false);
@@ -704,10 +722,47 @@ export function PreordersPageClient() {
           <p className="mt-4 font-bold text-slate-600">
             Agendada para {new Date(confirmation.agendado_para).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}.
           </p>
-          <div className="mt-6 rounded-3xl bg-slate-900 p-5 text-white">
-            <p className="text-xs font-bold text-slate-300">Total da encomenda</p>
-            <p className="mt-1 text-3xl font-black text-pink-400">{money(confirmation.total)}</p>
-            {confirmation.taxa_entrega > 0 ? <p className="mt-1 text-xs">Entrega: {money(confirmation.taxa_entrega)}</p> : null}
+          <div className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-white text-left">
+            <div className="bg-slate-900 px-5 py-4 text-white">
+              <p className="text-xs font-black uppercase tracking-widest text-pink-300">
+                Itens da encomenda
+              </p>
+            </div>
+            <div className="divide-y divide-slate-100 px-5">
+              {confirmation.itens.map((item) => (
+                <div key={item.id} className="py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-black text-slate-900">
+                        {item.quantidade}x {item.nome}
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-slate-500">
+                        Valor unitário: {money(item.valor_unitario)}
+                      </p>
+                    </div>
+                    <p className="shrink-0 font-black text-slate-900">
+                      {money(item.total)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2 border-t border-slate-200 bg-slate-50 p-5 text-sm font-bold text-slate-600">
+              <div className="flex justify-between gap-3">
+                <span>Subtotal dos itens</span>
+                <span>{money(confirmation.subtotal)}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span>Entrega</span>
+                <span>{money(confirmation.taxa_entrega)}</span>
+              </div>
+              <div className="flex justify-between gap-3 border-t border-slate-200 pt-3 text-lg font-black text-slate-900">
+                <span>Total da encomenda</span>
+                <span className="text-pink-600">
+                  {money(confirmation.total)}
+                </span>
+              </div>
+            </div>
           </div>
           <p className="mt-5 text-sm font-bold text-slate-600">
             Acompanhe a confirmacao da producao e, se desejar, pague o sinal ou o valor integral pelo Mercado Pago.

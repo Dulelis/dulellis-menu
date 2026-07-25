@@ -67,6 +67,7 @@ import {
   Save,
   Settings,
   CalendarDays,
+  Search,
 } from "lucide-react";
 
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
@@ -1182,6 +1183,7 @@ function AdminPageContent() {
       ? dataUrl
       : obterChaveDataVenda(new Date());
   });
+  const [buscaNumeroVenda, setBuscaNumeroVenda] = useState("");
   const [vendaEmEdicao, setVendaEmEdicao] =
     useState<VendaEmEdicao | null>(null);
   const [salvandoVenda, setSalvandoVenda] = useState(false);
@@ -3850,6 +3852,7 @@ function AdminPageContent() {
               items: itens.map((item: any) => ({
                 quantity: Number(item.qtd || 1),
                 name: String(item.nome || "Item"),
+                unitPrice: formatarValor(Number(item.preco || 0)),
                 total: formatarValor(
                   Number(item.preco || 0) * Number(item.qtd || 0),
                 ),
@@ -5054,6 +5057,27 @@ function AdminPageContent() {
   const selecionarDataVendas = (data: string) => {
     setDataVendasSelecionada(data);
     setPedidosSelecionadosVendas([]);
+  };
+
+  const buscarVendaPorNumero = () => {
+    const pedidoId = Number(buscaNumeroVenda.replace(/\D/g, ""));
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      alert("Digite o número do pedido.");
+      return;
+    }
+    const pedido = pedidos.find((item) => Number(item.id) === pedidoId);
+    if (!pedido) {
+      alert(`Pedido #${pedidoId} não encontrado.`);
+      return;
+    }
+    const dataPedido = obterChaveDataVenda(pedido.created_at);
+    if (dataPedido) setDataVendasSelecionada(dataPedido);
+    setPedidosSelecionadosVendas([pedidoId]);
+    window.setTimeout(() => {
+      document
+        .getElementById(`venda-${pedidoId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
   };
 
   const abrirEdicaoVendaSelecionada = () => {
@@ -8387,6 +8411,34 @@ function AdminPageContent() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <div className="flex w-full overflow-hidden rounded-2xl border border-pink-200 bg-white shadow-sm sm:w-auto">
+                  <label className="relative min-w-0 flex-1">
+                    <Search
+                      size={17}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500"
+                    />
+                    <input
+                      type="search"
+                      inputMode="numeric"
+                      value={buscaNumeroVenda}
+                      onChange={(event) =>
+                        setBuscaNumeroVenda(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") buscarVendaPorNumero();
+                      }}
+                      placeholder="Número do pedido"
+                      className="h-full min-w-0 py-3 pl-10 pr-3 text-sm font-bold outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={buscarVendaPorNumero}
+                    className="bg-pink-600 px-4 text-xs font-black uppercase text-white"
+                  >
+                    Buscar
+                  </button>
+                </div>
                 <button
                   onClick={marcarVendasEmDestaque}
                   className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all"
@@ -8680,8 +8732,9 @@ function AdminPageContent() {
 
                       return (
                         <div
+                          id={`venda-${pedido.id}`}
                           key={pedido.id}
-                          className="w-full rounded-[1.35rem] border border-slate-200 bg-white p-3 shadow-sm"
+                          className="w-full scroll-mt-6 rounded-[1.35rem] border border-slate-200 bg-white p-3 shadow-sm"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <button
