@@ -178,6 +178,7 @@ export default function AdminVendasPage() {
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
   const [period, setPeriod] = useState<"day" | "week" | "month">("day");
   const [search, setSearch] = useState("");
+  const [orderNumberSearch, setOrderNumberSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [editing, setEditing] = useState<VendaEdicao | null>(null);
   const [saving, setSaving] = useState(false);
@@ -444,6 +445,22 @@ export default function AdminVendasPage() {
     );
   };
 
+  const findOrderByNumber = () => {
+    const orderId = Number(orderNumberSearch.replace(/\D/g, ""));
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      alert("Digite o número do pedido.");
+      return;
+    }
+    const order = pedidos.find((item) => Number(item.id) === orderId);
+    if (!order) {
+      alert(`Pedido #${orderId} não encontrado.`);
+      return;
+    }
+    const orderDate = dateKey(order.created_at);
+    if (orderDate) handleSelectDate(orderDate);
+    setSearch(String(orderId));
+  };
+
   const toggleOrder = (id: number) => {
     setSelectedIds((current) =>
       current.includes(id)
@@ -633,6 +650,34 @@ export default function AdminVendasPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <div className="flex min-w-[280px] flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:flex-initial">
+              <label className="relative min-w-0 flex-1">
+                <Search
+                  size={17}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-500"
+                />
+                <input
+                  type="search"
+                  inputMode="numeric"
+                  value={orderNumberSearch}
+                  onChange={(event) =>
+                    setOrderNumberSearch(event.target.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") findOrderByNumber();
+                  }}
+                  placeholder="Número do pedido"
+                  className="h-full w-full py-3 pl-10 pr-3 text-sm font-bold outline-none"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={findOrderByNumber}
+                className="bg-rose-600 px-4 text-xs font-black uppercase text-white"
+              >
+                Buscar
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => {

@@ -1,6 +1,7 @@
 export type OrderReceiptItem = {
   quantity: number;
   name: string;
+  unitPrice: string;
   total: string;
 };
 
@@ -341,6 +342,7 @@ export function renderOrderReceiptHtml(
             <tr>
               <td class="qty">${renderText(`${item.quantity}x`)}</td>
               <td class="name">${renderText(item.name)}</td>
+              <td class="unit-price">${renderText(item.unitPrice)}</td>
               <td class="price">${renderText(item.total)}</td>
             </tr>
           `,
@@ -348,7 +350,7 @@ export function renderOrderReceiptHtml(
         .join("")
     : `
       <tr>
-        <td colspan="3" class="empty">Itens não informados</td>
+        <td colspan="4" class="empty">Itens não informados</td>
       </tr>
     `;
 
@@ -550,6 +552,14 @@ export function renderOrderReceiptHtml(
             border-bottom: 1px dashed #dbe4ee;
             vertical-align: top;
           }
+          .receipt-items th {
+            padding: 0 0 1.2mm;
+            border-bottom: 1px solid #94a3b8;
+            text-align: left;
+            font-size: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+          }
           .receipt-items .qty {
             width: 10mm;
             font-weight: 700;
@@ -557,6 +567,14 @@ export function renderOrderReceiptHtml(
           .receipt-items .name {
             padding-right: 2mm;
             word-break: break-word;
+            font-weight: 700;
+          }
+          .receipt-items .unit-price {
+            width: 17mm;
+            padding-right: 1mm;
+            text-align: right;
+            white-space: nowrap;
+            font-size: 9px;
             font-weight: 700;
           }
           .receipt-items .price {
@@ -665,6 +683,14 @@ export function renderOrderReceiptHtml(
 
           <section class="receipt-section">
             <table class="receipt-items">
+              <thead>
+                <tr>
+                  <th class="qty">Qtd.</th>
+                  <th class="name">Item</th>
+                  <th class="unit-price">Unit.</th>
+                  <th class="price">Total</th>
+                </tr>
+              </thead>
               <tbody>${itemsHtml}</tbody>
             </table>
           </section>
