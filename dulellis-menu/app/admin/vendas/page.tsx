@@ -7,16 +7,20 @@ import {
   CalendarDays,
   ChevronLeft,
   DollarSign,
+  Eye,
   Loader2,
   Package,
   Pencil,
+  Percent,
   Printer,
+  RefreshCw,
   Save,
   Search,
   ShoppingBag,
   Trash2,
   TrendingDown,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -177,6 +181,8 @@ export default function AdminVendasPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [editing, setEditing] = useState<VendaEdicao | null>(null);
   const [saving, setSaving] = useState(false);
+  const [analytics, setAnalytics] = useState({ views: 0, visitors: 0 });
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -266,6 +272,25 @@ export default function AdminVendasPage() {
       : period === "week"
         ? weekOrders
         : monthOrders;
+  const analyticsRange = useMemo(
+    () =>
+      period === "day"
+        ? { from: selectedDate, to: selectedDate }
+        : period === "week"
+          ? { from: weekRange.start, to: weekRange.end }
+          : {
+              from: `${selectedMonth}-01`,
+              to: dateKey(
+                new Date(
+                  Number(selectedMonth.slice(0, 4)),
+                  Number(selectedMonth.slice(5, 7)),
+                  0,
+                  12,
+                ),
+              ),
+            },
+    [period, selectedDate, selectedMonth, weekRange.end, weekRange.start],
+  );
   const visibleOrders = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("pt-BR");
     if (!term) return periodOrders;
@@ -308,6 +333,54 @@ export default function AdminVendasPage() {
       ),
     };
   }, [periodOrders]);
+
+  const buyerCount = useMemo(() => {
+    const buyers = new Set(
+      periodOrders.map((order) => {
+        const whatsapp = String(order.whatsapp || "").replace(/\D/g, "");
+        return whatsapp || `pedido:${order.id}`;
+      }),
+    );
+    return buyers.size;
+  }, [periodOrders]);
+  const conversionRate = analytics.visitors
+    ? (buyerCount / analytics.visitors) * 100
+    : 0;
+
+  const loadAnalytics = useCallback(async () => {
+    setLoadingAnalytics(true);
+    try {
+      const params = new URLSearchParams(analyticsRange);
+      const response = await fetch(
+        `/api/admin/storefront-analytics?${params.toString()}`,
+        { cache: "no-store" },
+      );
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        data?: { views?: number; visitors?: number };
+      };
+      if (!response.ok || json.ok === false) {
+        throw new Error(json.error || "Falha ao carregar visualizações.");
+      }
+      setAnalytics({
+        views: Number(json.data?.views || 0),
+        visitors: Number(json.data?.visitors || 0),
+      });
+    } catch (error) {
+      setErro(
+        error instanceof Error
+          ? error.message
+          : "Falha ao carregar visualizações.",
+      );
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  }, [analyticsRange]);
+
+  useEffect(() => {
+    void loadAnalytics();
+  }, [loadAnalytics]);
 
   const productRanking = useMemo(() => {
     return buildProductRanking(periodOrders);
@@ -560,6 +633,20 @@ export default function AdminVendasPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void Promise.all([loadData(), loadAnalytics()]);
+              }}
+              disabled={loading || loadingAnalytics}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm disabled:cursor-wait disabled:opacity-60"
+            >
+              <RefreshCw
+                size={18}
+                className={loading || loadingAnalytics ? "animate-spin" : ""}
+              />
+              Atualizar dados
+            </button>
             <Link
               href={`/admin?tab=vendas&data=${selectedDate}`}
               className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm"
@@ -658,6 +745,52 @@ export default function AdminVendasPage() {
                 value={String(metrics.itemCount)}
                 tone="amber"
               />
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-violet-700">
+                    Acessos à vitrine
+                  </p>
+                  <p className="mt-1 text-[11px] font-bold text-violet-700/70">
+                    Uma nova visualização é contada a cada sessão de 30 minutos.
+                  </p>
+                </div>
+                {loadingAnalytics ? (
+                  <span className="mt-2 inline-flex items-center gap-2 text-xs font-black text-violet-700 sm:mt-0">
+                    <Loader2 size={14} className="animate-spin" />
+                    Atualizando
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <AnalyticsMetric
+                  icon={<Eye size={18} />}
+                  label="Visualizações"
+                  value={String(analytics.views)}
+                />
+                <AnalyticsMetric
+                  icon={<Users size={18} />}
+                  label="Visitantes"
+                  value={String(analytics.visitors)}
+                />
+                <AnalyticsMetric
+                  icon={<ShoppingBag size={18} />}
+                  label="Compradores"
+                  value={String(buyerCount)}
+                />
+                <AnalyticsMetric
+                  icon={<Percent size={18} />}
+                  label="Conversão"
+                  value={`${conversionRate.toFixed(1)}%`}
+                />
+              </div>
+              <p className="mt-3 text-[10px] font-bold text-violet-700/60">
+                A contagem de acessos começa a partir da publicação desta
+                atualização. Compradores são identificados pelo WhatsApp
+                informado no pedido.
+              </p>
             </div>
 
             <div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
@@ -1202,6 +1335,28 @@ function Metric({
   };
   return (
     <div className={`rounded-2xl border p-4 ${colors[tone]}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[9px] font-black uppercase tracking-widest">
+          {label}
+        </p>
+        {icon}
+      </div>
+      <p className="mt-2 text-xl font-black text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function AnalyticsMetric({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-violet-200 bg-white p-4 text-violet-700 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[9px] font-black uppercase tracking-widest">
           {label}
