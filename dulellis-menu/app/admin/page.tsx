@@ -71,7 +71,6 @@ import {
 
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
 const ADMIN_ALARME_PEDIDOS_SOM_STORAGE_KEY = "dulellis.admin.order-alarm.sound";
-const ADMIN_ALARME_PEDIDOS_POLLING_MS = 5000;
 const ADMIN_ALARME_PEDIDOS_REPETICAO_MS = 10000;
 const LOJA_ENDERECO_RETIRADA_ADMIN = "Rua Manoel Felício Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
@@ -1035,6 +1034,7 @@ function AdminPageContent() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<AdminTab>("estoque");
   const [saindo, setSaindo] = useState(false);
+  const [atualizandoPainel, setAtualizandoPainel] = useState(false);
   const [estoque, setEstoque] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
@@ -1195,8 +1195,6 @@ function AdminPageContent() {
   const [resetVitrineAberto, setResetVitrineAberto] = useState(false);
   const [resetVitrineConfirmacao, setResetVitrineConfirmacao] = useState("");
   const [resetVitrineSenha, setResetVitrineSenha] = useState("");
-  const recarregarRealtimeRef = useRef<number | null>(null);
-  const entregadoresRef = useRef<any[]>([]);
   const qzConectandoRef = useRef<Promise<void> | null>(null);
   const imprimirPedidoAceitoRef = useRef<
     (pedido: any, options?: ImpressaoPedidoAceitoOptions) => Promise<void>
@@ -1622,22 +1620,21 @@ function AdminPageContent() {
     }
   }, [registrarPedidosMonitorados]);
 
-  const monitorarPedidosNovos = useCallback(async () => {
-    if (!pedidosIniciaisMapeadosRef.current) return;
-
-    const res = await fetch("/api/admin/order-alerts", { cache: "no-store" });
-    const json = (await res.json().catch(() => ({}))) as {
-      ok?: boolean;
-      error?: string;
-      pedidos?: any[];
-    };
-
-    if (!res.ok || json.ok === false) {
-      throw new Error(json.error || "Falha ao monitorar novos pedidos.");
+  const atualizarPainelManualmente = useCallback(async () => {
+    if (atualizandoPainel) return;
+    setAtualizandoPainel(true);
+    try {
+      await carregarDados();
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar o painel.",
+      );
+    } finally {
+      setAtualizandoPainel(false);
     }
-
-    registrarPedidosMonitorados(json.pedidos || [], true);
-  }, [registrarPedidosMonitorados]);
+  }, [atualizandoPainel, carregarDados]);
 
   useEffect(() => {
     setActiveTab(normalizarAdminTab(searchParams.get("tab")));
@@ -1692,10 +1689,6 @@ function AdminPageContent() {
   useEffect(() => {
     void carregarDados();
   }, [carregarDados]);
-
-  useEffect(() => {
-    entregadoresRef.current = entregadores;
-  }, [entregadores]);
 
   useEffect(() => {
     for (const pedido of pedidos) {
@@ -1766,117 +1759,6 @@ function AdminPageContent() {
 
     return () => window.clearInterval(timer);
   }, [alarmePedidosAtivo, pedidos, tocarAlarmeNovoPedido]);
-
-  useEffect(() => {
-    const agendarRecarga = () => {
-      if (recarregarRealtimeRef.current) {
-        window.clearTimeout(recarregarRealtimeRef.current);
-      }
-      recarregarRealtimeRef.current = window.setTimeout(() => {
-        void carregarDados();
-      }, 80);
-    };
-
-    const lidarMudancaPedido = (payload: any) => {
-      const pedidoAtualizado = payload?.new;
-      const pedidoId = Number(pedidoAtualizado?.id || 0);
-      const tipoEvento = String(payload?.eventType || "")
-        .trim()
-        .toUpperCase();
-
-      if (pedidoId > 0 && tipoEvento !== "INSERT") {
-        registrarPedidosMonitorados([pedidoAtualizado], true);
-      }
-
-      agendarRecarga();
-    };
-
-    const lidarMudancaEntrega = (payload: any) => {
-      const entregaAtualizada = payload?.new;
-      const status = String(entregaAtualizada?.status || "")
-        .trim()
-        .toLowerCase();
-      const entregadorId = Number(entregaAtualizada?.entregador_id || 0);
-      const pedidoId = Number(entregaAtualizada?.pedido_id || 0);
-      const nomeEntregador =
-        entregadoresRef.current.find((item) => Number(item.id) === entregadorId)
-          ?.nome || "Entregador";
-
-      if (status === "aceita" && pedidoId > 0) {
-        setAlertaEntregaAceita(
-          `${nomeEntregador} aceitou a entrega do pedido #${pedidoId}.`,
-        );
-      }
-
-      agendarRecarga();
-    };
-
-    const channel = supabase
-      .channel("admin-realtime-sync")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pedidos" },
-        lidarMudancaPedido,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "entregas" },
-        lidarMudancaEntrega,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "estoque" },
-        agendarRecarga,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "entregadores" },
-        agendarRecarga,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "taxas_entrega" },
-        agendarRecarga,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "promocoes" },
-        agendarRecarga,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "propagandas" },
-        agendarRecarga,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "precificacao_produtos" },
-        agendarRecarga,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "configuracoes_loja" },
-        agendarRecarga,
-      )
-      .subscribe();
-
-    const timer = window.setInterval(() => {
-      void carregarDados();
-    }, 30000);
-
-    const timerAlarme = window.setInterval(() => {
-      void monitorarPedidosNovos();
-    }, ADMIN_ALARME_PEDIDOS_POLLING_MS);
-
-    return () => {
-      window.clearInterval(timer);
-      window.clearInterval(timerAlarme);
-      if (recarregarRealtimeRef.current) {
-        window.clearTimeout(recarregarRealtimeRef.current);
-      }
-      void supabase.removeChannel(channel);
-    };
-  }, [carregarDados, monitorarPedidosNovos, registrarPedidosMonitorados]);
 
   useEffect(() => {
     if (!ADMIN_QZ_ENABLED || !QZ_PRINTER_TARGET) return;
@@ -6245,6 +6127,23 @@ function AdminPageContent() {
           </h1>
 
           <div className="flex w-full flex-wrap items-center gap-2 sm:gap-3 md:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                void atualizarPainelManualmente();
+              }}
+              disabled={atualizandoPainel}
+              className="w-full sm:w-auto bg-white text-slate-700 px-5 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm border border-slate-200 hover:bg-slate-50 transition-all disabled:cursor-wait disabled:opacity-60"
+              title="Buscar agora os dados mais recentes do painel"
+            >
+              {atualizandoPainel ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <RotateCcw size={18} />
+              )}
+              {atualizandoPainel ? "Atualizando..." : "Atualizar painel"}
+            </button>
+
             {activeTab === "entregadores" && (
               <button
                 type="button"
