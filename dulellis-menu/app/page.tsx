@@ -21,6 +21,7 @@ import {
   Clock3,
   CreditCard,
   ChevronRight,
+  Instagram,
   LogIn,
   LogOut,
   Loader2,
@@ -40,6 +41,8 @@ const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
 const LOJA_CEP_RETIRADA = "88370-314";
 const WHATSAPP_LOJA_ACOMPANHAMENTO = "5547992375871";
+const INSTAGRAM_DULELIS_URL =
+  "https://www.instagram.com/dulelis_confeitaria/";
 const WHATSAPP_LOJA_ACOMPANHAMENTO_LABEL = "(47) 99237-5871";
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
@@ -3712,12 +3715,24 @@ function ClientePageContent() {
       </main>
 
       <footer className="max-w-xl mx-auto px-4 pb-6 sm:px-6">
-        <div className="rounded-2xl border border-pink-100 bg-white px-4 py-4 text-center">
+        <div className="rounded-2xl border border-pink-100 bg-white px-4 py-5 text-center">
           <p className="text-sm font-black text-pink-700 tracking-tight">
             Dulelis Confeitaria - desde 2014
           </p>
           <p className="mt-1 text-xs font-semibold uppercase tracking-[0.06em] text-slate-600">
             A pausa perfeita para adoçar seu dia.
+          </p>
+          <a
+            href={INSTAGRAM_DULELIS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-orange-500 px-5 py-3 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-pink-100 transition-transform hover:scale-[1.02]"
+          >
+            <Instagram size={18} />
+            Siga nossa página no Instagram
+          </a>
+          <p className="mt-2 text-xs font-bold text-slate-400">
+            @dulelis_confeitaria
           </p>
         </div>
       </footer>
@@ -4142,7 +4157,19 @@ function ClientePageContent() {
             <p className={`mt-2 text-sm font-black uppercase tracking-widest sm:text-base ${infoModalPedidoFinalizado.destaqueClasse}`}>
               {infoModalPedidoFinalizado.destaque}
             </p>
-            <div className="mt-8">
+            <a
+              href={INSTAGRAM_DULELIS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-7 flex w-full items-center justify-center gap-2 rounded-[2rem] bg-gradient-to-r from-fuchsia-600 via-pink-600 to-orange-500 px-5 py-4 text-sm font-black uppercase tracking-wider text-white shadow-lg shadow-pink-100 transition-transform hover:scale-[1.01]"
+            >
+              <Instagram size={20} />
+              Siga nossa página no Instagram
+            </a>
+            <p className="mt-2 text-xs font-bold text-slate-400">
+              @dulelis_confeitaria
+            </p>
+            <div className="mt-4">
               <button
                 type="button"
                 onClick={() => {

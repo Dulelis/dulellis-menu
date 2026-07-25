@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock3,
   FileImage,
+  Instagram,
   Loader2,
   LogIn,
   MessageCircle,
@@ -26,6 +27,9 @@ import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-polic
 import { CUSTOMER_PASSWORD_RULES_TEXT } from "@/lib/customer-password-policy";
 import { buildDulelisWhatsappUrl } from "@/lib/store-contact";
 import { PREORDER_PAYMENT_POLICY_TEXT } from "@/lib/preorder-payment-policy";
+
+const INSTAGRAM_DULELIS_URL =
+  "https://www.instagram.com/dulelis_confeitaria/";
 
 type CustomerSession = {
   id: number;
@@ -773,6 +777,18 @@ export function PreordersPageClient() {
           <a href={buildDulelisWhatsappUrl(`Olá! Pedido #${confirmation.pedido_id}: gostaria de finalizar os detalhes da encomenda pelo WhatsApp.`)} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-3xl bg-green-100 px-5 py-4 text-sm font-black uppercase tracking-widest text-green-800">
             <MessageCircle size={19} />Finalizar detalhes no WhatsApp
           </a>
+          <a
+            href={INSTAGRAM_DULELIS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-3xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-orange-500 px-5 py-4 text-sm font-black uppercase tracking-wider text-white shadow-lg shadow-pink-100"
+          >
+            <Instagram size={20} />
+            Siga nossa página no Instagram
+          </a>
+          <p className="mt-2 text-xs font-bold text-slate-400">
+            @dulelis_confeitaria
+          </p>
           <button
             type="button"
             onClick={() => setConfirmation(null)}
@@ -1113,6 +1129,29 @@ export function PreordersPageClient() {
           </section>
         ) : null}
       </div>
+
+      <footer className="mx-auto mt-8 max-w-xl px-4 pb-8">
+        <div className="rounded-[2rem] border border-pink-100 bg-white p-5 text-center shadow-sm">
+          <p className="text-sm font-black text-pink-700">
+            Dulelis Confeitaria
+          </p>
+          <p className="mt-1 text-xs font-bold text-slate-500">
+            Acompanhe nossas novidades, bolos e doces.
+          </p>
+          <a
+            href={INSTAGRAM_DULELIS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-600 via-pink-600 to-orange-500 px-5 py-3 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-pink-100"
+          >
+            <Instagram size={18} />
+            Siga nossa página no Instagram
+          </a>
+          <p className="mt-2 text-xs font-bold text-slate-400">
+            @dulelis_confeitaria
+          </p>
+        </div>
+      </footer>
 
       {cartItems.length > 0 ? (
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-pink-100 bg-white/95 p-3 backdrop-blur-xl">
