@@ -885,7 +885,23 @@ export function PreordersPageClient() {
                   <>
                     <input value={auth.nome} onChange={(event) => setAuth((current) => ({ ...current, nome: event.target.value }))} placeholder="Nome e sobrenome" className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
                     <input type="email" value={auth.email} onChange={(event) => setAuth((current) => ({ ...current, email: event.target.value }))} placeholder="E-mail" className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
-                    <input type="date" value={auth.data_aniversario} onChange={(event) => setAuth((current) => ({ ...current, data_aniversario: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
+                    <label className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 pb-3 pt-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        Data de nascimento
+                      </span>
+                      <input
+                        type="date"
+                        max={new Date().toISOString().slice(0, 10)}
+                        value={auth.data_aniversario}
+                        onChange={(event) =>
+                          setAuth((current) => ({
+                            ...current,
+                            data_aniversario: event.target.value,
+                          }))
+                        }
+                        className="mt-1 w-full bg-transparent py-1 font-bold text-slate-800 outline-none"
+                      />
+                    </label>
                   </>
                 ) : null}
                 <input inputMode="tel" value={auth.whatsapp} onChange={(event) => setAuth((current) => ({ ...current, whatsapp: event.target.value }))} placeholder="WhatsApp" className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold outline-none focus:border-pink-300" />
