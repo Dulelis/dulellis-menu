@@ -887,8 +887,6 @@ function AdminPageContent() {
     useState<ReceitaPlanilhaEditavel>(() =>
       criarReceitaPlanilhaEditavel(PRECIFICACAO_PLANILHA_DADOS.receitas[0]),
     );
-  const [receitaPlanilhaEmEdicao, setReceitaPlanilhaEmEdicao] =
-    useState(false);
   const [horarioFuncionamento, setHorarioFuncionamento] = useState({
     id: null as number | null,
     hora_abertura: "08:00",
@@ -901,6 +899,8 @@ function AdminPageContent() {
   const [uploadingPropaganda, setUploadingPropaganda] = useState(false);
   const [mostrarModalEstoque, setMostrarModalEstoque] = useState(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [vincularProdutoCriadoPrecificacao, setVincularProdutoCriadoPrecificacao] =
+    useState(false);
 
   const [mostrarModalTaxa, setMostrarModalTaxa] = useState(false);
   const [editandoTaxaId, setEditandoTaxaId] = useState<number | null>(null);
@@ -1746,6 +1746,7 @@ function AdminPageContent() {
 
   const salvarProduto = async (e: React.FormEvent) => {
     e.preventDefault();
+    let produtoSalvoId = editandoId;
     if (editandoId) {
       await adminDb({
         action: "update_eq",
@@ -1754,7 +1755,18 @@ function AdminPageContent() {
         eq: { column: "id", value: editandoId },
       });
     } else {
-      await adminDb({ action: "insert", table: "estoque", values: [novoItem] });
+      const resposta = await adminDb({
+        action: "insert",
+        table: "estoque",
+        values: [novoItem],
+      });
+      produtoSalvoId = Number(resposta?.data?.[0]?.id || 0) || null;
+    }
+    if (vincularProdutoCriadoPrecificacao && produtoSalvoId) {
+      setReceitaPlanilhaEditavel((receitaAtual) => ({
+        ...receitaAtual,
+        estoque_id: String(produtoSalvoId),
+      }));
     }
     fecharModal();
     carregarDados();
@@ -1776,6 +1788,7 @@ function AdminPageContent() {
   const fecharModal = () => {
     setMostrarModalEstoque(false);
     setEditandoId(null);
+    setVincularProdutoCriadoPrecificacao(false);
     setNovoItem({
       nome: "",
       quantidade: 0,
@@ -1819,14 +1832,12 @@ function AdminPageContent() {
         criarReceitaPlanilhaEditavel(receita, insumosPrecificacao),
       ),
     );
-    setReceitaPlanilhaEmEdicao(false);
     setEditandoPrecificacaoId(null);
   };
 
   const iniciarNovaReceitaPlanilha = () => {
     setReceitaPlanilhaSelecionada("");
     setReceitaPlanilhaEditavel(criarNovaReceitaPlanilha(insumosPrecificacao));
-    setReceitaPlanilhaEmEdicao(true);
     setEditandoPrecificacaoId(null);
   };
 
@@ -1837,7 +1848,6 @@ function AdminPageContent() {
         criarReceitaDePrecificacaoSalva(registro, insumosPrecificacao),
       ),
     );
-    setReceitaPlanilhaEmEdicao(true);
     setEditandoPrecificacaoId(Number(registro.id));
   };
 
@@ -1853,8 +1863,56 @@ function AdminPageContent() {
       marcado: false,
       disponivel_encomenda: false,
     });
-    setReceitaPlanilhaEmEdicao(true);
     setEditandoPrecificacaoId(null);
+  };
+
+  const selecionarOpcaoReceitaPlanilha = (valor: string) => {
+    if (valor === "nova") {
+      iniciarNovaReceitaPlanilha();
+      return;
+    }
+    if (valor.startsWith("modelo:")) {
+      selecionarReceitaPlanilha(valor.slice("modelo:".length));
+      return;
+    }
+    if (valor.startsWith("salva:")) {
+      const id = Number(valor.slice("salva:".length));
+      const registro = precificacoes.find(
+        (item) => Number(item.id) === id,
+      );
+      if (registro) editarPrecificacaoSalva(registro);
+    }
+  };
+
+  const abrirNovoProdutoDaPrecificacao = () => {
+    setNovoItem({
+      nome: receitaPlanilhaEditavel.nome || "Novo produto",
+      quantidade: 0,
+      preco: Number(receitaPlanilhaEditavel.precoFinalSugerido || 0),
+      descricao: "",
+      imagem_url: "",
+      categoria: "Doces",
+    });
+    setEditandoId(null);
+    setVincularProdutoCriadoPrecificacao(true);
+    setMostrarModalEstoque(true);
+  };
+
+  const abrirProdutoVinculadoDaPrecificacao = () => {
+    if (!receitaPlanilhaEditavel.estoque_id) {
+      alert("Selecione um produto do cardápio ou crie um novo primeiro.");
+      return;
+    }
+    const produto = estoque.find(
+      (item) =>
+        Number(item.id) === Number(receitaPlanilhaEditavel.estoque_id),
+    );
+    if (!produto) {
+      alert("O produto vinculado não foi encontrado no cardápio.");
+      return;
+    }
+    setVincularProdutoCriadoPrecificacao(false);
+    abrirEdicao(produto);
   };
 
   const atualizarReceitaPlanilhaEditavel = (
@@ -2026,7 +2084,6 @@ function AdminPageContent() {
             ],
           }),
         );
-        setReceitaPlanilhaEmEdicao(true);
         setNovoInsumoPrecificacao({
           nome: "",
           marca: "",
@@ -2052,7 +2109,6 @@ function AdminPageContent() {
         ],
       }),
     );
-    setReceitaPlanilhaEmEdicao(true);
   };
 
   const removerIngredienteReceitaPlanilha = (indice: number) => {
@@ -2077,7 +2133,6 @@ function AdminPageContent() {
             criarReceitaDePrecificacaoSalva(registro, insumosPrecificacao),
           ),
         );
-        setReceitaPlanilhaEmEdicao(false);
         return;
       }
     }
@@ -2147,7 +2202,6 @@ function AdminPageContent() {
         });
       }
       setReceitaPlanilhaEditavel(receita);
-      setReceitaPlanilhaEmEdicao(false);
       await carregarDados();
     } catch (error: any) {
       alert(`Erro ao salvar receita: ${error.message || "verifique a tabela de precificacao."}`);
@@ -6940,13 +6994,6 @@ function AdminPageContent() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setReceitaPlanilhaEmEdicao(true)}
-                        className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-xs font-black uppercase text-blue-700 hover:bg-blue-100"
-                      >
-                        <Pencil size={14} /> Editar
-                      </button>
-                      <button
-                        type="button"
                         onClick={() =>
                           atualizarReceitaPlanilhaEditavel({
                             marcado: !receitaPlanilhaEditavel.marcado,
@@ -6969,22 +7016,50 @@ function AdminPageContent() {
                   <div className="space-y-4">
                     <div className="space-y-1">
                       <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                        Receita pronta
+                        Receitas e fichas salvas
                       </label>
                       <select
                         className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-black text-slate-700 outline-none focus:ring-2 focus:ring-pink-500"
-                        value={receitaPlanilhaSelecionada}
-                        onChange={(e) => selecionarReceitaPlanilha(e.target.value)}
+                        value={
+                          editandoPrecificacaoId
+                            ? `salva:${editandoPrecificacaoId}`
+                            : receitaPlanilhaSelecionada
+                              ? `modelo:${receitaPlanilhaSelecionada}`
+                              : ""
+                        }
+                        onChange={(e) =>
+                          selecionarOpcaoReceitaPlanilha(e.target.value)
+                        }
                       >
                         <option value="" disabled>
-                          Ficha nova ou cadastrada
+                          Selecione uma receita
                         </option>
-                        {PRECIFICACAO_PLANILHA_DADOS.receitas.map((receita) => (
-                          <option key={receita.nome} value={receita.nome}>
-                            {receita.nome}
-                          </option>
-                        ))}
+                        <option value="nova">+ Criar nova receita</option>
+                        <optgroup label="Minhas fichas editáveis">
+                          {precificacoes.map((registro) => (
+                            <option
+                              key={registro.id}
+                              value={`salva:${registro.id}`}
+                            >
+                              {registro.nome || "Ficha sem nome"}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Modelos iniciais">
+                          {PRECIFICACAO_PLANILHA_DADOS.receitas.map((receita) => (
+                            <option
+                              key={receita.nome}
+                              value={`modelo:${receita.nome}`}
+                            >
+                              {receita.nome}
+                            </option>
+                          ))}
+                        </optgroup>
                       </select>
+                      <p className="ml-2 text-[10px] font-bold text-slate-400">
+                        Os modelos iniciais podem ser alterados e, ao salvar,
+                        passam a aparecer em “Minhas fichas editáveis”.
+                      </p>
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -6995,7 +7070,6 @@ function AdminPageContent() {
                         <input
                           className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500 disabled:opacity-70"
                           value={receitaPlanilhaEditavel.nome}
-                          disabled={!receitaPlanilhaEmEdicao}
                           onChange={(e) =>
                             atualizarReceitaPlanilhaEditavel({ nome: e.target.value })
                           }
@@ -7003,7 +7077,7 @@ function AdminPageContent() {
                       </div>
                       <div className="space-y-1">
                         <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                          Produto do cardapio
+                          Inserir ou editar no cardápio
                         </label>
                         <select
                           className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-pink-500"
@@ -7012,13 +7086,30 @@ function AdminPageContent() {
                             atualizarReceitaPlanilhaEditavel({ estoque_id: e.target.value })
                           }
                         >
-                          <option value="">Ainda nao vinculado</option>
+                          <option value="">Ainda não vinculado</option>
                           {estoque.map((item) => (
                             <option key={item.id} value={String(item.id)}>
                               {item.nome}
                             </option>
                           ))}
                         </select>
+                        <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            onClick={abrirNovoProdutoDaPrecificacao}
+                            className="flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-3 py-3 text-xs font-black uppercase text-white hover:bg-pink-700"
+                          >
+                            <PlusCircle size={15} /> Criar novo no cardápio
+                          </button>
+                          <button
+                            type="button"
+                            onClick={abrirProdutoVinculadoDaPrecificacao}
+                            disabled={!receitaPlanilhaEditavel.estoque_id}
+                            className="flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-xs font-black uppercase text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Pencil size={15} /> Editar produto vinculado
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -7041,7 +7132,6 @@ function AdminPageContent() {
                                   <select
                                     className="w-full min-w-[180px] rounded-xl border border-slate-200 bg-white px-3 py-2 font-bold text-slate-700 disabled:border-transparent disabled:bg-transparent disabled:px-0"
                                     value={ingrediente.insumoId || ""}
-                                    disabled={!receitaPlanilhaEmEdicao}
                                     onChange={(e) => selecionarInsumoIngrediente(indice, e.target.value)}
                                   >
                                     <option value="">Selecione um insumo</option>
@@ -7055,7 +7145,6 @@ function AdminPageContent() {
                                     min="0"
                                     className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 font-bold text-slate-700 disabled:border-transparent disabled:bg-transparent disabled:px-0"
                                     value={ingrediente.quantidade}
-                                    disabled={!receitaPlanilhaEmEdicao}
                                     onChange={(e) =>
                                       atualizarIngredienteReceitaPlanilha(indice, {
                                         quantidade: Number(e.target.value),
@@ -7082,7 +7171,6 @@ function AdminPageContent() {
                                   <button
                                     type="button"
                                     onClick={() => removerIngredienteReceitaPlanilha(indice)}
-                                    disabled={!receitaPlanilhaEmEdicao}
                                     className="rounded-xl bg-red-50 px-3 py-2 text-xs font-black text-red-600 disabled:opacity-40"
                                   >
                                     Limpar
@@ -7121,7 +7209,6 @@ function AdminPageContent() {
                           min="0"
                           className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500 disabled:opacity-70"
                           value={receitaPlanilhaEditavel.margemLucroTaxa}
-                          disabled={!receitaPlanilhaEmEdicao}
                           onChange={(e) =>
                             atualizarReceitaPlanilhaEditavel({
                               margemLucroTaxa: Number(e.target.value),
@@ -7139,7 +7226,6 @@ function AdminPageContent() {
                           min="0"
                           className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-medium text-slate-700 focus:outline-pink-500 disabled:opacity-70"
                           value={receitaPlanilhaEditavel.embalagemDescartaveis}
-                          disabled={!receitaPlanilhaEmEdicao}
                           onChange={(e) =>
                             atualizarReceitaPlanilhaEditavel({
                               embalagemDescartaveis: Number(e.target.value),
