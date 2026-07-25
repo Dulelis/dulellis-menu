@@ -5008,6 +5008,42 @@ function AdminPageContent() {
     alert("Hist?rico de compras removido.");
   };
 
+  const excluirCliente = async (cliente: any) => {
+    const clienteId = Number(cliente?.id || 0);
+    if (!clienteId) return;
+    const nome = String(cliente?.nome || "este cliente").trim();
+    if (
+      !confirm(
+        `Excluir o cadastro de ${nome}? O histórico das vendas será preservado, mas o cliente perderá o acesso à conta.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await adminDb({
+        action: "delete_eq",
+        table: "clientes",
+        eq: { column: "id", value: clienteId },
+      });
+      if (clienteExpandidoId === clienteId) setClienteExpandidoId(null);
+      if (clienteHistoricoAbertoId === clienteId) {
+        setClienteHistoricoAbertoId(null);
+      }
+      setPedidosSelecionadosPorCliente((prev) => {
+        const next = { ...prev };
+        delete next[clienteId];
+        return next;
+      });
+      await carregarDados();
+      alert("Cliente excluído. O histórico das vendas foi preservado.");
+    } catch (error: any) {
+      alert(
+        `Erro ao excluir cliente: ${error.message || "tente novamente."}`,
+      );
+    }
+  };
+
   const alternarSelecaoPedidoCliente = (
     clienteId: number,
     pedidoId: number,
@@ -8198,7 +8234,9 @@ function AdminPageContent() {
                       )}
                     </button>
                     <button
-                      onClick={() => excluir("clientes", c.id)}
+                      type="button"
+                      onClick={() => void excluirCliente(c)}
+                      title="Excluir cadastro do cliente"
                       className="text-slate-200 hover:text-red-500 transition-colors"
                     >
                       <Trash2 size={18} />

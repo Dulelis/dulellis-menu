@@ -10,6 +10,7 @@ const TABELAS_PERMITIDAS = new Set([
   "promocoes",
   "propagandas",
   "configuracoes_loja",
+  "clientes",
   "pedidos",
   "entregadores",
   "entregas",
@@ -92,6 +93,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Somente filtros pela coluna id são permitidos." }, { status: 400 });
   }
 
+  if (table === "clientes" && action !== "delete_eq") {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "A API administrativa permite somente excluir clientes.",
+      },
+      { status: 403 },
+    );
+  }
+
   if (table === "pedidos") {
     if (action === "insert") {
       return NextResponse.json({ ok: false, error: "Criação de pedidos não é permitida nesta API." }, { status: 403 });
@@ -136,6 +147,67 @@ export async function POST(request: NextRequest) {
       if (!body.eq?.column) {
         return NextResponse.json({ ok: false, error: "eq obrigatorio." }, { status: 400 });
       }
+
+      if (table === "clientes") {
+        const clienteId = Number(body.eq.value || 0);
+        if (!Number.isInteger(clienteId) || clienteId <= 0) {
+          return NextResponse.json(
+            { ok: false, error: "Cliente inválido." },
+            { status: 400 },
+          );
+        }
+
+        const { data: cliente, error: clienteError } = await supabase
+          .from("clientes")
+          .select("id,email")
+          .eq("id", clienteId)
+          .maybeSingle();
+        if (clienteError) throw clienteError;
+        if (!cliente) {
+          return NextResponse.json(
+            { ok: false, error: "Cliente não encontrado." },
+            { status: 404 },
+          );
+        }
+
+        const { error: pedidosError } = await supabase
+          .from("pedidos")
+          .update({ cliente_id: null })
+          .eq("cliente_id", clienteId);
+        if (pedidosError) throw pedidosError;
+
+        const email = String(cliente.email || "").trim().toLowerCase();
+        if (email) {
+          await supabase
+            .from("clientes_password_reset_tokens")
+            .delete()
+            .eq("email", email);
+        }
+
+        const { data, error } = await supabase
+          .from("clientes")
+          .delete()
+          .eq("id", clienteId)
+          .select("id");
+        if (error) throw error;
+        if (!data?.length) {
+          throw new Error("O cliente não pôde ser excluído.");
+        }
+
+        await supabase.from("admin_audit_logs").insert({
+          actor: "admin",
+          actor_ip: getClientIp(request),
+          actor_user_agent: String(request.headers.get("user-agent") || "").slice(
+            0,
+            500,
+          ),
+          action: "delete_customer",
+          details: { cliente_id: clienteId },
+        });
+
+        return NextResponse.json({ ok: true, data });
+      }
+
       const { data, error } = await supabase
         .from(table)
         .delete()
