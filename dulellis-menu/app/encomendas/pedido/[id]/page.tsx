@@ -1,13 +1,5 @@
-import type { Metadata } from "next";
-import { PreorderTrackingClient } from "./PreorderTrackingClient";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Acompanhar encomenda" };
-
-export default async function PreorderTrackingPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  return <PreorderTrackingClient orderId={Number(id)} />;
+export default function PreorderTrackingPage() {
+  redirect("/encomendas");
 }

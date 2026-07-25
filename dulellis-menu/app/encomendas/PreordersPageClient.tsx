@@ -769,12 +769,9 @@ export function PreordersPageClient() {
             </div>
           </div>
           <p className="mt-5 text-sm font-bold text-slate-600">
-            Acompanhe a confirmacao da producao e, se desejar, pague o sinal ou o valor integral pelo Mercado Pago.
+            Os valores, a forma de pagamento e os detalhes da encomenda serão acertados diretamente pelo WhatsApp.
           </p>
-          <Link href={`/encomendas/pedido/${confirmation.pedido_id}`} className="mt-7 block w-full rounded-3xl bg-emerald-600 px-5 py-4 text-sm font-black uppercase tracking-widest text-white">
-            Acompanhar e pagar
-          </Link>
-          <a href={buildDulelisWhatsappUrl(`Olá! Pedido #${confirmation.pedido_id}: gostaria de finalizar os detalhes da encomenda pelo WhatsApp.`)} target="_blank" rel="noopener noreferrer" className="mt-3 flex w-full items-center justify-center gap-2 rounded-3xl bg-green-100 px-5 py-4 text-sm font-black uppercase tracking-widest text-green-800">
+          <a href={buildDulelisWhatsappUrl(`Olá! Pedido #${confirmation.pedido_id}: gostaria de acertar os valores e finalizar os detalhes da encomenda pelo WhatsApp.`)} target="_blank" rel="noopener noreferrer" className="mt-7 flex w-full items-center justify-center gap-2 rounded-3xl bg-green-600 px-5 py-4 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-green-100">
             <MessageCircle size={19} />Finalizar detalhes no WhatsApp
           </a>
           <a
@@ -936,7 +933,7 @@ export function PreordersPageClient() {
               {myOrders.map((order) => {
                 const canChange = customerCanChangeOrder(order);
                 return <article key={order.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                  <Link href={`/encomendas/pedido/${order.id}`} className="flex items-center justify-between gap-3 transition-colors hover:text-pink-700">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-black uppercase tracking-wider text-pink-600">Encomenda #{order.id}</p>
                       <p className="mt-1 truncate text-sm font-bold text-slate-600">
@@ -948,8 +945,8 @@ export function PreordersPageClient() {
                         {String(order.status_producao || "aguardando_confirmacao").replaceAll("_", " ")}
                       </p>
                     </div>
-                    <div className="shrink-0 text-right"><p className="font-black text-slate-900">{money(Number(order.total || 0))}</p><ChevronRight className="ml-auto mt-1 text-slate-400" size={18} /></div>
-                  </Link>
+                    <div className="shrink-0 text-right"><p className="font-black text-slate-900">{money(Number(order.total || 0))}</p></div>
+                  </div>
                   {canChange ? <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
                     <button type="button" onClick={() => beginEditOrder(order)} className="flex items-center justify-center gap-2 rounded-xl bg-blue-100 p-3 text-xs font-black uppercase text-blue-800"><Pencil size={15} />Editar</button>
                     <button type="button" onClick={() => void cancelOrder(order)} className="flex items-center justify-center gap-2 rounded-xl bg-rose-100 p-3 text-xs font-black uppercase text-rose-800"><XCircle size={16} />Cancelar</button>
