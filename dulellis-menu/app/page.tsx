@@ -3455,9 +3455,9 @@ function ClientePageContent() {
           </div>
           <div
             ref={destaquesVitrineRef}
-            className="mx-auto flex h-[236px] max-w-xl flex-col rounded-2xl bg-amber-700 px-3 py-2.5 text-white shadow-[0_8px_24px_rgba(109,53,23,0.16)] sm:h-[280px] sm:px-4 sm:py-3"
+            className="relative mx-auto max-w-xl rounded-2xl bg-amber-700 p-1.5 text-white shadow-[0_8px_24px_rgba(109,53,23,0.16)] sm:p-2"
           >
-            <div className="h-3 mb-2">
+            <div className="absolute inset-x-3 top-3 z-20 h-1.5 sm:inset-x-4 sm:top-4">
               {mensagensVitrine.length > 1 && (
                 <div className="flex items-center gap-1.5">
                   {mensagensVitrine.map((msg, idx) => (
@@ -3496,7 +3496,7 @@ function ClientePageContent() {
               )}
             </div>
             <div
-              className="relative mt-1 h-40 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-48"
+              className="relative h-40 overflow-hidden rounded-xl border border-white/10 bg-white/5 sm:h-48"
               onContextMenu={(event) => event.preventDefault()}
               onTouchStart={pausarBannerNoToque}
               onTouchEnd={retomarBannerAoSoltar}
@@ -3548,7 +3548,7 @@ function ClientePageContent() {
                 ) : null}
               </div>
             </div>
-            <div className="mt-1.5 h-6">
+            <div className="absolute right-3 top-6 z-30">
               {slideAtualVitrine?.botao_link && (
                 <button
                   type="button"
@@ -3557,7 +3557,7 @@ function ClientePageContent() {
                     if (!link) return;
                     window.open(link, "_blank", "noopener,noreferrer");
                   }}
-                  className="rounded-xl bg-white/20 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.06em] transition-colors hover:bg-white/30"
+                  className="rounded-xl border border-white/30 bg-black/30 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.06em] backdrop-blur-sm transition-colors hover:bg-black/45"
                 >
                   {String(slideAtualVitrine?.botao_texto || "").trim() || "Abrir link"}
                 </button>
