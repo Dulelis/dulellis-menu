@@ -3273,24 +3273,6 @@ function ClientePageContent() {
     return agoraHorario.getTime() >= intervalo.fim.getTime();
   }, [agoraHorario, horarioFuncionamento]);
 
-  const segundosParaFecharAviso = useMemo(() => {
-    if (horarioFuncionamento.ativo === false) return null;
-    const diasSelecionados = normalizarDiasSemana(horarioFuncionamento.dias_semana);
-    const abertura = normalizarHoraHHMM(horarioFuncionamento.hora_abertura) || "08:00";
-    const fechamento = normalizarHoraHHMM(horarioFuncionamento.hora_fechamento) || "18:00";
-    const chaveOperacional = obterChaveDiaOperacional(agoraHorario, abertura, fechamento);
-    if (!diasSelecionados.includes(chaveOperacional)) return null;
-
-    const intervalo = obterIntervaloFuncionamento(agoraHorario, abertura, fechamento);
-    const agoraMs = agoraHorario.getTime();
-    if (agoraMs < intervalo.inicio.getTime() || agoraMs >= intervalo.fim.getTime()) return null;
-    const diffSeg = Math.ceil((intervalo.fim.getTime() - agoraMs) / 1_000);
-    if (diffSeg <= 0 || diffSeg > 5 * 60) return null;
-    return diffSeg;
-  }, [agoraHorario, horarioFuncionamento]);
-
-  const fechandoAgora = segundosParaFecharAviso !== null;
-  const minutosParaFecharAviso = fechandoAgora ? Math.ceil((segundosParaFecharAviso || 0) / 60) : null;
   const diasFuncionamentoTexto = useMemo(() => {
     const diasSelecionados = normalizarDiasSemana(horarioFuncionamento.dias_semana);
     return diasSelecionados.map((dia) => DIAS_SEMANA_LABELS[dia]).join(", ");
@@ -3441,41 +3423,26 @@ function ClientePageContent() {
         <div className="px-3 pt-2 pb-2">
           <div className="max-w-xl mx-auto mb-2">
               <div
-                className={`rounded-xl border px-2.5 py-1.5 ${
-                  fechandoAgora
-                    ? "border-yellow-300/70 bg-red-700/45"
-                    : statusHorario.aberto
-                    ? "border-pink-200/80 bg-white"
-                    : "border-red-200/60 bg-red-50"
+                className={`rounded-2xl border px-4 py-3 ${
+                  statusHorario.aberto
+                    ? "border-emerald-200 bg-emerald-50"
+                    : "border-red-200 bg-red-50"
                 }`}
               >
-              <div className={`flex items-center gap-1.5 font-extrabold uppercase tracking-[0.06em] ${fechandoAgora ? "text-base text-yellow-900" : "text-xs text-slate-700"}`}>
-                <Clock3 size={fechandoAgora ? 18 : 14} />
+              <div className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-[0.06em] text-slate-700">
+                <Clock3 size={17} />
                 Horário: {statusHorario.faixa}
               </div>
-              <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-600">
+              <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
                 Dias: {diasFuncionamentoTexto}
               </p>
-              <p className={`${fechandoAgora ? "text-sm font-extrabold text-yellow-900" : "text-[11px] font-semibold text-slate-600"} mt-0.5`}>
-                {fechandoAgora ? `Estamos fechando (${minutosParaFecharAviso} min)` : statusHorario.mensagem}
+              <p
+                className={`mt-3 inline-flex rounded-xl px-4 py-2 text-lg font-black uppercase tracking-wide text-white shadow-sm sm:text-xl ${
+                  statusHorario.aberto ? "bg-emerald-600" : "bg-red-600"
+                }`}
+              >
+                {statusHorario.aberto ? "Aberto agora" : "Fechado agora"}
               </p>
-              <p className="mt-0.5 text-[10px] font-bold text-slate-400">
-                Atualização automática:{" "}
-                {atualizacaoAutomaticaAtiva
-                  ? "ativa enquanto a loja estiver aberta"
-                  : "pausada com a loja fechada"}
-              </p>
-              {fechandoAgora && (
-                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-yellow-300/20 px-2 py-0.5 text-xs font-black uppercase tracking-wide text-yellow-900 animate-pulse">
-                  <AlertTriangle size={12} />
-                  Estamos fechando
-                </p>
-              )}
-              {pedidosEncerradosHoje && (
-                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-black uppercase tracking-wide text-red-700">
-                  Pedidos encerrados. Retornamos no próximo dia
-                </p>
-              )}
             </div>
           </div>
           <div
