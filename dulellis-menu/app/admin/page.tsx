@@ -68,6 +68,7 @@ import {
   Settings,
   CalendarDays,
   Search,
+  X,
 } from "lucide-react";
 
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
@@ -1169,6 +1170,7 @@ function AdminPageContent() {
   const [clienteExpandidoId, setClienteExpandidoId] = useState<number | null>(
     null,
   );
+  const [buscaClientes, setBuscaClientes] = useState("");
   const [clienteHistoricoAbertoId, setClienteHistoricoAbertoId] = useState<
     number | null
   >(null);
@@ -5981,6 +5983,36 @@ function AdminPageContent() {
   const clientesOrdenados = [...clientes].sort(
     (a, b) => Number(clienteEstaEmFoco(b)) - Number(clienteEstaEmFoco(a)),
   );
+  const buscaClientesNormalizada = buscaClientes
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+  const buscaClientesNumeros = normalizarNumero(buscaClientes);
+  const clientesFiltrados = clientesOrdenados.filter((cliente) => {
+    if (!buscaClientesNormalizada) return true;
+    const textoCliente = [
+      cliente.nome,
+      cliente.email,
+      cliente.whatsapp,
+      cliente.endereco,
+      cliente.numero,
+      cliente.bairro,
+      cliente.cidade,
+      cliente.cep,
+      extrairPontoReferencia(cliente),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    const telefoneCliente = normalizarNumero(String(cliente.whatsapp || ""));
+    return (
+      textoCliente.includes(buscaClientesNormalizada) ||
+      Boolean(buscaClientesNumeros && telefoneCliente.includes(buscaClientesNumeros))
+    );
+  });
 
   useEffect(() => {
     if (activeTab !== "clientes" || !clienteEmFoco) return;
@@ -8195,12 +8227,37 @@ function AdminPageContent() {
 
         {activeTab === "clientes" && (
           <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <Search size={19} className="shrink-0 text-slate-400" />
+                <input
+                  type="search"
+                  value={buscaClientes}
+                  onChange={(event) => setBuscaClientes(event.target.value)}
+                  placeholder="Buscar por nome, WhatsApp, e-mail ou endereço"
+                  className="min-w-0 flex-1 bg-transparent py-2 text-sm font-bold text-slate-800 outline-none placeholder:font-semibold placeholder:text-slate-400"
+                />
+                {buscaClientes ? (
+                  <button
+                    type="button"
+                    onClick={() => setBuscaClientes("")}
+                    aria-label="Limpar busca"
+                    className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X size={17} />
+                  </button>
+                ) : null}
+              </div>
+              <p className="px-8 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                {clientesFiltrados.length} de {clientes.length} cliente(s)
+              </p>
+            </div>
             {clienteEmFoco && (
               <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-2xl p-3 text-xs font-bold uppercase tracking-widest">
                 Cliente selecionado pelo relatório
               </div>
             )}
-            {clientesOrdenados.map((c) => {
+            {clientesFiltrados.map((c) => {
               const expandido = clienteExpandidoId === c.id;
               const foco = clienteEstaEmFoco(c);
               const zapCliente = normalizarNumero(String(c.whatsapp || ""));
@@ -8439,6 +8496,12 @@ function AdminPageContent() {
                 </div>
               );
             })}
+            {clientesFiltrados.length === 0 ? (
+              <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center">
+                <p className="text-sm font-black text-slate-600">Nenhum cliente encontrado</p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">Tente outro nome, número ou endereço.</p>
+              </div>
+            ) : null}
           </div>
         )}
 
