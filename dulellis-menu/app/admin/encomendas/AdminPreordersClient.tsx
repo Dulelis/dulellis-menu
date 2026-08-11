@@ -13,6 +13,7 @@ import {
   Loader2,
   MessageCircle,
   PackageCheck,
+  Pencil,
   Plus,
   Printer,
   RefreshCw,
@@ -21,6 +22,7 @@ import {
   Settings,
   ShoppingBag,
   Trash2,
+  XCircle,
 } from "lucide-react";
 import {
   ORDER_PRINT_BRIDGE_PREFIX,
@@ -446,6 +448,9 @@ export function AdminPreordersClient() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [mobilePrintEnvironment, setMobilePrintEnvironment] = useState(false);
   const [orderNumberSearch, setOrderNumberSearch] = useState("");
+  const [productSearch, setProductSearch] = useState("");
+  const [productCategoryFilter, setProductCategoryFilter] = useState("Todas");
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
   const knownOrderIdsRef = useRef<Set<number> | null>(null);
   const [blockForm, setBlockForm] = useState({ inicio: "", fim: "", motivo: "" });
@@ -584,13 +589,19 @@ export function AdminPreordersClient() {
   }
 
   async function createProduct() {
-    await action("product_create", undefined, {
+    const created = await action("product_create", undefined, {
       ...newProduct,
       disponivel_encomenda: true,
       limite_por_encomenda: null,
       opcoes_encomenda: { campos: [] },
     });
+    if (!created) return;
     setNewProduct({ nome: "", descricao: "", categoria: "Encomendas", preco: 0, prazo_minimo_encomenda_horas: 24 });
+  }
+
+  async function saveProduct(product: Product) {
+    const saved = await action("product", product.id, product as unknown as Record<string, unknown>);
+    if (saved) setEditingProductId(null);
   }
 
   const upcomingOrders = useMemo(
@@ -601,6 +612,29 @@ export function AdminPreordersClient() {
     () => (data?.encomendas || []).filter((order) => String(order.status_producao || "") === "cancelada"),
     [data?.encomendas],
   );
+  const productCategories = useMemo(
+    () => Array.from(new Set((data?.produtos || []).map((product) => String(product.categoria || "Sem categoria").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [data?.produtos],
+  );
+  const filteredProducts = useMemo(() => {
+    const search = productSearch
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+    return (data?.produtos || []).filter((product) => {
+      const category = String(product.categoria || "Sem categoria").trim();
+      if (productCategoryFilter !== "Todas" && category !== productCategoryFilter) return false;
+      if (!search) return true;
+      const haystack = [product.id, product.nome, product.categoria, product.descricao]
+        .map((value) => String(value || ""))
+        .join(" ")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+      return haystack.includes(search);
+    });
+  }, [data?.produtos, productCategoryFilter, productSearch]);
   const ordersByDay = useMemo(() => {
     const groups = new Map<string, Order[]>();
     for (const order of upcomingOrders) {
@@ -831,9 +865,12 @@ export function AdminPreordersClient() {
 
         {tab === "produtos" ? (
           <section className="mt-6 space-y-5">
-            <div className="rounded-3xl border-2 border-dashed border-pink-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-3"><Plus className="text-pink-600" /><div><h2 className="text-xl font-black">Adicionar produto de encomenda</h2><p className="text-sm font-bold text-slate-500">O item nasce com estoque zero e não aparece no delivery imediato.</p></div></div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <details className="group rounded-3xl border-2 border-dashed border-pink-200 bg-white p-6 shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                <div className="flex items-center gap-3"><Plus className="text-pink-600" /><div><h2 className="text-xl font-black">Adicionar produto de encomenda</h2><p className="text-sm font-bold text-slate-500">Abra para cadastrar um novo item.</p></div></div>
+                <ChevronRight className="text-slate-400 transition-transform group-open:rotate-90" />
+              </summary>
+              <div className="mt-5 grid gap-3 border-t border-slate-100 pt-5 sm:grid-cols-2 lg:grid-cols-4">
                 <input value={newProduct.nome} onChange={(event) => setNewProduct({ ...newProduct, nome: event.target.value })} placeholder="Nome do produto" className="rounded-xl border p-3 font-bold" />
                 <input value={newProduct.categoria} onChange={(event) => setNewProduct({ ...newProduct, categoria: event.target.value })} placeholder="Categoria" className="rounded-xl border p-3 font-bold" />
                 <input type="number" min="0" step="0.01" value={newProduct.preco} onChange={(event) => setNewProduct({ ...newProduct, preco: Number(event.target.value) })} placeholder="Preço" className="rounded-xl border p-3 font-bold" />
@@ -841,12 +878,39 @@ export function AdminPreordersClient() {
                 <textarea value={newProduct.descricao} onChange={(event) => setNewProduct({ ...newProduct, descricao: event.target.value })} placeholder="Descrição" className="min-h-20 rounded-xl border p-3 font-bold sm:col-span-2 lg:col-span-3" />
                 <button type="button" onClick={() => void createProduct()} disabled={Boolean(saving) || !newProduct.nome.trim()} className="flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><Plus size={16} />Cadastrar</button>
               </div>
+            </details>
+
+            <div className="rounded-3xl bg-white p-4 shadow-sm sm:p-5">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_240px_auto] md:items-center">
+                <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4">
+                  <Search size={18} className="shrink-0 text-pink-600" />
+                  <input type="search" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Buscar por nome, categoria ou descrição" className="min-w-0 flex-1 bg-transparent py-4 text-sm font-bold outline-none" />
+                </label>
+                <select value={productCategoryFilter} onChange={(event) => setProductCategoryFilter(event.target.value)} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-black text-slate-700">
+                  <option value="Todas">Todas as categorias</option>
+                  {productCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+                </select>
+                <span className="whitespace-nowrap rounded-full bg-pink-50 px-4 py-3 text-center text-xs font-black uppercase text-pink-700">{filteredProducts.length} de {data?.produtos.length || 0}</span>
+              </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">{(data?.produtos || []).map((product) => {
+            <div className="grid gap-4 lg:grid-cols-2">{filteredProducts.map((product) => {
               const fields = Array.isArray(product.opcoes_encomenda?.campos) ? product.opcoes_encomenda.campos : [];
+              const editing = editingProductId === product.id;
               return (
-                <article key={product.id} className="rounded-3xl bg-white p-5 shadow-sm">
+                <article key={product.id} className={`rounded-3xl border bg-white shadow-sm ${editing ? "border-pink-200 p-5 lg:col-span-2" : "border-slate-100 p-4"}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-lg font-black text-slate-900">{product.nome}</h3>
+                        <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${product.disponivel_encomenda ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{product.disponivel_encomenda ? "Disponível" : "Desativado"}</span>
+                      </div>
+                      <p className="mt-1 text-xs font-bold text-slate-500">{product.categoria || "Sem categoria"} · {money(product.preco)} · {Number(product.prazo_minimo_encomenda_horas || 0)}h de antecedência</p>
+                      {!editing && product.descricao ? <p className="mt-2 line-clamp-2 text-sm font-semibold text-slate-500">{product.descricao}</p> : null}
+                    </div>
+                    <button type="button" onClick={() => setEditingProductId(editing ? null : product.id)} className={`flex items-center gap-2 rounded-xl px-4 py-3 text-xs font-black uppercase ${editing ? "bg-slate-100 text-slate-600" : "bg-pink-50 text-pink-700"}`}>{editing ? <XCircle size={16} /> : <Pencil size={16} />}{editing ? "Fechar" : "Editar"}</button>
+                  </div>
+                  {editing ? <div className="mt-5 border-t border-slate-100 pt-5">
                   <div className="flex items-start justify-between gap-3"><div className="min-w-0 flex-1"><input value={product.nome} onChange={(event) => updateProduct(product.id, { nome: event.target.value })} className="w-full rounded-lg border border-transparent text-lg font-black outline-none focus:border-pink-200" /><div className="mt-2 grid grid-cols-2 gap-2"><label className="text-[10px] font-black uppercase text-slate-500">Categoria<input value={product.categoria || ""} onChange={(event) => updateProduct(product.id, { categoria: event.target.value })} placeholder="Categoria" className="mt-1 w-full rounded-xl border p-2 text-xs font-bold normal-case" /></label><label className="text-[10px] font-black uppercase text-pink-700">Preço da encomenda<input type="number" min="0" step="0.01" value={Number(product.preco || 0)} onChange={(event) => updateProduct(product.id, { preco: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-pink-200 p-2 text-xs font-bold text-slate-900" /></label></div></div><label className="flex shrink-0 items-center gap-2 text-xs font-black uppercase"><input type="checkbox" checked={product.disponivel_encomenda === true} onChange={(event) => updateProduct(product.id, { disponivel_encomenda: event.target.checked })} />Encomenda</label></div>
                   <textarea value={product.descricao || ""} onChange={(event) => updateProduct(product.id, { descricao: event.target.value })} placeholder="Descrição do produto" className="mt-3 min-h-16 w-full rounded-xl border p-3 text-sm font-bold" />
                   <input value={product.imagem_url || ""} onChange={(event) => updateProduct(product.id, { imagem_url: event.target.value })} placeholder="Link da foto (opcional)" className="mt-3 w-full rounded-xl border p-3 text-xs font-bold" />
@@ -862,10 +926,12 @@ export function AdminPreordersClient() {
                       </div>
                     ))}</div>
                   </div>
-                  <button type="button" onClick={() => void action("product", product.id, product as unknown as Record<string, unknown>)} disabled={saving === `product-${product.id}`} className="mt-4 flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><Save size={15} />Salvar produto</button>
+                  <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" onClick={() => { setEditingProductId(null); void load(true, false); }} className="rounded-xl bg-slate-100 px-4 py-3 text-xs font-black uppercase text-slate-600">Cancelar</button><button type="button" onClick={() => void saveProduct(product)} disabled={saving === `product-${product.id}`} className="flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase text-white disabled:opacity-50">{saving === `product-${product.id}` ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Salvar produto</button></div>
+                  </div> : null}
                 </article>
               );
             })}</div>
+            {!filteredProducts.length ? <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center"><Search className="mx-auto text-slate-300" /><p className="mt-3 font-black text-slate-700">Nenhum produto encontrado</p><p className="mt-1 text-xs font-bold text-slate-400">Tente outro nome, categoria ou descrição.</p></div> : null}
           </section>
         ) : null}
 

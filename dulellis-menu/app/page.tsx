@@ -48,7 +48,7 @@ const WHATSAPP_LOJA_ACOMPANHAMENTO_LABEL = "(47) 99237-5871";
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
 const CIDADE_ATENDIDA = "Navegantes";
-const ORDEM_VITRINE_CATEGORIAS = ["Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais", "Personalizado"];
+const ORDEM_VITRINE_CATEGORIAS_PADRAO = ["Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais", "Personalizado"];
 const DESCRICOES_CATEGORIA: Record<string, string> = {
   Bolos: "Bolos",
   Doces: "Doces",
@@ -180,6 +180,7 @@ type HorarioFuncionamentoRow = {
   hora_fechamento?: string | null;
   ativo?: boolean | null;
   dias_semana?: string[] | null;
+  categorias_produtos?: string[] | null;
 };
 
 type CepApiResponse = {
@@ -884,6 +885,20 @@ function normalizarDiasSemana(dias?: string[] | null) {
   return unicosOrdenados.length > 0 ? unicosOrdenados : [...DIAS_SEMANA_CHAVES];
 }
 
+function normalizarCategoriasVitrine(categorias: unknown, produtos: Produto[] = []) {
+  const origem = Array.isArray(categorias) && categorias.length
+    ? categorias
+    : ORDEM_VITRINE_CATEGORIAS_PADRAO;
+  const resultado: string[] = [];
+  for (const valor of [...origem, ...produtos.map((produto) => produto.categoria)]) {
+    const categoria = String(valor || "").replace(/\s+/g, " ").trim().slice(0, 50);
+    if (categoria && !resultado.some((atual) => atual.toLocaleLowerCase("pt-BR") === categoria.toLocaleLowerCase("pt-BR"))) {
+      resultado.push(categoria);
+    }
+  }
+  return resultado;
+}
+
 function lojaAbertaParaAtualizacaoAutomatica(
   horario: HorarioFuncionamentoRow,
   agora: Date,
@@ -973,6 +988,7 @@ function ClientePageContent() {
     hora_fechamento: "18:00",
     ativo: false,
     dias_semana: [...DIAS_SEMANA_CHAVES],
+    categorias_produtos: [...ORDEM_VITRINE_CATEGORIAS_PADRAO],
   });
   const [agoraHorario, setAgoraHorario] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
@@ -1083,6 +1099,7 @@ function ClientePageContent() {
       hora_fechamento: normalizarHoraHHMM(horario.hora_fechamento) || "18:00",
       ativo: horario.ativo !== false,
       dias_semana: normalizarDiasSemana(horario.dias_semana),
+      categorias_produtos: normalizarCategoriasVitrine(horario.categorias_produtos, cache.produtos),
     });
   }, []);
 
@@ -1223,7 +1240,7 @@ function ClientePageContent() {
           supabase.from("propagandas").select("*").eq("ativa", true).order("ordem").order("created_at", { ascending: false }),
           supabase
             .from("configuracoes_loja")
-            .select("id,hora_abertura,hora_fechamento,ativo,dias_semana")
+            .select("id,hora_abertura,hora_fechamento,ativo,dias_semana,categorias_produtos")
             .order("id", { ascending: true })
             .limit(1)
             .maybeSingle(),
@@ -1266,6 +1283,7 @@ function ClientePageContent() {
           hora_fechamento: "18:00",
           ativo: false,
           dias_semana: [...DIAS_SEMANA_CHAVES],
+          categorias_produtos: normalizarCategoriasVitrine(null, produtosCarregados),
         };
         setHorarioFuncionamento(horarioNormalizado);
       } else {
@@ -1276,6 +1294,7 @@ function ClientePageContent() {
           hora_fechamento: normalizarHoraHHMM(horario.hora_fechamento) || "18:00",
           ativo: horario.ativo !== false,
           dias_semana: normalizarDiasSemana(horario.dias_semana),
+          categorias_produtos: normalizarCategoriasVitrine(horario.categorias_produtos, produtosCarregados),
         };
         setHorarioFuncionamento(horarioNormalizado);
       }
@@ -2985,16 +3004,20 @@ function ClientePageContent() {
       }, {}),
     [carrinho],
   );
+  const ordemVitrineCategorias = useMemo(
+    () => normalizarCategoriasVitrine(horarioFuncionamento.categorias_produtos, produtos),
+    [horarioFuncionamento.categorias_produtos, produtos],
+  );
   const categoriasDisponiveis = useMemo(
     () =>
-      ORDEM_VITRINE_CATEGORIAS.filter((categoria) =>
+      ordemVitrineCategorias.filter((categoria) =>
         produtos.some(
           (produto) =>
             produto.categoria === categoria &&
             (produto.quantidade > 0 || (quantidadesCarrinho[produto.id] ?? 0) > 0),
         ),
       ),
-    [produtos, quantidadesCarrinho],
+    [ordemVitrineCategorias, produtos, quantidadesCarrinho],
   );
 
   useEffect(() => {
@@ -3011,15 +3034,15 @@ function ClientePageContent() {
       if (categoriaAtiva !== "Todos") return base;
 
       return [...base].sort((a, b) => {
-        const idxA = ORDEM_VITRINE_CATEGORIAS.indexOf(a.categoria);
-        const idxB = ORDEM_VITRINE_CATEGORIAS.indexOf(b.categoria);
-        const ordemA = idxA === -1 ? ORDEM_VITRINE_CATEGORIAS.length : idxA;
-        const ordemB = idxB === -1 ? ORDEM_VITRINE_CATEGORIAS.length : idxB;
+        const idxA = ordemVitrineCategorias.indexOf(a.categoria);
+        const idxB = ordemVitrineCategorias.indexOf(b.categoria);
+        const ordemA = idxA === -1 ? ordemVitrineCategorias.length : idxA;
+        const ordemB = idxB === -1 ? ordemVitrineCategorias.length : idxB;
         if (ordemA !== ordemB) return ordemA - ordemB;
         return a.nome.localeCompare(b.nome, "pt-BR");
       });
     },
-    [categoriaAtiva, produtos, quantidadesCarrinho],
+    [categoriaAtiva, ordemVitrineCategorias, produtos, quantidadesCarrinho],
   );
   const secoesVitrine = useMemo(() => {
     if (categoriaAtiva === "Todos") {

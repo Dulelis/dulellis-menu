@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     supabase.from("propagandas").select("*").order("ordem").order("created_at", { ascending: false }),
     supabase
       .from("configuracoes_loja")
-      .select("id,hora_abertura,hora_fechamento,ativo,dias_semana")
+      .select("id,hora_abertura,hora_fechamento,ativo,dias_semana,categorias_produtos")
       .order("id", { ascending: true })
       .limit(1)
       .maybeSingle(),

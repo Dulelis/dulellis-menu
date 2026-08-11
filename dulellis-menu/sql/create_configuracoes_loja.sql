@@ -4,10 +4,15 @@ create table if not exists public.configuracoes_loja (
   hora_abertura time not null default '08:00:00',
   hora_fechamento time not null default '18:00:00',
   dias_semana text[] not null default array['domingo','segunda','terca','quarta','quinta','sexta','sabado'],
+  categorias_produtos text[] not null default array['Bolos','Doces','Salgados','Bebidas','Produtos naturais','Personalizado'],
   ativo boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table if exists public.configuracoes_loja
+  add column if not exists categorias_produtos text[] not null
+  default array['Bolos','Doces','Salgados','Bebidas','Produtos naturais','Personalizado'];
 
 -- Mantem updated_at atualizado em updates
 create or replace function public.touch_updated_at_configuracoes_loja()
