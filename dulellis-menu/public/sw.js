@@ -1,6 +1,6 @@
-const STATIC_CACHE = "dulellis-static-v10";
-const RUNTIME_CACHE = "dulellis-runtime-v10";
-const IMAGE_CACHE = "dulellis-images-v10";
+const STATIC_CACHE = "dulellis-static-v11";
+const RUNTIME_CACHE = "dulellis-runtime-v11";
+const IMAGE_CACHE = "dulellis-images-v11";
 const OFFLINE_URL = "/offline";
 const APP_SHELL = [
   "/",
@@ -67,6 +67,46 @@ self.addEventListener("fetch", (event) => {
   ) {
     event.respondWith(networkFirst(request, RUNTIME_CACHE));
   }
+});
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data ? event.data.text() : "Tem novidade na vitrine da Dulelis." };
+  }
+
+  const title = String(payload.title || "Novidade na Dulelis");
+  const options = {
+    body: String(payload.body || "Confira as novidades da nossa vitrine."),
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: String(payload.tag || "dulelis-vitrine"),
+    renotify: true,
+    data: { url: String(payload.url || "/"), campaignId: payload.campaignId || null },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    (async () => {
+      const rawUrl = String(event.notification.data?.url || "/");
+      let target = new URL(rawUrl, self.location.origin);
+      if (target.origin !== self.location.origin) target = new URL("/", self.location.origin);
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of windows) {
+        if ("focus" in client) {
+          await client.navigate(target.href);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target.href);
+    })(),
+  );
 });
 
 async function handleNavigationRequest(request) {

@@ -9,6 +9,8 @@ import { PropagandaFrame } from "@/components/PropagandaFrame";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
+import { PushNotificationControl } from "@/components/PushNotificationControl";
+import { enableCustomerWebPush, requestCustomerPushPermission } from "@/lib/browser-web-push";
 import { validateCustomerFullName } from "@/lib/customer-name-policy";
 import { CUSTOMER_PASSWORD_RULES_TEXT, validateCustomerPassword } from "@/lib/customer-password-policy";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
@@ -1019,6 +1021,7 @@ function ClientePageContent() {
   );
   const [authSenha, setAuthSenha] = useState("");
   const [authAceitouPoliticaPrivacidade, setAuthAceitouPoliticaPrivacidade] = useState(false);
+  const [authAceitouNotificacoes, setAuthAceitouNotificacoes] = useState(false);
   const [authClienteEncontrado, setAuthClienteEncontrado] = useState(false);
   const [authCarregando, setAuthCarregando] = useState(false);
   const [sessaoCliente, setSessaoCliente] = useState<SessaoCliente | null>(null);
@@ -2103,6 +2106,15 @@ function ClientePageContent() {
       }
     }
 
+    let pushPermissionGranted = false;
+    if (authModoCadastro && authAceitouNotificacoes) {
+      try {
+        pushPermissionGranted = (await requestCustomerPushPermission()) === "granted";
+      } catch {
+        pushPermissionGranted = false;
+      }
+    }
+
     setAuthCarregando(true);
     try {
       const res = await fetch("/api/public/auth/session", {
@@ -2117,6 +2129,7 @@ function ClientePageContent() {
           data_aniversario: dataAniversario,
           aceitou_politica_privacidade: authAceitouPoliticaPrivacidade,
           politica_privacidade_versao: PRIVACY_POLICY_VERSION,
+          aceitou_notificacoes_vitrine: authAceitouNotificacoes,
         }),
       });
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -2125,6 +2138,14 @@ function ClientePageContent() {
       }
       cadastroManualRef.current = false;
       await carregarSessaoCliente({ forcarAplicacao: true });
+      if (authModoCadastro && authAceitouNotificacoes && pushPermissionGranted) {
+        try {
+          await enableCustomerWebPush();
+        } catch (pushError) {
+          console.warn("Conta criada, mas a notificação não foi ativada.", pushError);
+        }
+      }
+      window.dispatchEvent(new Event("dulelis:customer-session-changed"));
       setModalAuthAberto(false);
       setAuthSenha("");
       limparRascunhoAuth();
@@ -2132,6 +2153,7 @@ function ClientePageContent() {
       setAuthEmail("");
       setAuthDataAniversario("");
       setAuthAceitouPoliticaPrivacidade(false);
+      setAuthAceitouNotificacoes(false);
     } catch (error) {
       const mensagem = obterMensagemErro(error) || "Erro ao autenticar.";
       if (!authModoCadastro && mensagem.includes("Cadastro não encontrado")) {
@@ -2147,6 +2169,7 @@ function ClientePageContent() {
   }, [
     authDataAniversario,
     authAceitouPoliticaPrivacidade,
+    authAceitouNotificacoes,
     authEmail,
     authModoCadastro,
     authNome,
@@ -2175,6 +2198,7 @@ function ClientePageContent() {
       setAbaCarrinho(false);
       setPasso(1);
       setPodeAcompanharPedido(false);
+      window.dispatchEvent(new Event("dulelis:customer-session-changed"));
     }
   }, []);
 
@@ -3410,6 +3434,7 @@ function ClientePageContent() {
           <ServiceModeSwitcher active="delivery" />
         </div>
         <PwaInstallPrompt />
+        <PushNotificationControl />
       </header>
 
       <div className="relative z-40 bg-white/90 backdrop-blur-xl border-b border-pink-50/50">
@@ -3915,6 +3940,17 @@ function ClientePageContent() {
                         Política de Privacidade
                       </Link>{" "}
                       para criação e uso da minha conta.
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 rounded-2xl border border-pink-200 bg-pink-50 px-4 py-4 text-sm font-bold text-slate-700">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-pink-300 text-pink-600 focus:ring-pink-400"
+                      checked={authAceitouNotificacoes}
+                      onChange={(e) => setAuthAceitouNotificacoes(e.target.checked)}
+                    />
+                    <span className="leading-6">
+                      Quero receber notificações neste dispositivo quando houver novidades, produtos e promoções na vitrine do delivery. Posso desativar quando quiser.
                     </span>
                   </label>
                 </>

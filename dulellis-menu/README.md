@@ -2,6 +2,18 @@
 
 Aplicacao Next.js do cardapio com pedido online, autenticacao de clientes e recuperacao de senha por e-mail.
 
+## Notificacoes Web Push da vitrine
+
+O cliente pode autorizar notificacoes no cadastro ou pelo controle exibido no topo da vitrine. O envio e feito em `/admin/notificacoes` somente para dispositivos com consentimento ativo.
+
+1. Execute `sql/create_web_push.sql` no Supabase.
+2. Gere uma unica dupla de chaves com `npm run push:vapid`.
+3. Configure a chave publica em `NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY`, a privada em `WEB_PUSH_VAPID_PRIVATE_KEY` e o contato em `WEB_PUSH_VAPID_SUBJECT`.
+4. Mantenha a mesma dupla VAPID entre deploys. Trocar as chaves invalida as inscricoes existentes.
+5. Publique o site em HTTPS; Web Push nao funciona em HTTP fora de `localhost`.
+
+O envio usa uma fila persistente no Supabase e processa lotes de ate 50 inscricoes. Se o navegador for fechado durante uma campanha grande, use **Continuar envio** no historico administrativo.
+
 ## Rodar localmente
 
 ```bash
