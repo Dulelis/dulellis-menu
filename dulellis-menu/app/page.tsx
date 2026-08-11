@@ -9,7 +9,6 @@ import { PropagandaFrame } from "@/components/PropagandaFrame";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
-import { PushNotificationControl } from "@/components/PushNotificationControl";
 import { enableCustomerWebPush, requestCustomerPushPermission } from "@/lib/browser-web-push";
 import { validateCustomerFullName } from "@/lib/customer-name-policy";
 import { CUSTOMER_PASSWORD_RULES_TEXT, validateCustomerPassword } from "@/lib/customer-password-policy";
@@ -2145,7 +2144,6 @@ function ClientePageContent() {
           console.warn("Conta criada, mas a notificação não foi ativada.", pushError);
         }
       }
-      window.dispatchEvent(new Event("dulelis:customer-session-changed"));
       setModalAuthAberto(false);
       setAuthSenha("");
       limparRascunhoAuth();
@@ -2198,7 +2196,6 @@ function ClientePageContent() {
       setAbaCarrinho(false);
       setPasso(1);
       setPodeAcompanharPedido(false);
-      window.dispatchEvent(new Event("dulelis:customer-session-changed"));
     }
   }, []);
 
@@ -3416,7 +3413,6 @@ function ClientePageContent() {
           <ServiceModeSwitcher active="delivery" />
         </div>
         <PwaInstallPrompt />
-        <PushNotificationControl />
       </header>
 
       <div className="relative z-40 bg-white/90 backdrop-blur-xl border-b border-pink-50/50">

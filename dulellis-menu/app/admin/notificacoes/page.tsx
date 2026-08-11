@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { ArrowLeft, BellRing, CheckCircle2, Loader2, RefreshCw, Send } from "lucide-react";
+import { ArrowLeft, BellRing, CheckCircle2, Loader2, RefreshCw, Send, Trash2 } from "lucide-react";
 
 type Campaign = {
   id: number;
@@ -115,6 +115,24 @@ export default function AdminPushNotificationsPage() {
     }
   }
 
+  async function clearHistory() {
+    if (!window.confirm("Limpar todo o histórico de notificações? Os dispositivos autorizados serão mantidos.")) return;
+    setSending(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch("/api/admin/push", { method: "DELETE" });
+      const result = (await response.json().catch(() => ({}))) as { error?: string; removed?: number };
+      if (!response.ok) throw new Error(result.error || "Falha ao limpar o histórico.");
+      setSuccess(`${Number(result.removed || 0)} campanha(s) removida(s) do histórico.`);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Falha ao limpar o histórico.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <main className="min-h-[100dvh] bg-slate-100 px-4 py-6 text-slate-900 sm:px-6">
       <div className="mx-auto max-w-5xl">
@@ -144,7 +162,17 @@ export default function AdminPushNotificationsPage() {
           </form>
 
           <section className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
-            <h2 className="text-xl font-black">Histórico</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-black">Histórico</h2>
+              <button
+                type="button"
+                disabled={sending || !(data?.campaigns || []).length}
+                onClick={() => void clearHistory()}
+                className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 size={15} /> Limpar histórico
+              </button>
+            </div>
             <div className="mt-5 space-y-3">
               {(data?.campaigns || []).map((campaign) => (
                 <article key={campaign.id} className="rounded-2xl border border-slate-200 p-4">

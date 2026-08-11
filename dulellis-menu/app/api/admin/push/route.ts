@@ -110,3 +110,21 @@ export async function POST(request: NextRequest) {
   const result = await processPushCampaignBatch(Number(campaign.id));
   return NextResponse.json({ ok: true, result });
 }
+
+export async function DELETE(request: NextRequest) {
+  if (!(await authorize(request))) return NextResponse.json({ ok: false }, { status: 401 });
+  const originError = enforceSameOriginForWrite(request);
+  if (originError) return originError;
+
+  const supabase = getServiceSupabase();
+  if (!supabase) return NextResponse.json({ ok: false, error: "Supabase não configurado." }, { status: 500 });
+
+  const { data, error } = await supabase
+    .from("push_campaigns")
+    .delete()
+    .gte("id", 1)
+    .select("id");
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true, removed: data?.length || 0 });
+}

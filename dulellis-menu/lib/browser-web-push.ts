@@ -54,17 +54,3 @@ export async function enableCustomerWebPush() {
   if (!response.ok) throw new Error(result.error || "Não foi possível ativar as notificações.");
   return subscription;
 }
-
-export async function disableCustomerWebPush() {
-  if (!("serviceWorker" in navigator)) return;
-  const registration = await navigator.serviceWorker.ready;
-  const subscription = await registration.pushManager.getSubscription();
-  const response = await fetch("/api/public/push-subscription", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ endpoint: subscription?.endpoint || "" }),
-  });
-  const result = (await response.json().catch(() => ({}))) as { error?: string };
-  if (!response.ok) throw new Error(result.error || "Não foi possível desativar as notificações.");
-  await subscription?.unsubscribe();
-}
