@@ -330,6 +330,7 @@ export async function POST(request: NextRequest) {
     data_aniversario?: string;
     aceitou_politica_privacidade?: boolean;
     politica_privacidade_versao?: string;
+    aceitou_notificacoes_vitrine?: boolean;
   };
 
   const action = String(body.action || "login");
@@ -346,6 +347,7 @@ export async function POST(request: NextRequest) {
   const dataAniversario = String(body.data_aniversario || "").slice(0, 10);
   const aceitouPoliticaPrivacidade = Boolean(body.aceitou_politica_privacidade);
   const politicaPrivacidadeVersao = String(body.politica_privacidade_versao || "").trim() || PRIVACY_POLICY_VERSION;
+  const aceitouNotificacoesVitrine = Boolean(body.aceitou_notificacoes_vitrine);
   if (action === "register") {
     const validacaoNome = validateCustomerFullName(nome);
     if (!validacaoNome.valid) {
@@ -422,6 +424,8 @@ export async function POST(request: NextRequest) {
           ...payloadBase,
           politica_privacidade_aceita_em: new Date().toISOString(),
           politica_privacidade_versao: politicaPrivacidadeVersao,
+          push_marketing_consent: aceitouNotificacoesVitrine,
+          push_marketing_consent_at: aceitouNotificacoesVitrine ? new Date().toISOString() : null,
         },
         payloadBase,
       );
@@ -442,6 +446,8 @@ export async function POST(request: NextRequest) {
           ...payloadBase,
           politica_privacidade_aceita_em: new Date().toISOString(),
           politica_privacidade_versao: politicaPrivacidadeVersao,
+          push_marketing_consent: aceitouNotificacoesVitrine,
+          push_marketing_consent_at: aceitouNotificacoesVitrine ? new Date().toISOString() : null,
         },
         payloadBase,
       );

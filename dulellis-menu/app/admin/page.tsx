@@ -6134,6 +6134,12 @@ function AdminPageContent() {
             <Megaphone size={20} /> Propaganda{" "}
           </button>
           <button
+            onClick={() => { window.location.href = "/admin/notificacoes"; }}
+            className="flex w-max items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-slate-400 transition-all hover:bg-slate-800 lg:w-full lg:p-4"
+          >
+            <BellRing size={20} /> Notificar clientes
+          </button>
+          <button
             onClick={() => setActiveTab("clientes")}
             className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "clientes" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
           >

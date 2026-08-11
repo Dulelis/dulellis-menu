@@ -66,6 +66,7 @@ const secoes = [
     itens: [
       "A plataforma pode utilizar cookies e tecnologias semelhantes estritamente necessários ao seu funcionamento, incluindo autenticação de sessão, segurança, manutenção do carrinho, prevenção a fraudes e estabilidade da navegação.",
       "Caso venham a ser utilizados cookies analíticos, de desempenho, personalização ou marketing, esta política e, se necessário, os mecanismos de consentimento da plataforma poderão ser atualizados para refletir essa utilização.",
+      "As notificações de novidades da vitrine são opcionais e somente são ativadas mediante autorização específica do cliente e permissão concedida no dispositivo. Essa autorização pode ser revogada a qualquer momento no próprio aplicativo ou nas configurações do navegador.",
       "O titular poderá, ainda, gerenciar parte dos cookies por meio das configurações do navegador, ciente de que a desativação de cookies essenciais poderá comprometer funcionalidades da plataforma.",
     ],
   },
