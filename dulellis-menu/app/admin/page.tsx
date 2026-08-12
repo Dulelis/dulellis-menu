@@ -240,7 +240,7 @@ const DIAS_SEMANA = [
   { key: "sexta", label: "Sexta" },
   { key: "sabado", label: "Sabado" },
 ] as const;
-const CATEGORIAS_ESTOQUE = [
+const CATEGORIAS_ESTOQUE_PADRAO = [
   "Bolos",
   "Doces",
   "Salgados",
@@ -248,6 +248,20 @@ const CATEGORIAS_ESTOQUE = [
   "Produtos naturais",
   "Personalizado",
 ] as const;
+
+function normalizarCategoriasEstoque(categorias: unknown, itens: any[] = []) {
+  const origem = Array.isArray(categorias) && categorias.length
+    ? categorias
+    : CATEGORIAS_ESTOQUE_PADRAO;
+  const resultado: string[] = [];
+  for (const valor of [...origem, ...itens.map((item) => item?.categoria)]) {
+    const categoria = String(valor || "").replace(/\s+/g, " ").trim().slice(0, 50);
+    if (categoria && !resultado.some((atual) => atual.toLocaleLowerCase("pt-BR") === categoria.toLocaleLowerCase("pt-BR"))) {
+      resultado.push(categoria);
+    }
+  }
+  return resultado.length ? resultado : [...CATEGORIAS_ESTOQUE_PADRAO];
+}
 
 function categoriaParaId(categoria: string) {
   return categoria
@@ -1079,6 +1093,12 @@ function AdminPageContent() {
   const [uploading, setUploading] = useState(false);
   const [uploadingPropaganda, setUploadingPropaganda] = useState(false);
   const [mostrarModalEstoque, setMostrarModalEstoque] = useState(false);
+  const [mostrarModalCategorias, setMostrarModalCategorias] = useState(false);
+  const [categoriasEstoque, setCategoriasEstoque] = useState<string[]>(() => [...CATEGORIAS_ESTOQUE_PADRAO]);
+  const [novaCategoriaNome, setNovaCategoriaNome] = useState("");
+  const [categoriaEmEdicao, setCategoriaEmEdicao] = useState<string | null>(null);
+  const [nomeCategoriaEdicao, setNomeCategoriaEdicao] = useState("");
+  const [salvandoCategoria, setSalvandoCategoria] = useState(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [vincularProdutoCriadoPrecificacao, setVincularProdutoCriadoPrecificacao] =
     useState(false);
@@ -1215,7 +1235,7 @@ function AdminPageContent() {
   const preferenciaSomAlarmeCarregadaRef = useRef(false);
   const ignorarPrimeiraPersistenciaAlarmeRef = useRef(true);
   const ignorarPrimeiraPersistenciaSomAlarmeRef = useRef(true);
-  const estoquePorCategoria = CATEGORIAS_ESTOQUE.map((categoria) => ({
+  const estoquePorCategoria = categoriasEstoque.map((categoria) => ({
     categoria,
     itens: estoque.filter(
       (item) =>
@@ -1228,7 +1248,7 @@ function AdminPageContent() {
     const categoria = String(item.categoria || "")
       .trim()
       .toLowerCase();
-    return !CATEGORIAS_ESTOQUE.some((base) => base.toLowerCase() === categoria);
+    return !categoriasEstoque.some((base) => base.toLowerCase() === categoria);
   });
   const normalizarHorarioInput = (valor?: string | null) => {
     const texto = String(valor || "").trim();
@@ -1557,6 +1577,7 @@ function AdminPageContent() {
           hora_fechamento?: string;
           ativo?: boolean;
           dias_semana?: string[];
+          categorias_produtos?: string[];
         } | null;
       };
     };
@@ -1571,7 +1592,14 @@ function AdminPageContent() {
     );
     pedidosIniciaisMapeadosRef.current = true;
 
-    setEstoque(json.data?.estoque || []);
+    const estoqueCarregado = json.data?.estoque || [];
+    setEstoque(estoqueCarregado);
+    setCategoriasEstoque(
+      normalizarCategoriasEstoque(
+        json.data?.horario?.categorias_produtos,
+        estoqueCarregado,
+      ),
+    );
     setClientes(json.data?.clientes || []);
     setPedidos(pedidosCarregados);
     setEncomendasFilaImpressao(json.data?.encomendas_impressao || []);
@@ -1809,6 +1837,71 @@ function AdminPageContent() {
     }
   };
 
+  const solicitarAlteracaoCategoria = async (
+    method: "POST" | "PATCH" | "DELETE",
+    body: Record<string, string>,
+  ) => {
+    const response = await fetch("/api/admin/categories", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    });
+    const result = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      categories?: string[];
+    };
+    if (!response.ok) throw new Error(result.error || "Falha ao alterar categoria.");
+    setCategoriasEstoque(normalizarCategoriasEstoque(result.categories, estoque));
+    return result.categories || [];
+  };
+
+  const adicionarCategoria = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSalvandoCategoria(true);
+    try {
+      const categories = await solicitarAlteracaoCategoria("POST", { name: novaCategoriaNome });
+      const categoriaCriada = categories.at(-1) || novaCategoriaNome.trim();
+      setNovaCategoriaNome("");
+      setNovoItem((atual) => ({ ...atual, categoria: categoriaCriada }));
+      await carregarDados();
+    } catch (reason) {
+      alert(reason instanceof Error ? reason.message : "Falha ao criar categoria.");
+    } finally {
+      setSalvandoCategoria(false);
+    }
+  };
+
+  const renomearCategoria = async (categoriaAtual: string) => {
+    setSalvandoCategoria(true);
+    try {
+      await solicitarAlteracaoCategoria("PATCH", {
+        currentName: categoriaAtual,
+        newName: nomeCategoriaEdicao,
+      });
+      setCategoriaEmEdicao(null);
+      setNomeCategoriaEdicao("");
+      await carregarDados();
+    } catch (reason) {
+      alert(reason instanceof Error ? reason.message : "Falha ao renomear categoria.");
+    } finally {
+      setSalvandoCategoria(false);
+    }
+  };
+
+  const removerCategoria = async (categoria: string) => {
+    if (!window.confirm(`Remover a categoria "${categoria}"?`)) return;
+    setSalvandoCategoria(true);
+    try {
+      await solicitarAlteracaoCategoria("DELETE", { name: categoria });
+      await carregarDados();
+    } catch (reason) {
+      alert(reason instanceof Error ? reason.message : "Falha ao remover categoria.");
+    } finally {
+      setSalvandoCategoria(false);
+    }
+  };
+
   const salvarProduto = async (e: React.FormEvent) => {
     e.preventDefault();
     let produtoSalvoId = editandoId;
@@ -1860,7 +1953,7 @@ function AdminPageContent() {
       preco: 0,
       descricao: "",
       imagem_url: "",
-      categoria: "Doces",
+      categoria: categoriasEstoque[0] || "Doces",
     });
   };
 
@@ -1872,7 +1965,7 @@ function AdminPageContent() {
       preco: 0,
       descricao: "",
       imagem_url: "",
-      categoria: "Doces",
+      categoria: categoriasEstoque[0] || "Doces",
     });
   };
 
@@ -6275,7 +6368,7 @@ function AdminPageContent() {
                 }}
                 className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all"
               >
-                <PlusCircle size={20} /> Adicionar
+                <PlusCircle size={20} /> Adicionar produto
               </button>
             )}
 
@@ -6667,7 +6760,7 @@ function AdminPageContent() {
 
             <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
               <div className="flex flex-wrap gap-2">
-                {CATEGORIAS_ESTOQUE.map((categoria) => (
+                {categoriasEstoque.map((categoria) => (
                   <a
                     key={categoria}
                     href={`#categoria-${categoriaParaId(categoria)}`}
@@ -6676,6 +6769,13 @@ function AdminPageContent() {
                     {categoria}
                   </a>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setMostrarModalCategorias(true)}
+                  className="flex items-center gap-1 rounded-xl border border-dashed border-pink-300 bg-pink-50 px-3 py-2 text-xs font-black uppercase text-pink-700 transition-colors hover:bg-pink-100"
+                >
+                  <PlusCircle size={14} /> Editar categorias
+                </button>
               </div>
             </div>
 
@@ -9413,6 +9513,67 @@ function AdminPageContent() {
         </div>
       ) : null}
 
+      {mostrarModalCategorias && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm print:hidden">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[2rem] bg-white p-5 shadow-2xl sm:p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-black text-slate-800">Editar categorias</h2>
+                <p className="mt-1 text-sm font-semibold text-slate-500">Crie ou renomeie as opções exibidas nesta barra e no cadastro de produtos.</p>
+              </div>
+              <button type="button" onClick={() => setMostrarModalCategorias(false)} className="rounded-xl bg-slate-100 p-2 text-slate-500" aria-label="Fechar"><X size={19} /></button>
+            </div>
+
+            <form onSubmit={adicionarCategoria} className="mt-6 flex gap-2">
+              <input
+                value={novaCategoriaNome}
+                onChange={(event) => setNovaCategoriaNome(event.target.value)}
+                placeholder="Nome da nova categoria"
+                maxLength={50}
+                required
+                className="min-w-0 flex-1 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-pink-400"
+              />
+              <button type="submit" disabled={salvandoCategoria} className="flex items-center gap-2 rounded-2xl bg-pink-600 px-4 py-3 text-xs font-black uppercase text-white disabled:opacity-50"><PlusCircle size={16} /> Criar</button>
+            </form>
+
+            <div className="mt-5 space-y-2">
+              {categoriasEstoque.map((categoria) => {
+                const quantidade = estoque.filter((item) => String(item.categoria || "").trim().toLowerCase() === categoria.toLowerCase()).length;
+                const editandoCategoria = categoriaEmEdicao === categoria;
+                return (
+                  <div key={categoria} className="rounded-2xl border border-slate-200 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {editandoCategoria ? (
+                        <input
+                          autoFocus
+                          value={nomeCategoriaEdicao}
+                          onChange={(event) => setNomeCategoriaEdicao(event.target.value)}
+                          maxLength={50}
+                          className="min-w-0 flex-1 rounded-xl border border-pink-300 px-3 py-2 text-sm font-black text-slate-700 outline-none"
+                        />
+                      ) : (
+                        <div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-800">{categoria}</p><p className="text-[10px] font-bold uppercase text-slate-400">{quantidade} produto(s)</p></div>
+                      )}
+                      {editandoCategoria ? (
+                        <>
+                          <button type="button" disabled={salvandoCategoria || nomeCategoriaEdicao.trim().length < 2} onClick={() => void renomearCategoria(categoria)} className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 disabled:opacity-40">Salvar</button>
+                          <button type="button" onClick={() => { setCategoriaEmEdicao(null); setNomeCategoriaEdicao(""); }} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-500">Cancelar</button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => { setCategoriaEmEdicao(categoria); setNomeCategoriaEdicao(categoria); }} className="rounded-xl bg-blue-50 p-2 text-blue-700" title="Renomear categoria"><Pencil size={15} /></button>
+                          <button type="button" disabled={salvandoCategoria || quantidade > 0 || categoriasEstoque.length <= 1} onClick={() => void removerCategoria(categoria)} className="rounded-xl bg-red-50 p-2 text-red-600 disabled:cursor-not-allowed disabled:opacity-30" title={quantidade > 0 ? "Edite os produtos desta categoria antes de removê-la" : "Remover categoria"}><Trash2 size={15} /></button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE PRODUTOS */}
       {mostrarModalEstoque && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 print:hidden">
@@ -9473,12 +9634,9 @@ function AdminPageContent() {
                     setNovoItem({ ...novoItem, categoria: e.target.value })
                   }
                 >
-                  <option value="Doces">Doces</option>
-                  <option value="Bolos">Bolos</option>
-                  <option value="Salgados">Salgados</option>
-                  <option value="Bebidas">Bebidas</option>
-                  <option value="Produtos naturais">Produtos naturais</option>
-                  <option value="Personalizado">Personalizado</option>
+                  {categoriasEstoque.map((categoria) => (
+                    <option key={categoria} value={categoria}>{categoria}</option>
+                  ))}
                 </select>
               </div>
               <textarea
