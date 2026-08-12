@@ -44,6 +44,23 @@ function normalizarTexto(value: string): string {
     .toLowerCase();
 }
 
+function chaveDataSaoPaulo(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function pedidoFoiCriadoHoje(pedido: PedidoStatus) {
+  const createdAt = new Date(String(pedido.created_at || ""));
+  if (!Number.isFinite(createdAt.getTime())) return false;
+  return chaveDataSaoPaulo(createdAt) === chaveDataSaoPaulo(new Date());
+}
+
 function pedidoEhRetiradaNoBalcao(pedido: PedidoStatus) {
   if (normalizarTexto(String(pedido.tipo_recebimento || "")) === "retirada") return true;
   return normalizarTexto(String(pedido.observacao || "")).includes("tipo de entrega: retirar no balcao");
@@ -327,6 +344,8 @@ export async function GET(request: Request) {
       const candidate = (data || null) as PedidoStatus | null;
       if (
         candidate &&
+        pedidoEstaEmAberto(candidate) &&
+        pedidoFoiCriadoHoje(candidate) &&
         (Number(candidate.cliente_id || 0) > 0
           ? Number(candidate.cliente_id || 0) === Number(sessao.clienteId || 0)
           : whatsappEquivalente(String(candidate.whatsapp || ""), zap))
@@ -388,6 +407,7 @@ export async function GET(request: Request) {
     for (const pedido of [...((exatos || []) as PedidoStatus[]), ...((candidatos || []) as PedidoStatus[])]) {
       if (!whatsappEquivalente(String(pedido.whatsapp || ""), zap)) continue;
       if (!pedidoEstaEmAberto(pedido)) continue;
+      if (!pedidoFoiCriadoHoje(pedido)) continue;
       unicos.set(Number(pedido.id || 0), pedido);
     }
     pedidosFinais = Array.from(unicos.values()).sort((a, b) =>
