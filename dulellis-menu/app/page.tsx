@@ -666,9 +666,23 @@ async function buscarPedidosAcompanhamento(whatsappBase: string) {
     return partes.some((parte) => encerrados.has(parte));
   };
 
-  return json.data.filter(
-    (pedido) => !statusEncerrado(pedido.status_pedido) && !statusEncerrado(String(pedido.status_producao || "")),
-  );
+  const chaveHoje = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  return json.data.filter((pedido) => {
+    const criadoEm = new Date(String(pedido.created_at || ""));
+    const foiCriadoHoje = Number.isFinite(criadoEm.getTime()) && new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(criadoEm) === chaveHoje;
+    return foiCriadoHoje && !statusEncerrado(pedido.status_pedido) && !statusEncerrado(String(pedido.status_producao || ""));
+  });
 }
 
 function PainelAcompanhamentoPedido({
@@ -4136,7 +4150,7 @@ function ClientePageContent() {
             {pedidosAcompanhamento.length ? (
               <div className="mt-5 space-y-4">
                 <p className="text-xs font-black uppercase tracking-widest text-slate-500">
-                  {pedidosAcompanhamento.length} {pedidosAcompanhamento.length === 1 ? "pedido em aberto" : "pedidos em aberto"}
+                  {pedidosAcompanhamento.length} {pedidosAcompanhamento.length === 1 ? "pedido em aberto hoje" : "pedidos em aberto hoje"}
                 </p>
                 {pedidosAcompanhamento.map((pedido, index) => (
                   <PainelAcompanhamentoPedido
