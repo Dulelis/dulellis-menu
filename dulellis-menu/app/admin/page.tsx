@@ -1084,6 +1084,7 @@ function AdminPageContent() {
     );
   const [horarioFuncionamento, setHorarioFuncionamento] = useState({
     id: null as number | null,
+    cidade_atendida: "Navegantes",
     hora_abertura: "08:00",
     hora_fechamento: "18:00",
     ativo: true,
@@ -1573,6 +1574,7 @@ function AdminPageContent() {
         precificacoes?: any[];
         horario?: {
           id?: number;
+          cidade_atendida?: string;
           hora_abertura?: string;
           hora_fechamento?: string;
           ativo?: boolean;
@@ -1642,6 +1644,8 @@ function AdminPageContent() {
     if (json.data?.horario) {
       setHorarioFuncionamento({
         id: Number(json.data.horario.id),
+        cidade_atendida:
+          String(json.data.horario.cidade_atendida || "Navegantes").trim() || "Navegantes",
         hora_abertura:
           normalizarHorarioInput(json.data.horario.hora_abertura) || "08:00",
         hora_fechamento:
@@ -2895,6 +2899,7 @@ function AdminPageContent() {
 
   const salvarHorarioFuncionamento = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cidadeAtendida = String(horarioFuncionamento.cidade_atendida || "").trim();
     const abertura = normalizarHorarioInput(horarioFuncionamento.hora_abertura);
     const fechamento = normalizarHorarioInput(
       horarioFuncionamento.hora_fechamento,
@@ -2903,8 +2908,13 @@ function AdminPageContent() {
       alert("Preencha os horarios de abertura e fechamento.");
       return;
     }
+    if (!cidadeAtendida) {
+      alert("Informe a cidade atendida por esta unidade.");
+      return;
+    }
 
     const payload = {
+      cidade_atendida: cidadeAtendida.slice(0, 80),
       hora_abertura: `${abertura}:00`,
       hora_fechamento: `${fechamento}:00`,
       ativo: horarioFuncionamento.ativo,
@@ -2933,11 +2943,18 @@ function AdminPageContent() {
     }
 
     if (error) {
-      alert(`Erro ao salvar horário: ${error.message}`);
+      const mensagem = String(error.message || "");
+      if (mensagem.toLowerCase().includes("cidade_atendida")) {
+        alert(
+          "O banco ainda não possui o controle de cidade. Execute o arquivo sql/upgrade_configuracoes_loja_cidade.sql no Supabase e tente novamente.",
+        );
+      } else {
+        alert(`Erro ao salvar horário: ${mensagem}`);
+      }
       return;
     }
 
-    alert("Horário de funcionamento salvo com sucesso.");
+    alert("Configurações da unidade salvas com sucesso.");
     void carregarDados();
   };
 
@@ -2948,6 +2965,9 @@ function AdminPageContent() {
       normalizarHorarioInput(horarioFuncionamento.hora_fechamento) || "18:00";
     const novoStatus = !horarioFuncionamento.ativo;
     const payload = {
+      cidade_atendida:
+        String(horarioFuncionamento.cidade_atendida || "Navegantes").trim().slice(0, 80) ||
+        "Navegantes",
       hora_abertura: `${abertura}:00`,
       hora_fechamento: `${fechamento}:00`,
       ativo: novoStatus,
@@ -2976,7 +2996,14 @@ function AdminPageContent() {
     }
 
     if (error) {
-      alert(`Erro ao atualizar status da loja: ${error.message}`);
+      const mensagem = String(error.message || "");
+      if (mensagem.toLowerCase().includes("cidade_atendida")) {
+        alert(
+          "O banco ainda não possui o controle de cidade. Execute o arquivo sql/upgrade_configuracoes_loja_cidade.sql no Supabase e tente novamente.",
+        );
+      } else {
+        alert(`Erro ao atualizar status da loja: ${mensagem}`);
+      }
       return;
     }
 
@@ -6627,6 +6654,35 @@ function AdminPageContent() {
                   </div>
                 </div>
 
+                <div>
+                  <label
+                    htmlFor="cidade-atendida"
+                    className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400"
+                  >
+                    Cidade da unidade
+                  </label>
+                  <input
+                    id="cidade-atendida"
+                    type="text"
+                    maxLength={80}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 font-bold text-slate-700 focus:outline-pink-500"
+                    value={horarioFuncionamento.cidade_atendida}
+                    onChange={(e) =>
+                      setHorarioFuncionamento((prev) => ({
+                        ...prev,
+                        cidade_atendida: e.target.value,
+                      }))
+                    }
+                    placeholder="Ex.: Navegantes"
+                    autoComplete="address-level2"
+                    required
+                  />
+                  <p className="mt-2 px-2 text-xs font-medium leading-5 text-slate-500">
+                    A vitrine mostrará esta unidade e aceitará entregas somente nesta cidade.
+                    Nas futuras franquias, cada unidade terá sua própria configuração.
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -6696,7 +6752,7 @@ function AdminPageContent() {
                     type="submit"
                     className="rounded-2xl bg-pink-600 px-6 py-3 font-bold text-white shadow-lg transition-all hover:bg-pink-700"
                   >
-                    Salvar Horário
+                    Salvar configurações
                   </button>
                   <p className="text-sm font-medium text-slate-500">
                     Essa configuração agora fica centralizada no Painel Geral.

@@ -47,7 +47,6 @@ const INSTAGRAM_DULELIS_URL =
 const WHATSAPP_LOJA_ACOMPANHAMENTO_LABEL = "(47) 99237-5871";
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
-const CIDADE_ATENDIDA = "Navegantes";
 const ORDEM_VITRINE_CATEGORIAS_PADRAO = ["Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais", "Personalizado"];
 const DESCRICOES_CATEGORIA: Record<string, string> = {
   Bolos: "Bolos",
@@ -176,6 +175,7 @@ type Propaganda = {
 
 type HorarioFuncionamentoRow = {
   id?: number;
+  cidade_atendida?: string | null;
   hora_abertura?: string | null;
   hora_fechamento?: string | null;
   ativo?: boolean | null;
@@ -998,12 +998,15 @@ function ClientePageContent() {
   const [promocoes, setPromocoes] = useState<Promocao[]>([]);
   const [propagandas, setPropagandas] = useState<Propaganda[]>([]);
   const [horarioFuncionamento, setHorarioFuncionamento] = useState<HorarioFuncionamentoRow>({
+    cidade_atendida: DEFAULT_CITY,
     hora_abertura: "08:00",
     hora_fechamento: "18:00",
     ativo: false,
     dias_semana: [...DIAS_SEMANA_CHAVES],
     categorias_produtos: [...ORDEM_VITRINE_CATEGORIAS_PADRAO],
   });
+  const cidadeAtendida =
+    String(horarioFuncionamento.cidade_atendida || DEFAULT_CITY).trim() || DEFAULT_CITY;
   const [agoraHorario, setAgoraHorario] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [estoqueEmAtualizacao, setEstoqueEmAtualizacao] = useState<Record<number, boolean>>({});
@@ -1109,6 +1112,7 @@ function ClientePageContent() {
     const horario = cache.horarioFuncionamento || {};
     setHorarioFuncionamento({
       id: horario.id,
+      cidade_atendida: String(horario.cidade_atendida || DEFAULT_CITY).trim() || DEFAULT_CITY,
       hora_abertura: normalizarHoraHHMM(horario.hora_abertura) || "08:00",
       hora_fechamento: normalizarHoraHHMM(horario.hora_fechamento) || "18:00",
       ativo: horario.ativo !== false,
@@ -1254,7 +1258,7 @@ function ClientePageContent() {
           supabase.from("propagandas").select("*").eq("ativa", true).order("ordem").order("created_at", { ascending: false }),
           supabase
             .from("configuracoes_loja")
-            .select("id,hora_abertura,hora_fechamento,ativo,dias_semana,categorias_produtos")
+            .select("*")
             .order("id", { ascending: true })
             .limit(1)
             .maybeSingle(),
@@ -1293,6 +1297,7 @@ function ClientePageContent() {
       if (errHorario) {
         console.warn("Falha ao carregar horário de funcionamento. Seguindo com padrão.", errHorario.message);
         horarioNormalizado = {
+          cidade_atendida: DEFAULT_CITY,
           hora_abertura: "08:00",
           hora_fechamento: "18:00",
           ativo: false,
@@ -1304,6 +1309,7 @@ function ClientePageContent() {
         const horario = (resHorario ?? {}) as HorarioFuncionamentoRow;
         horarioNormalizado = {
           id: horario.id,
+          cidade_atendida: String(horario.cidade_atendida || DEFAULT_CITY).trim() || DEFAULT_CITY,
           hora_abertura: normalizarHoraHHMM(horario.hora_abertura) || "08:00",
           hora_fechamento: normalizarHoraHHMM(horario.hora_fechamento) || "18:00",
           ativo: horario.ativo !== false,
@@ -1383,13 +1389,13 @@ function ClientePageContent() {
 
       const cidadeCep = data.city ?? cliente.cidade;
       const atendeCidade =
-        normalizarTexto(cidadeCep) === normalizarTexto(CIDADE_ATENDIDA);
+        normalizarTexto(cidadeCep) === normalizarTexto(cidadeAtendida);
 
       if (!atendeCidade) {
         setDistanciaKm(null);
         setTaxaEntrega(0);
         setMsgTaxa(
-          "Entrega somente em Navegantes. Outras localidades: verificar disponibilidade.",
+          `Entrega somente em ${cidadeAtendida}. Outras localidades: verificar disponibilidade.`,
         );
         return;
       }
@@ -1438,7 +1444,7 @@ function ClientePageContent() {
       setTaxaEntrega(0);
       setMsgTaxa("Não foi possível calcular o frete por este endereço.");
     },
-    [cliente.cidade, taxas],
+    [cidadeAtendida, cliente.cidade, taxas],
   );
 
   const executarBuscaCep = useCallback(
@@ -1678,6 +1684,17 @@ function ClientePageContent() {
   useEffect(() => {
     void carregarDadosIniciais(true);
   }, [carregarDadosIniciais]);
+
+  useEffect(() => {
+    setCliente((prev) => {
+      const cidadeAtual = String(prev.cidade || "").trim();
+      const enderecoAindaVazio = !prev.cep.trim() && !prev.endereco.trim();
+      if (enderecoAindaVazio && (!cidadeAtual || cidadeAtual === DEFAULT_CITY)) {
+        return { ...prev, cidade: cidadeAtendida };
+      }
+      return prev;
+    });
+  }, [cidadeAtendida]);
 
   useEffect(() => {
     void fetch("/api/public/storefront-view", {
@@ -1948,12 +1965,12 @@ function ClientePageContent() {
       endereco: enderecoFinal,
       numero: base.numero,
       bairro: base.bairro,
-      cidade: base.cidade || DEFAULT_CITY,
+      cidade: base.cidade || cidadeAtendida,
       ponto_referencia: pontoFinal,
       observacao: base.observacao,
       data_aniversario: base.data_aniversario || prev.data_aniversario,
     }));
-  }, [registrarMudancaEndereco]);
+  }, [cidadeAtendida, registrarMudancaEndereco]);
 
   const resetarFluxoCheckout = useCallback((baseCliente?: Cliente | null) => {
     if (baseCliente) {
@@ -2005,14 +2022,14 @@ function ClientePageContent() {
       endereco: "",
       numero: "",
       bairro: "",
-      cidade: DEFAULT_CITY,
+      cidade: cidadeAtendida,
       ponto_referencia: "",
       observacao: "",
     }));
     setDistanciaKm(null);
     setTaxaEntrega(0);
     setMsgTaxa("Aguardando endereço...");
-  }, [marcarEdicaoManualEndereco]);
+  }, [cidadeAtendida, marcarEdicaoManualEndereco]);
 
   const selecionarEnderecoSalvo = useCallback(
     async (base: Cliente) => {
@@ -3402,14 +3419,30 @@ function ClientePageContent() {
           )}
         </div>
         <div className="flex flex-col items-center justify-center gap-1 pt-7 sm:pt-2">
-          <Image
-            src="/logo.png"
-            alt="Dulelis Confeitaria"
-            width={320}
-            height={144}
-            className="h-auto w-full max-w-[210px] object-contain drop-shadow-sm sm:max-w-[280px]"
-            priority
-          />
+          <div className="flex items-center justify-center gap-2 sm:gap-4">
+            <Image
+              src="/logo.png"
+              alt="Dulelis Confeitaria"
+              width={320}
+              height={144}
+              className="h-auto w-full max-w-[170px] object-contain drop-shadow-sm sm:max-w-[280px]"
+              priority
+            />
+            <div
+              className="flex shrink-0 items-center gap-2 rounded-2xl border border-pink-100 bg-pink-50/80 px-3 py-2 text-left shadow-sm"
+              aria-label={`Cidade atendida: ${cidadeAtendida}`}
+            >
+              <MapPin size={17} className="shrink-0 text-pink-500" aria-hidden="true" />
+              <span className="flex flex-col leading-none">
+                <span className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">
+                  Cidade
+                </span>
+                <strong className="mt-1 text-xs font-black text-slate-700 sm:text-sm">
+                  {cidadeAtendida}
+                </strong>
+              </span>
+            </div>
+          </div>
           <p className="inline-flex items-baseline justify-center gap-2 text-slate-400 uppercase tracking-normal">
             <span className="text-base font-black text-pink-500 sm:text-lg">Delivery</span>
             <span className="text-xs font-semibold text-slate-600">artesanal</span>
