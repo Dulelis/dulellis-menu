@@ -3419,30 +3419,14 @@ function ClientePageContent() {
           )}
         </div>
         <div className="flex flex-col items-center justify-center gap-1 pt-7 sm:pt-2">
-          <div className="flex items-center justify-center gap-2 sm:gap-4">
-            <Image
-              src="/logo.png"
-              alt="Dulelis Confeitaria"
-              width={320}
-              height={144}
-              className="h-auto w-full max-w-[170px] object-contain drop-shadow-sm sm:max-w-[280px]"
-              priority
-            />
-            <div
-              className="flex shrink-0 items-center gap-2 rounded-2xl border border-pink-100 bg-pink-50/80 px-3 py-2 text-left shadow-sm"
-              aria-label={`Cidade atendida: ${cidadeAtendida}`}
-            >
-              <MapPin size={17} className="shrink-0 text-pink-500" aria-hidden="true" />
-              <span className="flex flex-col leading-none">
-                <span className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">
-                  Cidade
-                </span>
-                <strong className="mt-1 text-xs font-black text-slate-700 sm:text-sm">
-                  {cidadeAtendida}
-                </strong>
-              </span>
-            </div>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Dulelis Confeitaria"
+            width={320}
+            height={144}
+            className="h-auto w-full max-w-[210px] object-contain drop-shadow-sm sm:max-w-[280px]"
+            priority
+          />
           <p className="inline-flex items-baseline justify-center gap-2 text-slate-400 uppercase tracking-normal">
             <span className="text-base font-black text-pink-500 sm:text-lg">Delivery</span>
             <span className="text-xs font-semibold text-slate-600">artesanal</span>
@@ -3495,13 +3479,31 @@ function ClientePageContent() {
                     : "border-red-200 bg-red-50"
                 }`}
               >
-              <div className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-[0.06em] text-slate-700">
-                <Clock3 size={17} />
-                Horário: {statusHorario.faixa}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-[0.06em] text-slate-700">
+                    <Clock3 size={17} className="shrink-0" />
+                    Horário: {statusHorario.faixa}
+                  </div>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+                    Dias: {diasFuncionamentoTexto}
+                  </p>
+                </div>
+                <div
+                  className="flex shrink-0 items-center gap-2 rounded-xl border border-pink-100 bg-white/80 px-3 py-2 text-left shadow-sm"
+                  aria-label={`Cidade atendida: ${cidadeAtendida}`}
+                >
+                  <MapPin size={16} className="shrink-0 text-pink-500" aria-hidden="true" />
+                  <span className="flex flex-col leading-none">
+                    <span className="text-[8px] font-black uppercase tracking-[0.14em] text-slate-400">
+                      Cidade
+                    </span>
+                    <strong className="mt-1 text-xs font-black text-slate-700 sm:text-sm">
+                      {cidadeAtendida}
+                    </strong>
+                  </span>
+                </div>
               </div>
-              <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
-                Dias: {diasFuncionamentoTexto}
-              </p>
               <p
                 className={`mt-3 inline-flex rounded-xl px-4 py-2 text-lg font-black uppercase tracking-wide text-white shadow-sm sm:text-xl ${
                   statusHorario.aberto ? "bg-emerald-600" : "bg-red-600"
