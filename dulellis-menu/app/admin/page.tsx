@@ -263,6 +263,12 @@ function normalizarCategoriasEstoque(categorias: unknown, itens: any[] = []) {
   return resultado.length ? resultado : [...CATEGORIAS_ESTOQUE_PADRAO];
 }
 
+function normalizarTempoConfiguracao(valor: unknown, fallback: number) {
+  const minutos = Number(valor);
+  if (!Number.isFinite(minutos) || minutos < 0) return fallback;
+  return Math.min(1440, Math.round(minutos));
+}
+
 function categoriaParaId(categoria: string) {
   return categoria
     .normalize("NFD")
@@ -1085,6 +1091,10 @@ function AdminPageContent() {
   const [horarioFuncionamento, setHorarioFuncionamento] = useState({
     id: null as number | null,
     cidade_atendida: "Navegantes",
+    tempo_preparo_min: 30,
+    tempo_preparo_max: 45,
+    tempo_entrega_min: 15,
+    tempo_entrega_max: 30,
     hora_abertura: "08:00",
     hora_fechamento: "18:00",
     ativo: true,
@@ -1575,6 +1585,10 @@ function AdminPageContent() {
         horario?: {
           id?: number;
           cidade_atendida?: string;
+          tempo_preparo_min?: number;
+          tempo_preparo_max?: number;
+          tempo_entrega_min?: number;
+          tempo_entrega_max?: number;
           hora_abertura?: string;
           hora_fechamento?: string;
           ativo?: boolean;
@@ -1646,6 +1660,10 @@ function AdminPageContent() {
         id: Number(json.data.horario.id),
         cidade_atendida:
           String(json.data.horario.cidade_atendida || "Navegantes").trim() || "Navegantes",
+        tempo_preparo_min: normalizarTempoConfiguracao(json.data.horario.tempo_preparo_min, 30),
+        tempo_preparo_max: normalizarTempoConfiguracao(json.data.horario.tempo_preparo_max, 45),
+        tempo_entrega_min: normalizarTempoConfiguracao(json.data.horario.tempo_entrega_min, 15),
+        tempo_entrega_max: normalizarTempoConfiguracao(json.data.horario.tempo_entrega_max, 30),
         hora_abertura:
           normalizarHorarioInput(json.data.horario.hora_abertura) || "08:00",
         hora_fechamento:
@@ -2900,6 +2918,10 @@ function AdminPageContent() {
   const salvarHorarioFuncionamento = async (e: React.FormEvent) => {
     e.preventDefault();
     const cidadeAtendida = String(horarioFuncionamento.cidade_atendida || "").trim();
+    const tempoPreparoMin = normalizarTempoConfiguracao(horarioFuncionamento.tempo_preparo_min, 30);
+    const tempoPreparoMax = normalizarTempoConfiguracao(horarioFuncionamento.tempo_preparo_max, 45);
+    const tempoEntregaMin = normalizarTempoConfiguracao(horarioFuncionamento.tempo_entrega_min, 15);
+    const tempoEntregaMax = normalizarTempoConfiguracao(horarioFuncionamento.tempo_entrega_max, 30);
     const abertura = normalizarHorarioInput(horarioFuncionamento.hora_abertura);
     const fechamento = normalizarHorarioInput(
       horarioFuncionamento.hora_fechamento,
@@ -2912,9 +2934,21 @@ function AdminPageContent() {
       alert("Informe a cidade atendida por esta unidade.");
       return;
     }
+    if (tempoPreparoMax < tempoPreparoMin) {
+      alert("O tempo máximo de preparo deve ser igual ou maior que o mínimo.");
+      return;
+    }
+    if (tempoEntregaMax < tempoEntregaMin) {
+      alert("O tempo máximo de entrega deve ser igual ou maior que o mínimo.");
+      return;
+    }
 
     const payload = {
       cidade_atendida: cidadeAtendida.slice(0, 80),
+      tempo_preparo_min: tempoPreparoMin,
+      tempo_preparo_max: tempoPreparoMax,
+      tempo_entrega_min: tempoEntregaMin,
+      tempo_entrega_max: tempoEntregaMax,
       hora_abertura: `${abertura}:00`,
       hora_fechamento: `${fechamento}:00`,
       ativo: horarioFuncionamento.ativo,
@@ -2944,7 +2978,15 @@ function AdminPageContent() {
 
     if (error) {
       const mensagem = String(error.message || "");
-      if (mensagem.toLowerCase().includes("cidade_atendida")) {
+      const mensagemNormalizada = mensagem.toLowerCase();
+      if (
+        mensagemNormalizada.includes("tempo_preparo") ||
+        mensagemNormalizada.includes("tempo_entrega")
+      ) {
+        alert(
+          "O banco ainda não possui os controles de tempo. Execute o arquivo sql/upgrade_configuracoes_loja_tempos.sql no Supabase e tente novamente.",
+        );
+      } else if (mensagemNormalizada.includes("cidade_atendida")) {
         alert(
           "O banco ainda não possui o controle de cidade. Execute o arquivo sql/upgrade_configuracoes_loja_cidade.sql no Supabase e tente novamente.",
         );
@@ -2968,6 +3010,10 @@ function AdminPageContent() {
       cidade_atendida:
         String(horarioFuncionamento.cidade_atendida || "Navegantes").trim().slice(0, 80) ||
         "Navegantes",
+      tempo_preparo_min: normalizarTempoConfiguracao(horarioFuncionamento.tempo_preparo_min, 30),
+      tempo_preparo_max: normalizarTempoConfiguracao(horarioFuncionamento.tempo_preparo_max, 45),
+      tempo_entrega_min: normalizarTempoConfiguracao(horarioFuncionamento.tempo_entrega_min, 15),
+      tempo_entrega_max: normalizarTempoConfiguracao(horarioFuncionamento.tempo_entrega_max, 30),
       hora_abertura: `${abertura}:00`,
       hora_fechamento: `${fechamento}:00`,
       ativo: novoStatus,
@@ -2997,7 +3043,15 @@ function AdminPageContent() {
 
     if (error) {
       const mensagem = String(error.message || "");
-      if (mensagem.toLowerCase().includes("cidade_atendida")) {
+      const mensagemNormalizada = mensagem.toLowerCase();
+      if (
+        mensagemNormalizada.includes("tempo_preparo") ||
+        mensagemNormalizada.includes("tempo_entrega")
+      ) {
+        alert(
+          "O banco ainda não possui os controles de tempo. Execute o arquivo sql/upgrade_configuracoes_loja_tempos.sql no Supabase e tente novamente.",
+        );
+      } else if (mensagemNormalizada.includes("cidade_atendida")) {
         alert(
           "O banco ainda não possui o controle de cidade. Execute o arquivo sql/upgrade_configuracoes_loja_cidade.sql no Supabase e tente novamente.",
         );
@@ -6680,6 +6734,103 @@ function AdminPageContent() {
                   <p className="mt-2 px-2 text-xs font-medium leading-5 text-slate-500">
                     A vitrine mostrará esta unidade e aceitará entregas somente nesta cidade.
                     Nas futuras franquias, cada unidade terá sua própria configuração.
+                  </p>
+                </div>
+
+                <div>
+                  <p className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    Estimativa exibida ao cliente
+                  </p>
+                  <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-pink-100 bg-pink-50/60 p-4">
+                      <p className="text-xs font-black uppercase tracking-wide text-pink-700">
+                        Tempo de preparo
+                      </p>
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                          Mínimo (min)
+                          <input
+                            type="number"
+                            min={0}
+                            max={1440}
+                            step={5}
+                            value={horarioFuncionamento.tempo_preparo_min}
+                            onChange={(e) =>
+                              setHorarioFuncionamento((prev) => ({
+                                ...prev,
+                                tempo_preparo_min: Number(e.target.value),
+                              }))
+                            }
+                            className="mt-1.5 w-full rounded-xl border border-pink-100 bg-white p-3 text-base font-black text-slate-700 focus:outline-pink-500"
+                            required
+                          />
+                        </label>
+                        <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                          Máximo (min)
+                          <input
+                            type="number"
+                            min={0}
+                            max={1440}
+                            step={5}
+                            value={horarioFuncionamento.tempo_preparo_max}
+                            onChange={(e) =>
+                              setHorarioFuncionamento((prev) => ({
+                                ...prev,
+                                tempo_preparo_max: Number(e.target.value),
+                              }))
+                            }
+                            className="mt-1.5 w-full rounded-xl border border-pink-100 bg-white p-3 text-base font-black text-slate-700 focus:outline-pink-500"
+                            required
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
+                      <p className="text-xs font-black uppercase tracking-wide text-amber-700">
+                        Tempo de entrega
+                      </p>
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                          Mínimo (min)
+                          <input
+                            type="number"
+                            min={0}
+                            max={1440}
+                            step={5}
+                            value={horarioFuncionamento.tempo_entrega_min}
+                            onChange={(e) =>
+                              setHorarioFuncionamento((prev) => ({
+                                ...prev,
+                                tempo_entrega_min: Number(e.target.value),
+                              }))
+                            }
+                            className="mt-1.5 w-full rounded-xl border border-amber-100 bg-white p-3 text-base font-black text-slate-700 focus:outline-pink-500"
+                            required
+                          />
+                        </label>
+                        <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                          Máximo (min)
+                          <input
+                            type="number"
+                            min={0}
+                            max={1440}
+                            step={5}
+                            value={horarioFuncionamento.tempo_entrega_max}
+                            onChange={(e) =>
+                              setHorarioFuncionamento((prev) => ({
+                                ...prev,
+                                tempo_entrega_max: Number(e.target.value),
+                              }))
+                            }
+                            className="mt-1.5 w-full rounded-xl border border-amber-100 bg-white p-3 text-base font-black text-slate-700 focus:outline-pink-500"
+                            required
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-2 px-2 text-xs font-medium leading-5 text-slate-500">
+                    Use os valores mínimo e máximo para ajustar a variação conforme o movimento da unidade.
                   </p>
                 </div>
 

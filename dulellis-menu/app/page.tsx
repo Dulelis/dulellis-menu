@@ -176,6 +176,10 @@ type Propaganda = {
 type HorarioFuncionamentoRow = {
   id?: number;
   cidade_atendida?: string | null;
+  tempo_preparo_min?: number | null;
+  tempo_preparo_max?: number | null;
+  tempo_entrega_min?: number | null;
+  tempo_entrega_max?: number | null;
   hora_abertura?: string | null;
   hora_fechamento?: string | null;
   ativo?: boolean | null;
@@ -899,6 +903,16 @@ function normalizarDiasSemana(dias?: string[] | null) {
   return unicosOrdenados.length > 0 ? unicosOrdenados : [...DIAS_SEMANA_CHAVES];
 }
 
+function normalizarTempoMinutos(valor: unknown, fallback: number) {
+  const minutos = Number(valor);
+  if (!Number.isFinite(minutos) || minutos < 0) return fallback;
+  return Math.min(1440, Math.round(minutos));
+}
+
+function formatarFaixaMinutos(minimo: number, maximo: number) {
+  return minimo === maximo ? `${minimo} min` : `${minimo}–${maximo} min`;
+}
+
 function normalizarCategoriasVitrine(categorias: unknown, produtos: Produto[] = []) {
   const origem = Array.isArray(categorias) && categorias.length
     ? categorias
@@ -999,6 +1013,10 @@ function ClientePageContent() {
   const [propagandas, setPropagandas] = useState<Propaganda[]>([]);
   const [horarioFuncionamento, setHorarioFuncionamento] = useState<HorarioFuncionamentoRow>({
     cidade_atendida: DEFAULT_CITY,
+    tempo_preparo_min: 30,
+    tempo_preparo_max: 45,
+    tempo_entrega_min: 15,
+    tempo_entrega_max: 30,
     hora_abertura: "08:00",
     hora_fechamento: "18:00",
     ativo: false,
@@ -1007,6 +1025,16 @@ function ClientePageContent() {
   });
   const cidadeAtendida =
     String(horarioFuncionamento.cidade_atendida || DEFAULT_CITY).trim() || DEFAULT_CITY;
+  const tempoPreparoMin = normalizarTempoMinutos(horarioFuncionamento.tempo_preparo_min, 30);
+  const tempoPreparoMax = Math.max(
+    tempoPreparoMin,
+    normalizarTempoMinutos(horarioFuncionamento.tempo_preparo_max, 45),
+  );
+  const tempoEntregaMin = normalizarTempoMinutos(horarioFuncionamento.tempo_entrega_min, 15);
+  const tempoEntregaMax = Math.max(
+    tempoEntregaMin,
+    normalizarTempoMinutos(horarioFuncionamento.tempo_entrega_max, 30),
+  );
   const [agoraHorario, setAgoraHorario] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [estoqueEmAtualizacao, setEstoqueEmAtualizacao] = useState<Record<number, boolean>>({});
@@ -1113,6 +1141,10 @@ function ClientePageContent() {
     setHorarioFuncionamento({
       id: horario.id,
       cidade_atendida: String(horario.cidade_atendida || DEFAULT_CITY).trim() || DEFAULT_CITY,
+      tempo_preparo_min: normalizarTempoMinutos(horario.tempo_preparo_min, 30),
+      tempo_preparo_max: normalizarTempoMinutos(horario.tempo_preparo_max, 45),
+      tempo_entrega_min: normalizarTempoMinutos(horario.tempo_entrega_min, 15),
+      tempo_entrega_max: normalizarTempoMinutos(horario.tempo_entrega_max, 30),
       hora_abertura: normalizarHoraHHMM(horario.hora_abertura) || "08:00",
       hora_fechamento: normalizarHoraHHMM(horario.hora_fechamento) || "18:00",
       ativo: horario.ativo !== false,
@@ -1298,6 +1330,10 @@ function ClientePageContent() {
         console.warn("Falha ao carregar horário de funcionamento. Seguindo com padrão.", errHorario.message);
         horarioNormalizado = {
           cidade_atendida: DEFAULT_CITY,
+          tempo_preparo_min: 30,
+          tempo_preparo_max: 45,
+          tempo_entrega_min: 15,
+          tempo_entrega_max: 30,
           hora_abertura: "08:00",
           hora_fechamento: "18:00",
           ativo: false,
@@ -1310,6 +1346,10 @@ function ClientePageContent() {
         horarioNormalizado = {
           id: horario.id,
           cidade_atendida: String(horario.cidade_atendida || DEFAULT_CITY).trim() || DEFAULT_CITY,
+          tempo_preparo_min: normalizarTempoMinutos(horario.tempo_preparo_min, 30),
+          tempo_preparo_max: normalizarTempoMinutos(horario.tempo_preparo_max, 45),
+          tempo_entrega_min: normalizarTempoMinutos(horario.tempo_entrega_min, 15),
+          tempo_entrega_max: normalizarTempoMinutos(horario.tempo_entrega_max, 30),
           hora_abertura: normalizarHoraHHMM(horario.hora_abertura) || "08:00",
           hora_fechamento: normalizarHoraHHMM(horario.hora_fechamento) || "18:00",
           ativo: horario.ativo !== false,
@@ -3511,11 +3551,42 @@ function ClientePageContent() {
               >
                 {statusHorario.aberto ? "Aberto agora" : "Fechado agora"}
               </p>
+              {!statusHorario.aberto ? (
+                <div className="mt-3 flex items-center gap-3 rounded-xl border border-pink-100 bg-white/80 px-3 py-3 shadow-sm">
+                  <span className="relative flex h-3 w-3 shrink-0" aria-hidden="true">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pink-400 opacity-60" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-pink-500" />
+                  </span>
+                  <p className="text-left text-xs font-extrabold leading-5 text-slate-700 sm:text-sm">
+                    Estamos trabalhando para trazer o melhor para você.
+                  </p>
+                </div>
+              ) : null}
+              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-900/5 pt-3">
+                <div className="rounded-xl bg-white/70 px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    <Clock3 size={14} className="text-pink-500" aria-hidden="true" />
+                    Preparo
+                  </div>
+                  <p className="mt-1 text-sm font-black text-slate-800 sm:text-base">
+                    {formatarFaixaMinutos(tempoPreparoMin, tempoPreparoMax)}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white/70 px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    <Bike size={14} className="text-pink-500" aria-hidden="true" />
+                    Entrega
+                  </div>
+                  <p className="mt-1 text-sm font-black text-slate-800 sm:text-base">
+                    {formatarFaixaMinutos(tempoEntregaMin, tempoEntregaMax)}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
           <div
             ref={destaquesVitrineRef}
-            className="relative mx-auto max-w-xl rounded-2xl bg-amber-700 p-1.5 text-white shadow-[0_8px_24px_rgba(109,53,23,0.16)] sm:p-2"
+            className={`${statusHorario.aberto ? "relative" : "hidden"} mx-auto max-w-xl rounded-2xl bg-amber-700 p-1.5 text-white shadow-[0_8px_24px_rgba(109,53,23,0.16)] sm:p-2`}
           >
             <div className="absolute inset-x-3 top-3 z-20 h-1.5 sm:inset-x-4 sm:top-4">
               {mensagensVitrine.length > 1 && (
@@ -3626,7 +3697,7 @@ function ClientePageContent() {
           </div>
         </div>
 
-        {categoriasDisponiveis.length > 0 ? (
+        {statusHorario.aberto && categoriasDisponiveis.length > 0 ? (
           <div className="grid grid-cols-3 gap-2 px-3 py-3 sm:flex sm:justify-center sm:gap-3 sm:overflow-x-auto sm:px-6 sm:py-4 sm:no-scrollbar">
           {["Todos", ...categoriasDisponiveis].map((cat) => (
           <button
@@ -3649,7 +3720,10 @@ function ClientePageContent() {
         }
       `}</style>
 
-      <main ref={cardapioRef} className="max-w-xl mx-auto px-4 py-5 sm:px-6 sm:py-6 grid gap-5">
+      <main
+        ref={cardapioRef}
+        className={`${statusHorario.aberto ? "grid" : "hidden"} mx-auto max-w-xl gap-5 px-4 py-5 sm:px-6 sm:py-6`}
+      >
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Image
@@ -3774,7 +3848,7 @@ function ClientePageContent() {
         )}
       </main>
 
-      <footer className="max-w-xl mx-auto px-4 pb-6 sm:px-6">
+      <footer className={`${statusHorario.aberto ? "block" : "hidden"} mx-auto max-w-xl px-4 pb-6 sm:px-6`}>
         <div className="rounded-2xl border border-pink-100 bg-white px-4 py-5 text-center">
           <p className="text-sm font-black text-pink-700 tracking-tight">
             Dulelis Confeitaria - desde 2014
@@ -3799,22 +3873,24 @@ function ClientePageContent() {
 
       <div
         aria-hidden="true"
-        className="app-bottom-spacer"
+        className={statusHorario.aberto ? "app-bottom-spacer" : "hidden"}
         data-has-cart={temAtalhoCarrinho ? "true" : "false"}
       />
 
-      <AppBottomNav
-        activeTab={abaAppAtiva}
-        cartCount={carrinho.reduce((total, item) => total + item.qtd, 0)}
-        isLoggedIn={Boolean(sessaoCliente)}
-        canTrackOrder={podeAcompanharPedido}
-        onHome={() => rolarParaSecao(topoVitrineRef, "home")}
-        onHighlights={() => rolarParaSecao(destaquesVitrineRef, "highlights")}
-        onMenu={() => rolarParaSecao(cardapioRef, "menu")}
-        onOrder={abrirAtalhoPedido}
-      />
+      {statusHorario.aberto ? (
+        <AppBottomNav
+          activeTab={abaAppAtiva}
+          cartCount={carrinho.reduce((total, item) => total + item.qtd, 0)}
+          isLoggedIn={Boolean(sessaoCliente)}
+          canTrackOrder={podeAcompanharPedido}
+          onHome={() => rolarParaSecao(topoVitrineRef, "home")}
+          onHighlights={() => rolarParaSecao(destaquesVitrineRef, "highlights")}
+          onMenu={() => rolarParaSecao(cardapioRef, "menu")}
+          onOrder={abrirAtalhoPedido}
+        />
+      ) : null}
 
-      {temAtalhoCarrinho && (
+      {statusHorario.aberto && temAtalhoCarrinho && (
         <div className="app-floating-cta fixed left-1/2 -translate-x-1/2 w-[94%] max-w-md bg-slate-900 text-white p-5 rounded-[3rem] shadow-2xl flex justify-between items-center z-50">
           <div className="flex items-center gap-4 ml-2">
             <div className="bg-pink-600 p-3 rounded-2xl relative">
