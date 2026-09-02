@@ -69,6 +69,11 @@ import {
   CalendarDays,
   Search,
   X,
+  BookOpen,
+  Copy,
+  ExternalLink,
+  Share2,
+  Check,
 } from "lucide-react";
 
 const ADMIN_ALARME_PEDIDOS_STORAGE_KEY = "dulellis.admin.order-alarm.enabled";
@@ -307,6 +312,7 @@ const STATUS_PEDIDO_FLUXO: Record<
 const ADMIN_TABS = [
   "painel",
   "estoque",
+  "cardapio",
   "promocoes",
   "propagandas",
   "clientes",
@@ -1113,6 +1119,11 @@ function AdminPageContent() {
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [vincularProdutoCriadoPrecificacao, setVincularProdutoCriadoPrecificacao] =
     useState(false);
+  const [buscaCardapio, setBuscaCardapio] = useState("");
+  const [categoriaCardapio, setCategoriaCardapio] = useState("Todas");
+  const [salvandoCardapioIds, setSalvandoCardapioIds] = useState<number[]>([]);
+  const [salvandoCardapioEmMassa, setSalvandoCardapioEmMassa] = useState(false);
+  const [feedbackCardapio, setFeedbackCardapio] = useState("");
 
   const [mostrarModalTaxa, setMostrarModalTaxa] = useState(false);
   const [editandoTaxaId, setEditandoTaxaId] = useState<number | null>(null);
@@ -1169,6 +1180,7 @@ function AdminPageContent() {
     descricao: "",
     imagem_url: "",
     categoria: "Doces",
+    exibir_cardapio: false,
   });
   const [novaPropaganda, setNovaPropaganda] = useState({
     titulo: "",
@@ -1261,6 +1273,24 @@ function AdminPageContent() {
       .toLowerCase();
     return !categoriasEstoque.some((base) => base.toLowerCase() === categoria);
   });
+  const categoriasFiltroCardapio = Array.from(
+    new Set(
+      estoque
+        .map((item) => String(item.categoria || "Sem categoria").trim())
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const produtosCardapioFiltrados = estoque.filter((item) => {
+    const termo = buscaCardapio.trim().toLocaleLowerCase("pt-BR");
+    const categoria = String(item.categoria || "Sem categoria").trim() || "Sem categoria";
+    const correspondeCategoria = categoriaCardapio === "Todas" || categoria === categoriaCardapio;
+    const correspondeBusca =
+      !termo ||
+      String(item.nome || "").toLocaleLowerCase("pt-BR").includes(termo) ||
+      String(item.descricao || "").toLocaleLowerCase("pt-BR").includes(termo);
+    return correspondeCategoria && correspondeBusca;
+  });
+  const totalProdutosCardapio = estoque.filter((item) => item.exibir_cardapio === true).length;
   const normalizarHorarioInput = (valor?: string | null) => {
     const texto = String(valor || "").trim();
     const match = texto.match(/^(\d{2}):(\d{2})/);
@@ -1298,6 +1328,116 @@ function AdminPageContent() {
     }
     return json;
   }, []);
+
+  const mostrarFeedbackCardapio = useCallback((mensagem: string) => {
+    setFeedbackCardapio(mensagem);
+    window.setTimeout(() => setFeedbackCardapio(""), 2500);
+  }, []);
+
+  const obterUrlCardapio = useCallback(() => {
+    return `${window.location.origin}/cardapio`;
+  }, []);
+
+  const alterarProdutoNoCardapio = async (item: any, exibir: boolean) => {
+    const id = Number(item.id);
+    setSalvandoCardapioIds((atuais) => [...atuais, id]);
+    try {
+      await adminDb({
+        action: "update_eq",
+        table: "estoque",
+        payload: { exibir_cardapio: exibir },
+        eq: { column: "id", value: id },
+      });
+      setEstoque((atual) =>
+        atual.map((produto) =>
+          Number(produto.id) === id
+            ? { ...produto, exibir_cardapio: exibir }
+            : produto,
+        ),
+      );
+      mostrarFeedbackCardapio(exibir ? "Produto publicado no cardápio." : "Produto removido do cardápio.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Não foi possível atualizar o cardápio.");
+    } finally {
+      setSalvandoCardapioIds((atuais) => atuais.filter((produtoId) => produtoId !== id));
+    }
+  };
+
+  const alterarProdutosFiltradosNoCardapio = async (exibir: boolean) => {
+    const produtosAlterados = produtosCardapioFiltrados.filter(
+      (item) => item.exibir_cardapio !== exibir,
+    );
+    if (!produtosAlterados.length) {
+      mostrarFeedbackCardapio("A seleção já está atualizada.");
+      return;
+    }
+
+    setSalvandoCardapioEmMassa(true);
+    try {
+      await Promise.all(
+        produtosAlterados.map((item) =>
+          adminDb({
+            action: "update_eq",
+            table: "estoque",
+            payload: { exibir_cardapio: exibir },
+            eq: { column: "id", value: Number(item.id) },
+          }),
+        ),
+      );
+      const ids = new Set(produtosAlterados.map((item) => Number(item.id)));
+      setEstoque((atual) =>
+        atual.map((produto) =>
+          ids.has(Number(produto.id))
+            ? { ...produto, exibir_cardapio: exibir }
+            : produto,
+        ),
+      );
+      mostrarFeedbackCardapio(
+        exibir
+          ? `${produtosAlterados.length} produto(s) publicado(s).`
+          : `${produtosAlterados.length} produto(s) removido(s).`,
+      );
+    } catch (error) {
+      await carregarDados().catch(() => undefined);
+      alert(error instanceof Error ? error.message : "Não foi possível atualizar todos os produtos.");
+    } finally {
+      setSalvandoCardapioEmMassa(false);
+    }
+  };
+
+  const copiarLinkCardapio = async () => {
+    const url = obterUrlCardapio();
+    try {
+      await navigator.clipboard.writeText(url);
+      mostrarFeedbackCardapio("Link do cardápio copiado.");
+    } catch {
+      window.prompt("Copie o link do cardápio:", url);
+    }
+  };
+
+  const compartilharCardapio = async () => {
+    const url = obterUrlCardapio();
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({
+          title: "Cardápio Dulelis Confeitaria",
+          text: "Confira o cardápio de encomendas da Dulelis Confeitaria!",
+          url,
+        });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    await copiarLinkCardapio();
+  };
+
+  const compartilharCardapioNoWhatsApp = () => {
+    const mensagem = encodeURIComponent(
+      `Confira o cardápio de encomendas da Dulelis Confeitaria!\n\n${obterUrlCardapio()}`,
+    );
+    window.open(`https://wa.me/?text=${mensagem}`, "_blank", "noopener,noreferrer");
+  };
 
   const abrirRelatorioPlanilha = useCallback(
     (
@@ -1960,6 +2100,7 @@ function AdminPageContent() {
       descricao: item.descricao || "",
       imagem_url: item.imagem_url || "",
       categoria: item.categoria || "Doces",
+      exibir_cardapio: item.exibir_cardapio === true,
     });
     setEditandoId(item.id);
     setMostrarModalEstoque(true);
@@ -1976,6 +2117,7 @@ function AdminPageContent() {
       descricao: "",
       imagem_url: "",
       categoria: categoriasEstoque[0] || "Doces",
+      exibir_cardapio: false,
     });
   };
 
@@ -1988,6 +2130,7 @@ function AdminPageContent() {
       descricao: "",
       imagem_url: "",
       categoria: categoriasEstoque[0] || "Doces",
+      exibir_cardapio: false,
     });
   };
 
@@ -2072,6 +2215,7 @@ function AdminPageContent() {
       descricao: "",
       imagem_url: "",
       categoria: "Doces",
+      exibir_cardapio: false,
     });
     setEditandoId(null);
     setVincularProdutoCriadoPrecificacao(true);
@@ -6326,6 +6470,12 @@ function AdminPageContent() {
             <Package size={20} /> Estoque / Cardápio{" "}
           </button>
           <button
+            onClick={() => setActiveTab("cardapio")}
+            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "cardapio" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
+          >
+            <BookOpen size={20} /> Cardápio divulgação
+          </button>
+          <button
             onClick={() => setActiveTab("promocoes")}
             className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "promocoes" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
           >
@@ -6388,6 +6538,7 @@ function AdminPageContent() {
           <h1 className="text-2xl sm:text-3xl font-black text-slate-800">
             {activeTab === "painel" && "Painel Geral"}
             {activeTab === "estoque" && "Produtos"}
+            {activeTab === "cardapio" && "Cardápio de divulgação"}
             {activeTab === "promocoes" && "Promoções"}
             {activeTab === "propagandas" && "Propaganda"}
             {activeTab === "clientes" && "Clientes"}
@@ -7184,6 +7335,101 @@ function AdminPageContent() {
                 </div>
               </section>
             )}
+          </div>
+        )}
+
+        {activeTab === "cardapio" && (
+          <div className="space-y-6">
+            <section className="overflow-hidden rounded-[2rem] border border-amber-200 bg-[#1a1a2e] p-5 text-white shadow-lg sm:p-7">
+              <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Página pública</p>
+                  <h2 className="mt-2 text-2xl font-black">Cardápio pronto para divulgação</h2>
+                  <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-white/70">
+                    Nomes, descrições, imagens e preços vêm diretamente dos produtos cadastrados. Qualquer alteração no administrador aparece no cardápio.
+                  </p>
+                  <p className="mt-3 text-sm font-black text-amber-300">{totalProdutosCardapio} produto(s) publicado(s)</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[430px]">
+                  <a href="/cardapio" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-3 text-sm font-black text-white hover:bg-pink-700">
+                    <ExternalLink size={17} /> Visualizar cardápio
+                  </a>
+                  <button type="button" onClick={() => void copiarLinkCardapio()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-black hover:bg-white/20">
+                    <Copy size={17} /> Copiar link
+                  </button>
+                  <button type="button" onClick={() => void compartilharCardapio()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-black hover:bg-white/20">
+                    <Share2 size={17} /> Compartilhar
+                  </button>
+                  <button type="button" onClick={compartilharCardapioNoWhatsApp} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-black text-white hover:bg-[#20bd5a]">
+                    <MessageSquare size={17} /> Enviar no WhatsApp
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {feedbackCardapio ? (
+              <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700">
+                <Check size={18} /> {feedbackCardapio}
+              </div>
+            ) : null}
+
+            <section className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-600">Seleção de produtos</p>
+                  <h2 className="mt-1 text-xl font-black text-slate-800">Escolha o que aparece no cardápio</h2>
+                  <p className="mt-1 text-sm font-bold text-slate-500">Itens sem estoque também podem ser publicados para encomenda.</p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button type="button" disabled={salvandoCardapioEmMassa || produtosCardapioFiltrados.length === 0} onClick={() => void alterarProdutosFiltradosNoCardapio(true)} className="rounded-xl bg-pink-600 px-4 py-3 text-xs font-black uppercase text-white disabled:cursor-wait disabled:opacity-50">
+                    {salvandoCardapioEmMassa ? "Salvando..." : "Marcar exibidos"}
+                  </button>
+                  <button type="button" disabled={salvandoCardapioEmMassa || produtosCardapioFiltrados.length === 0} onClick={() => void alterarProdutosFiltradosNoCardapio(false)} className="rounded-xl bg-slate-100 px-4 py-3 text-xs font-black uppercase text-slate-700 disabled:cursor-wait disabled:opacity-50">
+                    Desmarcar exibidos
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.35fr)]">
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input value={buscaCardapio} onChange={(event) => setBuscaCardapio(event.target.value)} placeholder="Buscar por nome ou descrição..." className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm font-bold text-slate-800 outline-none focus:border-pink-400" />
+                </label>
+                <select value={categoriaCardapio} onChange={(event) => setCategoriaCardapio(event.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-pink-400">
+                  <option value="Todas">Todas as categorias</option>
+                  {categoriasFiltroCardapio.map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
+                </select>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {produtosCardapioFiltrados.map((item) => {
+                  const publicado = item.exibir_cardapio === true;
+                  const salvando = salvandoCardapioIds.includes(Number(item.id));
+                  return (
+                    <div key={item.id} className={`flex flex-col gap-4 rounded-2xl border p-4 transition-colors sm:flex-row sm:items-center ${publicado ? "border-pink-200 bg-pink-50/60" : "border-slate-100 bg-white"}`}>
+                      <div className="h-20 w-full shrink-0 overflow-hidden rounded-xl bg-slate-100 sm:w-20">
+                        {item.imagem_url ? <img src={item.imagem_url} alt={item.nome || "Produto"} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-slate-300"><ImageIcon size={22} /></div>}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-black text-slate-800">{item.nome}</h3>
+                          <span className="rounded-full bg-white px-2 py-1 text-[9px] font-black uppercase text-pink-700">{item.categoria || "Sem categoria"}</span>
+                        </div>
+                        <p className="mt-1 text-sm font-black text-pink-600">R$ {Number(item.preco || 0).toFixed(2).replace(".", ",")}</p>
+                        {item.descricao ? <p className="mt-1 line-clamp-2 text-xs font-bold text-slate-500">{item.descricao}</p> : null}
+                      </div>
+                      <label className={`flex shrink-0 cursor-pointer items-center justify-between gap-3 rounded-xl px-4 py-3 text-xs font-black uppercase sm:min-w-44 ${publicado ? "bg-pink-600 text-white" : "bg-slate-100 text-slate-600"}`}>
+                        <span>{salvando ? "Salvando..." : publicado ? "Publicado" : "Não publicado"}</span>
+                        {salvando ? <Loader2 size={18} className="animate-spin" /> : (
+                          <input type="checkbox" checked={publicado} disabled={salvandoCardapioEmMassa} onChange={(event) => void alterarProdutoNoCardapio(item, event.target.checked)} className="h-5 w-5 accent-pink-600" />
+                        )}
+                      </label>
+                    </div>
+                  );
+                })}
+                {!produtosCardapioFiltrados.length ? <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm font-bold text-slate-400">Nenhum produto encontrado com esses filtros.</div> : null}
+              </div>
+            </section>
           </div>
         )}
 
@@ -9892,6 +10138,18 @@ function AdminPageContent() {
                   />
                 </div>
               </div>
+              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-pink-200 bg-pink-50 p-4">
+                <span>
+                  <span className="block text-sm font-black text-slate-800">Publicar no cardápio de divulgação</span>
+                  <span className="mt-1 block text-xs font-bold text-slate-500">O produto aparecerá em /cardapio mesmo quando o estoque estiver zerado.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={novoItem.exibir_cardapio}
+                  onChange={(event) => setNovoItem({ ...novoItem, exibir_cardapio: event.target.checked })}
+                  className="h-6 w-6 shrink-0 accent-pink-600"
+                />
+              </label>
               <button
                 type="submit"
                 disabled={uploading}
