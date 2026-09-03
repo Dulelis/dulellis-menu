@@ -109,7 +109,7 @@ export function CardapioClient() {
   }, [copiarLink]);
 
   const mensagemPedido = encodeURIComponent(
-    `Olá! Vi o cardápio da Dulelis e gostaria de fazer uma encomenda.\n\n${urlCardapio()}`,
+    "Olá, vi o cardápio da Dulelis e gostaria de fazer uma encomenda.",
   );
 
   return (
