@@ -302,6 +302,8 @@ const STATUS_PEDIDO_LABELS: Record<string, string> = {
   recebido: "Recebido",
   em_preparo: "Em preparo",
   saiu_entrega: "Saiu para entrega",
+  finalizado: "Finalizado",
+  cancelado: "Cancelado",
 };
 
 const STATUS_PEDIDO_CORES: Record<string, string> = {
@@ -310,6 +312,8 @@ const STATUS_PEDIDO_CORES: Record<string, string> = {
   recebido: "bg-emerald-50 text-emerald-700 border-emerald-200",
   em_preparo: "bg-amber-50 text-amber-700 border-amber-200",
   saiu_entrega: "bg-sky-50 text-sky-700 border-sky-200",
+  finalizado: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  cancelado: "bg-red-50 text-red-700 border-red-200",
 };
 
 const STATUS_PEDIDO_FLUXO: Record<
@@ -321,6 +325,8 @@ const STATUS_PEDIDO_FLUXO: Record<
   recebido: { label: "Colocar em preparo", proximo: "em_preparo" },
   em_preparo: { label: "Saiu para entrega", proximo: "saiu_entrega" },
   saiu_entrega: null,
+  finalizado: null,
+  cancelado: null,
 };
 
 const ADMIN_TABS = [
@@ -3362,6 +3368,9 @@ function AdminPageContent() {
     STATUS_PEDIDO_CORES.aguardando_aceite;
   const obterProximoFluxoPedido = (pedido: any) => {
     const status = normalizarStatusPedido(pedido);
+    if (status === "saiu_entrega" && pedidoEhRetiradaNoBalcao(pedido)) {
+      return { label: "Confirmar retirada", proximo: "finalizado" };
+    }
     const fluxo = STATUS_PEDIDO_FLUXO[status] || null;
     if (!fluxo) return null;
     if (status === "em_preparo" && pedidoEhRetiradaNoBalcao(pedido)) {
@@ -6552,6 +6561,12 @@ function AdminPageContent() {
             className="flex w-max items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-slate-400 transition-all hover:bg-slate-800 lg:w-full lg:p-4"
           >
             <BellRing size={20} /> Notificar clientes
+          </button>
+          <button
+            onClick={() => { window.location.href = "/admin/sorteios"; }}
+            className="flex w-max items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-slate-400 transition-all hover:bg-slate-800 lg:w-full lg:p-4"
+          >
+            <Award size={20} /> Sorteios
           </button>
           <button
             onClick={() => setActiveTab("clientes")}
