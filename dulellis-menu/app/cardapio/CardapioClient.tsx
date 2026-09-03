@@ -30,9 +30,9 @@ function formatarPreco(valor: number | string) {
   }).format(Number(valor) || 0);
 }
 
-function urlAtual() {
+function urlCardapio() {
   if (typeof window === "undefined") return "https://dulelisdelivery.com.br/cardapio";
-  return window.location.href;
+  return new URL("/cardapio", window.location.origin).toString();
 }
 
 export function CardapioClient() {
@@ -73,11 +73,11 @@ export function CardapioClient() {
 
   const copiarLink = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(urlAtual());
+      await navigator.clipboard.writeText(urlCardapio());
       setLinkCopiado(true);
       window.setTimeout(() => setLinkCopiado(false), 2200);
     } catch {
-      window.prompt("Copie o link do cardápio:", urlAtual());
+      window.prompt("Copie o link do cardápio:", urlCardapio());
     }
   }, []);
 
@@ -87,7 +87,7 @@ export function CardapioClient() {
         await navigator.share({
           title: "Cardápio Dulelis Confeitaria",
           text: "Confira o cardápio de encomendas da Dulelis Confeitaria!",
-          url: urlAtual(),
+          url: urlCardapio(),
         });
         return;
       } catch (error) {
@@ -98,7 +98,7 @@ export function CardapioClient() {
   }, [copiarLink]);
 
   const mensagemPedido = encodeURIComponent(
-    `Olá! Vi o cardápio da Dulelis e gostaria de fazer uma encomenda.\n\n${urlAtual()}`,
+    `Olá! Vi o cardápio da Dulelis e gostaria de fazer uma encomenda.\n\n${urlCardapio()}`,
   );
 
   return (
