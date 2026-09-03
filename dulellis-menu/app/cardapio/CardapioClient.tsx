@@ -126,7 +126,7 @@ export function CardapioClient() {
           </p>
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <a href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagemPedido}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#25D366] px-5 py-3 text-sm font-black text-white shadow-lg transition-transform hover:-translate-y-0.5">
-              <MessageCircle size={18} /> Fazer pedido no WhatsApp
+              <MessageCircle size={18} /> Fazer o pedido
             </a>
             <button type="button" onClick={() => void compartilhar()} className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d4a574]/50 bg-white/10 px-5 py-3 text-sm font-black text-white transition-colors hover:bg-white/20">
               {linkCopiado ? <Check size={18} /> : <Share2 size={18} />}
@@ -186,7 +186,7 @@ export function CardapioClient() {
       <footer className="border-t border-[#d4a574]/30 bg-[#1a1a2e] px-4 py-9 text-center text-white">
         <p className="text-xl font-bold text-[#d4a574] [font-family:var(--font-cardapio-titulo)]">Dulelis Confeitaria</p>
         <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
-          <a href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagemPedido}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#25D366] px-5 py-3 text-sm font-black"><MessageCircle size={17} /> WhatsApp</a>
+          <a href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagemPedido}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#25D366] px-5 py-3 text-sm font-black"><MessageCircle size={17} /> Fazer o pedido</a>
           <a href={INSTAGRAM_URL} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#f09433] via-[#dc2743] to-[#bc1888] px-5 py-3 text-sm font-black"><Instagram size={17} /> Instagram <ExternalLink size={14} /></a>
         </div>
         <p className="mt-6 text-xs font-bold text-white/50">© {new Date().getFullYear()} Dulelis — Doces e Salgados Artesanais</p>
