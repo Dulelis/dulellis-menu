@@ -11,6 +11,7 @@ type ProdutoCardapio = {
   categoria: string;
   preco: number | string;
   imagem_url?: string | null;
+  ordem_categoria?: number | null;
 };
 
 type CardapioResponse = {
@@ -71,9 +72,12 @@ export function CardapioClient() {
     return Array.from(agrupados.entries())
       .map(([categoria, itens]) => [
         categoria,
-        [...itens].sort((a, b) =>
-          a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base", numeric: true }),
-        ),
+        [...itens].sort((a, b) => {
+          const ordemA = Number(a.ordem_categoria || 0);
+          const ordemB = Number(b.ordem_categoria || 0);
+          if (ordemA > 0 && ordemB > 0 && ordemA !== ordemB) return ordemA - ordemB;
+          return a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base", numeric: true });
+        }),
       ] as const)
       .sort(([a], [b]) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
   }, [produtos]);

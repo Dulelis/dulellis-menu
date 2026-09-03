@@ -14,9 +14,10 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("estoque")
-    .select("id,nome,descricao,categoria,preco,imagem_url")
+    .select("id,nome,descricao,categoria,preco,imagem_url,ordem_categoria")
     .eq("exibir_cardapio", true)
     .order("categoria", { ascending: true })
+    .order("ordem_categoria", { ascending: true })
     .order("nome", { ascending: true });
 
   if (error) {

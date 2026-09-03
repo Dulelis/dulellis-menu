@@ -289,6 +289,13 @@ function compararProdutosPorNome(a: any, b: any) {
     numeric: true,
   });
 }
+
+function compararProdutosPorOrdem(a: any, b: any) {
+  const ordemA = Number(a?.ordem_categoria || 0);
+  const ordemB = Number(b?.ordem_categoria || 0);
+  if (ordemA > 0 && ordemB > 0 && ordemA !== ordemB) return ordemA - ordemB;
+  return compararProdutosPorNome(a, b);
+}
 const STATUS_PEDIDO_LABELS: Record<string, string> = {
   pagamento_pendente: "Aguardando pagamento",
   aguardando_aceite: "Aguardando aceite",
@@ -1131,6 +1138,7 @@ function AdminPageContent() {
   const [salvandoCardapioIds, setSalvandoCardapioIds] = useState<number[]>([]);
   const [salvandoCardapioEmMassa, setSalvandoCardapioEmMassa] = useState(false);
   const [feedbackCardapio, setFeedbackCardapio] = useState("");
+  const [reordenandoProdutoId, setReordenandoProdutoId] = useState<number | null>(null);
 
   const [mostrarModalTaxa, setMostrarModalTaxa] = useState(false);
   const [editandoTaxaId, setEditandoTaxaId] = useState<number | null>(null);
@@ -1274,7 +1282,7 @@ function AdminPageContent() {
             .trim()
             .toLowerCase() === categoria.toLowerCase(),
       )
-      .sort(compararProdutosPorNome),
+      .sort(compararProdutosPorOrdem),
   }));
   const estoqueOutros = estoque
     .filter((item) => {
@@ -1283,7 +1291,7 @@ function AdminPageContent() {
         .toLowerCase();
       return !categoriasEstoque.some((base) => base.toLowerCase() === categoria);
     })
-    .sort(compararProdutosPorNome);
+    .sort(compararProdutosPorOrdem);
   const categoriasFiltroCardapio = Array.from(
     new Set(
       estoque
@@ -1306,7 +1314,7 @@ function AdminPageContent() {
       const categoriaA = String(a.categoria || "Sem categoria");
       const categoriaB = String(b.categoria || "Sem categoria");
       const ordemCategoria = categoriaA.localeCompare(categoriaB, "pt-BR", { sensitivity: "base" });
-      return ordemCategoria || compararProdutosPorNome(a, b);
+      return ordemCategoria || compararProdutosPorOrdem(a, b);
     });
   const totalProdutosCardapio = estoque.filter((item) => item.exibir_cardapio === true).length;
   const normalizarHorarioInput = (valor?: string | null) => {
@@ -1378,6 +1386,31 @@ function AdminPageContent() {
       alert(error instanceof Error ? error.message : "Não foi possível atualizar o cardápio.");
     } finally {
       setSalvandoCardapioIds((atuais) => atuais.filter((produtoId) => produtoId !== id));
+    }
+  };
+
+  const moverProdutoNaCategoria = async (item: any, direction: -1 | 1) => {
+    const id = Number(item.id);
+    setReordenandoProdutoId(id);
+    try {
+      const response = await fetch("/api/admin/products/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ productId: id, direction }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || "Não foi possível alterar a ordem do produto.");
+      }
+      await carregarDados();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Não foi possível alterar a ordem do produto.");
+    } finally {
+      setReordenandoProdutoId(null);
     }
   };
 
@@ -2093,10 +2126,17 @@ function AdminPageContent() {
         eq: { column: "id", value: editandoId },
       });
     } else {
+      const maiorOrdemCategoria = estoque
+        .filter(
+          (item) =>
+            String(item.categoria || "").trim().toLocaleLowerCase("pt-BR") ===
+            novoItem.categoria.trim().toLocaleLowerCase("pt-BR"),
+        )
+        .reduce((maior, item) => Math.max(maior, Number(item.ordem_categoria || 0)), 0);
       const resposta = await adminDb({
         action: "insert",
         table: "estoque",
-        values: [novoItem],
+        values: [{ ...novoItem, ordem_categoria: maiorOrdemCategoria + 1 }],
       });
       produtoSalvoId = Number(resposta?.data?.[0]?.id || 0) || null;
     }
@@ -7175,7 +7215,7 @@ function AdminPageContent() {
                       Nenhum item nesta categoria.
                     </div>
                   )}
-                  {itens.map((item) => (
+                  {itens.map((item, indice) => (
                     <div
                       key={item.id}
                       className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col sm:flex-row sm:items-center gap-4"
@@ -7228,6 +7268,28 @@ function AdminPageContent() {
                           className="p-1 hover:text-green-500"
                         >
                           <Plus size={18} />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2 sm:flex-col" title="Ordenar dentro desta categoria">
+                        <button
+                          type="button"
+                          onClick={() => void moverProdutoNaCategoria(item, -1)}
+                          disabled={indice === 0 || reordenandoProdutoId !== null}
+                          className="rounded-lg bg-white p-2 text-amber-700 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-30"
+                          aria-label={`Mover ${item.nome} para cima`}
+                          title="Mover para cima"
+                        >
+                          {reordenandoProdutoId === Number(item.id) ? <Loader2 size={17} className="animate-spin" /> : <ChevronUp size={17} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void moverProdutoNaCategoria(item, 1)}
+                          disabled={indice === itens.length - 1 || reordenandoProdutoId !== null}
+                          className="rounded-lg bg-white p-2 text-amber-700 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-30"
+                          aria-label={`Mover ${item.nome} para baixo`}
+                          title="Mover para baixo"
+                        >
+                          {reordenandoProdutoId === Number(item.id) ? <Loader2 size={17} className="animate-spin" /> : <ChevronDown size={17} />}
                         </button>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-4 sm:border-l border-slate-100 sm:pl-4 pt-2 sm:pt-0">
