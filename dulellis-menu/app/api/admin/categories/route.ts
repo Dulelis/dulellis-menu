@@ -38,15 +38,28 @@ async function authorized(request: NextRequest) {
 async function getConfiguration() {
   const supabase = getServiceSupabase();
   if (!supabase) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabase
-    .from("configuracoes_loja")
-    .select("id,categorias_produtos")
-    .order("id", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const [configurationResult, productsResult] = await Promise.all([
+    supabase
+      .from("configuracoes_loja")
+      .select("id,categorias_produtos")
+      .order("id", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    supabase.from("estoque").select("categoria"),
+  ]);
+  const { data, error } = configurationResult;
   if (error) throw new Error(error.message);
+  if (productsResult.error) throw new Error(productsResult.error.message);
   if (!data?.id) throw new Error("Configuração da loja não encontrada.");
-  return { supabase, id: Number(data.id), categories: normalizeCategories(data.categorias_produtos) };
+  const productCategories = (productsResult.data || []).map((item) => item.categoria);
+  const configuredCategories = Array.isArray(data.categorias_produtos)
+    ? data.categorias_produtos
+    : DEFAULT_CATEGORIES;
+  return {
+    supabase,
+    id: Number(data.id),
+    categories: normalizeCategories([...configuredCategories, ...productCategories]),
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -87,7 +100,10 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const { supabase, id, categories } = await getConfiguration();
-    const index = categories.findIndex((category) => category === currentName);
+    const index = categories.findIndex(
+      (category) =>
+        category.toLocaleLowerCase("pt-BR") === currentName.toLocaleLowerCase("pt-BR"),
+    );
     if (index < 0) return NextResponse.json({ ok: false, error: "Categoria não encontrada." }, { status: 404 });
     if (categories.some((category, categoryIndex) => categoryIndex !== index && category.toLocaleLowerCase("pt-BR") === newName.toLocaleLowerCase("pt-BR"))) {
       return NextResponse.json({ ok: false, error: "Já existe uma categoria com esse nome." }, { status: 409 });
@@ -95,11 +111,15 @@ export async function PATCH(request: NextRequest) {
 
     const next = [...categories];
     next[index] = newName;
-    const { error: productsError } = await supabase.from("estoque").update({ categoria: newName }).eq("categoria", currentName);
+    const storedCurrentName = categories[index];
+    const { error: productsError } = await supabase
+      .from("estoque")
+      .update({ categoria: newName })
+      .eq("categoria", storedCurrentName);
     if (productsError) throw new Error(productsError.message);
     const { error: settingsError } = await supabase.from("configuracoes_loja").update({ categorias_produtos: next }).eq("id", id);
     if (settingsError) {
-      await supabase.from("estoque").update({ categoria: currentName }).eq("categoria", newName);
+      await supabase.from("estoque").update({ categoria: storedCurrentName }).eq("categoria", newName);
       throw new Error(settingsError.message);
     }
     return NextResponse.json({ ok: true, categories: next });
