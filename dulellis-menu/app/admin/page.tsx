@@ -282,6 +282,13 @@ function categoriaParaId(categoria: string) {
     .toLowerCase()
     .replace(/\s+/g, "-");
 }
+
+function compararProdutosPorNome(a: any, b: any) {
+  return String(a?.nome || "").localeCompare(String(b?.nome || ""), "pt-BR", {
+    sensitivity: "base",
+    numeric: true,
+  });
+}
 const STATUS_PEDIDO_LABELS: Record<string, string> = {
   pagamento_pendente: "Aguardando pagamento",
   aguardando_aceite: "Aguardando aceite",
@@ -1260,19 +1267,23 @@ function AdminPageContent() {
   const ignorarPrimeiraPersistenciaSomAlarmeRef = useRef(true);
   const estoquePorCategoria = categoriasEstoque.map((categoria) => ({
     categoria,
-    itens: estoque.filter(
-      (item) =>
-        String(item.categoria || "")
-          .trim()
-          .toLowerCase() === categoria.toLowerCase(),
-    ),
+    itens: estoque
+      .filter(
+        (item) =>
+          String(item.categoria || "")
+            .trim()
+            .toLowerCase() === categoria.toLowerCase(),
+      )
+      .sort(compararProdutosPorNome),
   }));
-  const estoqueOutros = estoque.filter((item) => {
-    const categoria = String(item.categoria || "")
-      .trim()
-      .toLowerCase();
-    return !categoriasEstoque.some((base) => base.toLowerCase() === categoria);
-  });
+  const estoqueOutros = estoque
+    .filter((item) => {
+      const categoria = String(item.categoria || "")
+        .trim()
+        .toLowerCase();
+      return !categoriasEstoque.some((base) => base.toLowerCase() === categoria);
+    })
+    .sort(compararProdutosPorNome);
   const categoriasFiltroCardapio = Array.from(
     new Set(
       estoque
@@ -1280,16 +1291,23 @@ function AdminPageContent() {
         .filter(Boolean),
     ),
   ).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  const produtosCardapioFiltrados = estoque.filter((item) => {
-    const termo = buscaCardapio.trim().toLocaleLowerCase("pt-BR");
-    const categoria = String(item.categoria || "Sem categoria").trim() || "Sem categoria";
-    const correspondeCategoria = categoriaCardapio === "Todas" || categoria === categoriaCardapio;
-    const correspondeBusca =
-      !termo ||
-      String(item.nome || "").toLocaleLowerCase("pt-BR").includes(termo) ||
-      String(item.descricao || "").toLocaleLowerCase("pt-BR").includes(termo);
-    return correspondeCategoria && correspondeBusca;
-  });
+  const produtosCardapioFiltrados = estoque
+    .filter((item) => {
+      const termo = buscaCardapio.trim().toLocaleLowerCase("pt-BR");
+      const categoria = String(item.categoria || "Sem categoria").trim() || "Sem categoria";
+      const correspondeCategoria = categoriaCardapio === "Todas" || categoria === categoriaCardapio;
+      const correspondeBusca =
+        !termo ||
+        String(item.nome || "").toLocaleLowerCase("pt-BR").includes(termo) ||
+        String(item.descricao || "").toLocaleLowerCase("pt-BR").includes(termo);
+      return correspondeCategoria && correspondeBusca;
+    })
+    .sort((a, b) => {
+      const categoriaA = String(a.categoria || "Sem categoria");
+      const categoriaB = String(b.categoria || "Sem categoria");
+      const ordemCategoria = categoriaA.localeCompare(categoriaB, "pt-BR", { sensitivity: "base" });
+      return ordemCategoria || compararProdutosPorNome(a, b);
+    });
   const totalProdutosCardapio = estoque.filter((item) => item.exibir_cardapio === true).length;
   const normalizarHorarioInput = (valor?: string | null) => {
     const texto = String(valor || "").trim();

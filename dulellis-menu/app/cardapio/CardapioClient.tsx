@@ -68,7 +68,14 @@ export function CardapioClient() {
       const categoria = String(produto.categoria || "Outros").trim() || "Outros";
       agrupados.set(categoria, [...(agrupados.get(categoria) || []), produto]);
     });
-    return Array.from(agrupados.entries()).sort(([a], [b]) => a.localeCompare(b, "pt-BR"));
+    return Array.from(agrupados.entries())
+      .map(([categoria, itens]) => [
+        categoria,
+        [...itens].sort((a, b) =>
+          a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base", numeric: true }),
+        ),
+      ] as const)
+      .sort(([a], [b]) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
   }, [produtos]);
 
   const copiarLink = useCallback(async () => {
