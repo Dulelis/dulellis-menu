@@ -41,10 +41,10 @@ const LOJA_ENDERECO_RETIRADA = "Rua Manoel Felício Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
 const LOJA_CEP_RETIRADA = "88370-314";
-const WHATSAPP_LOJA_ACOMPANHAMENTO = "5547992375871";
+const WHATSAPP_LOJA_ACOMPANHAMENTO = "5547988347100";
 const INSTAGRAM_DULELIS_URL =
   "https://www.instagram.com/dulelis_confeitaria/";
-const WHATSAPP_LOJA_ACOMPANHAMENTO_LABEL = "(47) 99237-5871";
+const WHATSAPP_LOJA_ACOMPANHAMENTO_LABEL = "(47) 98834-7100";
 const DISTANCE_MULTIPLIER = 1.3;
 const DEFAULT_CITY = "Navegantes";
 const ORDEM_VITRINE_CATEGORIAS_PADRAO = ["Bolos", "Doces", "Salgados", "Bebidas", "Produtos naturais", "Personalizado"];
