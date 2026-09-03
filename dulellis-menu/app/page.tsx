@@ -3562,26 +3562,6 @@ function ClientePageContent() {
                   </p>
                 </div>
               ) : null}
-              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-900/5 pt-3">
-                <div className="rounded-xl bg-white/70 px-3 py-2.5">
-                  <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
-                    <Clock3 size={14} className="text-pink-500" aria-hidden="true" />
-                    Preparo
-                  </div>
-                  <p className="mt-1 text-sm font-black text-slate-800 sm:text-base">
-                    {formatarFaixaMinutos(tempoPreparoMin, tempoPreparoMax)}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white/70 px-3 py-2.5">
-                  <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">
-                    <Bike size={14} className="text-pink-500" aria-hidden="true" />
-                    Entrega
-                  </div>
-                  <p className="mt-1 text-sm font-black text-slate-800 sm:text-base">
-                    {formatarFaixaMinutos(tempoEntregaMin, tempoEntregaMax)}
-                  </p>
-                </div>
-              </div>
             </div>
           </div>
           <div
@@ -4304,6 +4284,35 @@ function ClientePageContent() {
             <p className={`mt-2 text-sm font-black uppercase tracking-widest sm:text-base ${infoModalPedidoFinalizado.destaqueClasse}`}>
               {infoModalPedidoFinalizado.destaque}
             </p>
+            {(!retornoPixInfo || pagamentoPixAprovado(retornoPixInfo.status) || pagamentoPixPendente(retornoPixInfo.status)) ? (
+              <div className="mt-6 rounded-2xl border border-pink-100 bg-pink-50/70 p-4 text-left">
+                <p className="mb-3 text-center text-xs font-black uppercase tracking-[0.14em] text-pink-700">
+                  Previsão do pedido
+                </p>
+                <div className={`grid gap-2 ${ultimoPedidoFoiRetirada ? "grid-cols-1" : "grid-cols-2"}`}>
+                  <div className="rounded-xl bg-white px-3 py-3 shadow-sm">
+                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                      <Clock3 size={15} className="text-pink-500" aria-hidden="true" />
+                      Preparo
+                    </div>
+                    <p className="mt-1 text-base font-black text-slate-800">
+                      {formatarFaixaMinutos(tempoPreparoMin, tempoPreparoMax)}
+                    </p>
+                  </div>
+                  {!ultimoPedidoFoiRetirada ? (
+                    <div className="rounded-xl bg-white px-3 py-3 shadow-sm">
+                      <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                        <Bike size={15} className="text-pink-500" aria-hidden="true" />
+                        Entrega
+                      </div>
+                      <p className="mt-1 text-base font-black text-slate-800">
+                        {formatarFaixaMinutos(tempoEntregaMin, tempoEntregaMax)}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <a
               href={INSTAGRAM_DULELIS_URL}
               target="_blank"
