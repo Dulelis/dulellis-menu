@@ -38,14 +38,18 @@ export const metadata: Metadata = {
 export default function InauguracaoPage() {
   return (
     <main className="min-h-screen bg-black">
-      <Link href="/" aria-label="Acessar o Dulelis Delivery" className="block">
+      <Link
+        href="/"
+        aria-label="Acessar o Dulelis Delivery"
+        className="flex min-h-screen w-full items-center justify-center"
+      >
         <Image
           src={imagePath}
           alt="Convite para a inauguração do Dulelis Delivery"
           width={2000}
           height={1414}
           priority
-          className="h-auto w-full"
+          className="h-auto max-h-screen w-auto max-w-full object-contain"
         />
       </Link>
     </main>
