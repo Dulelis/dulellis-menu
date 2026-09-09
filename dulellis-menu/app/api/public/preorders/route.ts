@@ -66,6 +66,7 @@ type ProductRow = {
   categoria?: string | null;
   preco?: number | string | null;
   imagem_url?: string | null;
+  ordem_categoria?: number | string | null;
   disponivel_encomenda?: boolean | null;
   prazo_minimo_encomenda_horas?: number | string | null;
   limite_por_encomenda?: number | string | null;
@@ -238,8 +239,9 @@ export async function GET(request: NextRequest) {
     const [productsResult, blocksResult, capacityResult] = await Promise.all([
       supabase
         .from("estoque")
-        .select("id,nome,descricao,categoria,preco,imagem_url,disponivel_encomenda,prazo_minimo_encomenda_horas,limite_por_encomenda,opcoes_encomenda")
+        .select("id,nome,descricao,categoria,preco,imagem_url,ordem_categoria,disponivel_encomenda,prazo_minimo_encomenda_horas,limite_por_encomenda,opcoes_encomenda")
         .order("categoria")
+        .order("ordem_categoria")
         .order("nome"),
       supabase
         .from("bloqueios_encomendas")
@@ -370,7 +372,7 @@ export async function POST(request: NextRequest) {
     const [{ data: productsData, error: productsError }, { data: customerData, error: customerError }] = await Promise.all([
       supabase
         .from("estoque")
-        .select("id,nome,descricao,categoria,preco,imagem_url,disponivel_encomenda,prazo_minimo_encomenda_horas,limite_por_encomenda,opcoes_encomenda")
+        .select("id,nome,descricao,categoria,preco,imagem_url,ordem_categoria,disponivel_encomenda,prazo_minimo_encomenda_horas,limite_por_encomenda,opcoes_encomenda")
         .in("id", ids),
       supabase
         .from("clientes")
