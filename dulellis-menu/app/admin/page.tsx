@@ -6965,50 +6965,7 @@ function AdminPageContent() {
                   <p className="ml-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                     Estimativa exibida ao cliente
                   </p>
-                  <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-pink-100 bg-pink-50/60 p-4">
-                      <p className="text-xs font-black uppercase tracking-wide text-pink-700">
-                        Tempo de preparo
-                      </p>
-                      <div className="mt-3 grid grid-cols-2 gap-3">
-                        <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                          Mínimo (min)
-                          <input
-                            type="number"
-                            min={0}
-                            max={1440}
-                            step={5}
-                            value={horarioFuncionamento.tempo_preparo_min}
-                            onChange={(e) =>
-                              setHorarioFuncionamento((prev) => ({
-                                ...prev,
-                                tempo_preparo_min: Number(e.target.value),
-                              }))
-                            }
-                            className="mt-1.5 w-full rounded-xl border border-pink-100 bg-white p-3 text-base font-black text-slate-700 focus:outline-pink-500"
-                            required
-                          />
-                        </label>
-                        <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                          Máximo (min)
-                          <input
-                            type="number"
-                            min={0}
-                            max={1440}
-                            step={5}
-                            value={horarioFuncionamento.tempo_preparo_max}
-                            onChange={(e) =>
-                              setHorarioFuncionamento((prev) => ({
-                                ...prev,
-                                tempo_preparo_max: Number(e.target.value),
-                              }))
-                            }
-                            className="mt-1.5 w-full rounded-xl border border-pink-100 bg-white p-3 text-base font-black text-slate-700 focus:outline-pink-500"
-                            required
-                          />
-                        </label>
-                      </div>
-                    </div>
+                  <div className="mt-2">
                     <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
                       <p className="text-xs font-black uppercase tracking-wide text-amber-700">
                         Tempo de entrega
@@ -7054,7 +7011,7 @@ function AdminPageContent() {
                     </div>
                   </div>
                   <p className="mt-2 px-2 text-xs font-medium leading-5 text-slate-500">
-                    Use os valores mínimo e máximo para ajustar a variação conforme o movimento da unidade.
+                    Esta é a única previsão exibida ao cliente. Ajuste os valores mínimo e máximo conforme o movimento da unidade.
                   </p>
                 </div>
 

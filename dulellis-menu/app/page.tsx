@@ -993,11 +993,6 @@ function ClientePageContent() {
   });
   const cidadeAtendida =
     String(horarioFuncionamento.cidade_atendida || DEFAULT_CITY).trim() || DEFAULT_CITY;
-  const tempoPreparoMin = normalizarTempoMinutos(horarioFuncionamento.tempo_preparo_min, 30);
-  const tempoPreparoMax = Math.max(
-    tempoPreparoMin,
-    normalizarTempoMinutos(horarioFuncionamento.tempo_preparo_max, 45),
-  );
   const tempoEntregaMin = normalizarTempoMinutos(horarioFuncionamento.tempo_entrega_min, 15);
   const tempoEntregaMax = Math.max(
     tempoEntregaMin,
@@ -4222,32 +4217,19 @@ function ClientePageContent() {
             <p className={`mt-2 text-sm font-black uppercase tracking-widest sm:text-base ${infoModalPedidoFinalizado.destaqueClasse}`}>
               {infoModalPedidoFinalizado.destaque}
             </p>
-            {(!retornoPixInfo || pagamentoPixAprovado(retornoPixInfo.status) || pagamentoPixPendente(retornoPixInfo.status)) ? (
+            {!ultimoPedidoFoiRetirada && (!retornoPixInfo || pagamentoPixAprovado(retornoPixInfo.status) || pagamentoPixPendente(retornoPixInfo.status)) ? (
               <div className="mt-6 rounded-2xl border border-pink-100 bg-pink-50/70 p-4 text-left">
                 <p className="mb-3 text-center text-xs font-black uppercase tracking-[0.14em] text-pink-700">
-                  Previsão do pedido
+                  Previsão de entrega
                 </p>
-                <div className={`grid gap-2 ${ultimoPedidoFoiRetirada ? "grid-cols-1" : "grid-cols-2"}`}>
-                  <div className="rounded-xl bg-white px-3 py-3 shadow-sm">
-                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-                      <Clock3 size={15} className="text-pink-500" aria-hidden="true" />
-                      Preparo
-                    </div>
-                    <p className="mt-1 text-base font-black text-slate-800">
-                      {formatarFaixaMinutos(tempoPreparoMin, tempoPreparoMax)}
-                    </p>
+                <div className="rounded-xl bg-white px-4 py-3 text-center shadow-sm">
+                  <div className="flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                    <Bike size={15} className="text-pink-500" aria-hidden="true" />
+                    Tempo de entrega
                   </div>
-                  {!ultimoPedidoFoiRetirada ? (
-                    <div className="rounded-xl bg-white px-3 py-3 shadow-sm">
-                      <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-                        <Bike size={15} className="text-pink-500" aria-hidden="true" />
-                        Entrega
-                      </div>
-                      <p className="mt-1 text-base font-black text-slate-800">
-                        {formatarFaixaMinutos(tempoEntregaMin, tempoEntregaMax)}
-                      </p>
-                    </div>
-                  ) : null}
+                  <p className="mt-1 text-lg font-black text-slate-800">
+                    {formatarFaixaMinutos(tempoEntregaMin, tempoEntregaMax)}
+                  </p>
                 </div>
               </div>
             ) : null}
