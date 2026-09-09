@@ -400,7 +400,8 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const pedidoResumo = await buscarResumoPedidoPorReferencia(referencia);
   const pedidoIdInicial = Number(syncResult.pedidoId || 0);
   const sincronizacaoPendente = aprovado && !pedidoResumo && pedidoIdInicial <= 0;
-  const autoRedirectLiberado = aprovado && !sincronizacaoPendente;
+  const retornoPagamentoValido = Boolean(referencia || transactionId || statusNormalizado);
+  const autoRedirectLiberado = retornoPagamentoValido && !sincronizacaoPendente;
   const mensagemWhatsapp = montarMensagemWhatsappPadraoPedido(pedidoResumo, {
     clienteNome,
     tituloStatus: info.titulo,

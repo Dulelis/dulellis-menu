@@ -157,7 +157,7 @@ export default function RetornoActions({
             Continuar agora
           </Link>
           <p className="text-[11px] text-slate-600 mt-3 mb-3">
-            Seu pedido ja pago esta voltando para a fila da loja para aceite e impressao.
+            Seu pedido foi registrado e voce esta voltando para a vitrine. Se o pagamento ainda nao foi concluido, ele continuara pendente.
           </p>
         </>
       ) : (

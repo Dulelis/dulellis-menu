@@ -367,38 +367,6 @@ function salvarRascunhoCheckoutMercadoPago(draft: MercadoPagoRedirectDraft) {
   }
 }
 
-function lerRascunhoCheckoutMercadoPago(): MercadoPagoRedirectDraft | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const raw = window.sessionStorage.getItem(MERCADOPAGO_REDIRECT_DRAFT_STORAGE_KEY);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as Partial<MercadoPagoRedirectDraft>;
-    if (!Array.isArray(parsed.carrinho)) return null;
-
-    return {
-      version: 1,
-      savedAt: String(parsed.savedAt || ""),
-      carrinho: parsed.carrinho as ItemCarrinho[],
-      cliente:
-        parsed.cliente && typeof parsed.cliente === "object"
-          ? ({ ...CLIENTE_INICIAL, ...parsed.cliente } as Cliente)
-          : { ...CLIENTE_INICIAL },
-      taxaEntrega: Math.max(0, Number(parsed.taxaEntrega || 0)),
-      tipoEntrega: parsed.tipoEntrega === TIPO_RETIRADA_BALCAO ? TIPO_RETIRADA_BALCAO : TIPO_ENTREGA,
-      formaPagamento: String(parsed.formaPagamento || ""),
-      referenciaPagamento: String(parsed.referenciaPagamento || ""),
-    };
-  } catch (error) {
-    console.warn("O rascunho do checkout Mercado Pago ficou invalido e sera ignorado.", error);
-    try {
-      window.sessionStorage.removeItem(MERCADOPAGO_REDIRECT_DRAFT_STORAGE_KEY);
-    } catch {}
-    return null;
-  }
-}
-
 function limparRascunhoCheckoutMercadoPago() {
   if (typeof window === "undefined") return;
 
@@ -2029,31 +1997,6 @@ function ClientePageContent() {
     setReferenciaPagamento("");
   }, [aplicarEnderecoSalvo]);
 
-  const restaurarRascunhoMercadoPago = useCallback((draft: MercadoPagoRedirectDraft) => {
-    cadastroManualRef.current = true;
-    registrarMudancaEndereco();
-    setCarrinho(draft.carrinho);
-    setCliente(draft.cliente);
-    setTipoEntrega(draft.tipoEntrega);
-    setTaxaEntrega(draft.tipoEntrega === TIPO_RETIRADA_BALCAO ? 0 : draft.taxaEntrega);
-    setDistanciaKm(null);
-    setMsgTaxa(
-      draft.tipoEntrega === TIPO_RETIRADA_BALCAO
-        ? "Retirada no balcão"
-        : draft.taxaEntrega > 0
-          ? `Entrega: R$ ${draft.taxaEntrega.toFixed(2)} (ultima tentativa)`
-          : "Aguardando endereço...",
-    );
-    setModoEnderecoEntrega(clienteTemEnderecoSalvo(draft.cliente) ? "saved" : "new");
-    setFormaPagamento(draft.formaPagamento);
-    setTrocoPara("");
-    setReferenciaPagamento(draft.referenciaPagamento);
-    setUltimoPedidoFoiRetirada(draft.tipoEntrega === TIPO_RETIRADA_BALCAO);
-    setPodeAcompanharPedido(false);
-    setAbaCarrinho(draft.carrinho.length > 0);
-    setPasso(draft.carrinho.length > 0 ? 3 : 1);
-  }, [registrarMudancaEndereco]);
-
   const prepararNovoEndereco = useCallback(() => {
     marcarEdicaoManualEndereco();
     setCliente((prev) => ({
@@ -2392,25 +2335,20 @@ function ClientePageContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    const statusPixDaUrl = normalizarStatusPagamento(searchParams.get("pix_status") || "");
-    if (!statusPixDaUrl) return;
-    const rascunhoMercadoPago = lerRascunhoCheckoutMercadoPago();
+    const retornouDoPagamento = searchParams.get("pix_return") === "1";
+    const statusPixDaUrl = normalizarStatusPagamento(searchParams.get("pix_status") || "") || "pending";
+    if (!retornouDoPagamento) return;
 
     setRetornoPixInfo({
       status: statusPixDaUrl,
       referencia: String(searchParams.get("pix_ref") || "").trim(),
     });
     setUltimoPedidoFoiRetirada(searchParams.get("pix_retirada") === "1");
-    setPodeAcompanharPedido(pagamentoPixAprovado(statusPixDaUrl));
+    setPodeAcompanharPedido(true);
     abrirModalPedidoFinalizado();
-
-    if (pagamentoPixAprovado(statusPixDaUrl)) {
-      limparRascunhoCheckoutMercadoPago();
-      setCarrinho([]);
-      resetarFluxoCheckout();
-    } else if (rascunhoMercadoPago) {
-      restaurarRascunhoMercadoPago(rascunhoMercadoPago);
-    }
+    limparRascunhoCheckoutMercadoPago();
+    setCarrinho([]);
+    resetarFluxoCheckout();
 
     const url = new URL(window.location.href);
     url.searchParams.delete("pix_return");
@@ -2419,7 +2357,7 @@ function ClientePageContent() {
     url.searchParams.delete("pix_payment_id");
     url.searchParams.delete("pix_retirada");
     window.history.replaceState({}, "", url.toString());
-  }, [abrirModalPedidoFinalizado, resetarFluxoCheckout, restaurarRascunhoMercadoPago, searchParams]);
+  }, [abrirModalPedidoFinalizado, resetarFluxoCheckout, searchParams]);
 
   const setItemEstoqueProcessando = useCallback((id: number, processando: boolean) => {
     setEstoqueEmAtualizacao((prev) => ({ ...prev, [id]: processando }));
