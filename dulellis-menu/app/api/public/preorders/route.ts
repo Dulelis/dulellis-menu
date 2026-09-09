@@ -90,6 +90,15 @@ function normalizeText(value: string) {
     .toLowerCase();
 }
 
+function isAvailableForPreorder(product: ProductRow) {
+  const category = normalizeText(String(product.categoria || ""));
+  return (
+    product.disponivel_encomenda === true ||
+    category.includes("sob encomenda") ||
+    category.includes("por encomenda")
+  );
+}
+
 function timeToMinutes(value?: string | null) {
   const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
   if (!match) return null;
@@ -230,7 +239,6 @@ export async function GET(request: NextRequest) {
       supabase
         .from("estoque")
         .select("id,nome,descricao,categoria,preco,imagem_url,disponivel_encomenda,prazo_minimo_encomenda_horas,limite_por_encomenda,opcoes_encomenda")
-        .eq("disponivel_encomenda", true)
         .order("categoria")
         .order("nome"),
       supabase
@@ -253,7 +261,7 @@ export async function GET(request: NextRequest) {
       ok: true,
       data: {
         config,
-        produtos: productsResult.data || [],
+        produtos: ((productsResult.data || []) as ProductRow[]).filter(isAvailableForPreorder),
         bloqueios: blocksResult.data || [],
         capacidades: capacityResult.data || [],
       },
@@ -379,7 +387,7 @@ export async function POST(request: NextRequest) {
     const detailsItems: Array<Record<string, unknown>> = [];
     for (const input of inputs) {
       const product = productMap.get(input.id);
-      if (!product || product.disponivel_encomenda !== true) {
+      if (!product || !isAvailableForPreorder(product)) {
         throw new OrderDraftError(409, `Produto ${input.id} indisponivel para encomenda.`);
       }
       const limit = Number(product.limite_por_encomenda || 0);

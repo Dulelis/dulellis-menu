@@ -8,7 +8,7 @@ import {
 } from "@/lib/mercadopago-payment";
 import { getServiceSupabase } from "@/lib/server-supabase";
 
-const WHATSAPP_LOJA = "5547988347100";
+const WHATSAPP_LOJA = "5547988400002";
 const LOJA_ENDERECO_RETIRADA = "Rua Manoel Felício Adriano, 532";
 const LOJA_BAIRRO_RETIRADA = "Centro";
 const LOJA_CIDADE_UF_RETIRADA = "Navegantes - SC";
