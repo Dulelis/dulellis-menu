@@ -41,6 +41,11 @@ export function CardapioClient() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [linkCopiado, setLinkCopiado] = useState(false);
+  const [quantidades, setQuantidades] = useState<Record<number, number>>({});
+  const selecionados = produtos.filter((produto) => (quantidades[produto.id] || 0) > 0);
+  const totalSelecionado = selecionados.reduce((total, produto) =>
+    total + Number(produto.preco || 0) * quantidades[produto.id], 0);
+
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -109,11 +114,20 @@ export function CardapioClient() {
   }, [copiarLink]);
 
   const mensagemPedido = encodeURIComponent(
-    "Olá, vi o cardápio da Dulelis e gostaria de fazer uma encomenda.",
+    selecionados.length
+      ? [
+          "Olá! Gostaria de encomendar os seguintes itens do cardápio da Dulelis:",
+          selecionados.map((produto) =>
+            `${quantidades[produto.id]}x ${produto.nome} - ${formatarPreco(Number(produto.preco) * quantidades[produto.id])}`,
+          ).join("\n"),
+          `Total dos itens: ${formatarPreco(totalSelecionado)}`,
+          "Podem confirmar a disponibilidade, o prazo e a entrega?",
+        ].join("\n\n")
+      : "Olá, vi o cardápio da Dulelis e gostaria de fazer uma encomenda.",
   );
 
   return (
-    <main className="min-h-screen bg-[#fffdf9] text-[#4b3428] [font-family:var(--font-cardapio-texto)]">
+    <main className="min-h-screen pb-44 sm:pb-36 bg-[#fffdf9] text-[#4b3428] [font-family:var(--font-cardapio-texto)]">
       <header className="relative overflow-hidden border-b border-[#d4a574]/30 bg-[#1a1a2e] px-4 py-10 text-center text-white sm:py-14">
         <div className="pointer-events-none absolute -left-16 -top-20 h-56 w-56 rounded-full bg-[#c2185b]/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 -right-12 h-64 w-64 rounded-full bg-[#d4a574]/20 blur-3xl" />
@@ -126,7 +140,7 @@ export function CardapioClient() {
           </p>
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <a href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagemPedido}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#25D366] px-5 py-3 text-sm font-black text-white shadow-lg transition-transform hover:-translate-y-0.5">
-              <MessageCircle size={18} /> Fazer o pedido
+              <MessageCircle size={18} /> {selecionados.length ? "Finalizar no WhatsApp" : "Falar com a loja"}
             </a>
             <button type="button" onClick={() => void compartilhar()} className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d4a574]/50 bg-white/10 px-5 py-3 text-sm font-black text-white transition-colors hover:bg-white/20">
               {linkCopiado ? <Check size={18} /> : <Share2 size={18} />}
@@ -173,6 +187,36 @@ export function CardapioClient() {
                           <span className="shrink-0 text-lg font-black text-[#a46e2f]">{formatarPreco(produto.preco)}</span>
                         </div>
                         {produto.descricao ? <p className="mt-3 text-sm font-bold leading-6 text-[#795f52]">{produto.descricao}</p> : null}
+                        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#d4a574]/20 pt-4">
+                          <label className="flex cursor-pointer items-center gap-3 text-sm font-black text-[#c2185b]">
+                            <input
+                              type="checkbox"
+                              checked={(quantidades[produto.id] || 0) > 0}
+                              onChange={(event) => setQuantidades((atuais) => ({ ...atuais, [produto.id]: event.target.checked ? 1 : 0 }))}
+                              aria-label={`Selecionar ${produto.nome}`}
+                              className="h-5 w-5 accent-[#c2185b]"
+                            />
+                            Selecionar item
+                          </label>
+                          {(quantidades[produto.id] || 0) > 0 ? (
+                            <label className="flex items-center gap-2 text-sm font-bold">
+                              Quantidade
+                              <input
+                                type="number"
+                                min={1}
+                                max={999}
+                                step={1}
+                                value={quantidades[produto.id]}
+                                onChange={(event) => {
+                                  const quantidade = Math.min(999, Math.max(1, Math.floor(Number(event.target.value) || 1)));
+                                  setQuantidades((atuais) => ({ ...atuais, [produto.id]: quantidade }));
+                                }}
+                                aria-label={`Quantidade de ${produto.nome}`}
+                                className="w-20 rounded-xl border border-[#d4a574]/40 bg-[#fffdf9] p-2 text-center"
+                              />
+                            </label>
+                          ) : null}
+                        </div>
                       </div>
                     </article>
                   ))}
@@ -183,10 +227,26 @@ export function CardapioClient() {
         )}
       </div>
 
+      <aside aria-label="Finalizar seleção" className="fixed inset-x-0 bottom-0 z-40 border-t border-[#d4a574]/30 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgba(97,58,32,0.12)]">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
+          <div aria-live="polite">
+            <p className="text-sm font-black">{selecionados.length ? `${selecionados.length} produto(s) selecionado(s)` : "Marque os itens que deseja encomendar"}</p>
+            {selecionados.length ? <p className="mt-1 font-black text-[#c2185b]">Total dos itens: {formatarPreco(totalSelecionado)}</p> : null}
+            <p className="mt-1 text-xs text-[#795f52]">Confirme disponibilidade e entrega com a loja.</p>
+          </div>
+          <div className="flex w-full items-center gap-3 sm:w-auto">
+            {selecionados.length ? <button type="button" onClick={() => setQuantidades({})} className="rounded-xl border border-[#d4a574]/40 px-3 py-3 text-xs font-bold">Limpar</button> : null}
+            {selecionados.length ? (
+              <a href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagemPedido}`} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366] px-5 py-3 text-sm font-black text-white sm:flex-none"><MessageCircle size={18} /> Finalizar no WhatsApp</a>
+            ) : <button type="button" disabled className="flex-1 rounded-xl bg-slate-200 px-5 py-3 text-sm font-black text-slate-500 sm:flex-none">Selecione um item</button>}
+          </div>
+        </div>
+      </aside>
+
       <footer className="border-t border-[#d4a574]/30 bg-[#1a1a2e] px-4 py-9 text-center text-white">
         <p className="text-xl font-bold text-[#d4a574] [font-family:var(--font-cardapio-titulo)]">Dulelis Confeitaria</p>
         <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
-          <a href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagemPedido}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#25D366] px-5 py-3 text-sm font-black"><MessageCircle size={17} /> Fazer o pedido</a>
+          <a href={`https://wa.me/${WHATSAPP_NUMERO}?text=${mensagemPedido}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#25D366] px-5 py-3 text-sm font-black"><MessageCircle size={17} /> {selecionados.length ? "Finalizar no WhatsApp" : "Falar com a loja"}</a>
           <a href={INSTAGRAM_URL} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#f09433] via-[#dc2743] to-[#bc1888] px-5 py-3 text-sm font-black"><Instagram size={17} /> Instagram <ExternalLink size={14} /></a>
         </div>
         <p className="mt-6 text-xs font-bold text-white/50">© {new Date().getFullYear()} Dulelis — Doces e Salgados Artesanais</p>
