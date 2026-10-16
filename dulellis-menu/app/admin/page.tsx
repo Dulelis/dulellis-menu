@@ -1140,6 +1140,7 @@ function AdminPageContent() {
   const [vincularProdutoCriadoPrecificacao, setVincularProdutoCriadoPrecificacao] =
     useState(false);
   const [buscaCardapio, setBuscaCardapio] = useState("");
+  const [produtosWhatsAppIds, setProdutosWhatsAppIds] = useState<number[]>([]);
   const [categoriaCardapio, setCategoriaCardapio] = useState("Todas");
   const [salvandoCardapioIds, setSalvandoCardapioIds] = useState<number[]>([]);
   const [salvandoCardapioEmMassa, setSalvandoCardapioEmMassa] = useState(false);
@@ -1321,6 +1322,9 @@ function AdminPageContent() {
       const ordemCategoria = categoriaA.localeCompare(categoriaB, "pt-BR", { sensitivity: "base" });
       return ordemCategoria || compararProdutosPorOrdem(a, b);
     });
+  const produtosWhatsApp = estoque
+    .filter((item) => produtosWhatsAppIds.includes(Number(item.id)))
+    .sort((a, b) => String(a.categoria || "").localeCompare(String(b.categoria || ""), "pt-BR") || compararProdutosPorOrdem(a, b));
   const totalProdutosCardapio = estoque.filter((item) => item.exibir_cardapio === true).length;
   const normalizarHorarioInput = (valor?: string | null) => {
     const texto = String(valor || "").trim();
@@ -1489,8 +1493,15 @@ function AdminPageContent() {
   };
 
   const compartilharCardapioNoWhatsApp = () => {
+    const itensSelecionados = produtosWhatsApp.map((item) =>
+      `• ${item.nome} — ${formatarMoedaAdmin(Number(item.preco || 0))}`,
+    );
     const mensagem = encodeURIComponent(
-      `Confira o cardápio de encomendas da Dulelis Confeitaria!\n\n${obterUrlCardapio()}`,
+      [
+        "Confira o cardápio de encomendas da Dulelis Confeitaria!",
+        ...(itensSelecionados.length ? [itensSelecionados.join("\n")] : []),
+        obterUrlCardapio(),
+      ].join("\n\n"),
     );
     window.open(`https://wa.me/?text=${mensagem}`, "_blank", "noopener,noreferrer");
   };
@@ -7332,7 +7343,7 @@ function AdminPageContent() {
                     <Share2 size={17} /> Compartilhar
                   </button>
                   <button type="button" onClick={compartilharCardapioNoWhatsApp} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-black text-white hover:bg-[#20bd5a]">
-                    <MessageSquare size={17} /> Enviar no WhatsApp
+                    <MessageSquare size={17} /> Enviar no WhatsApp{produtosWhatsApp.length ? ` (${produtosWhatsApp.length})` : ""}
                   </button>
                 </div>
               </div>
@@ -7372,6 +7383,11 @@ function AdminPageContent() {
                 </select>
               </div>
 
+              <div className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-green-50 p-3 text-sm font-bold text-green-800">
+                <p className="flex-1">Marque Enviar no WhatsApp para incluir nome e preço na mensagem. {produtosWhatsApp.length} selecionado(s).</p>
+                <button type="button" onClick={() => setProdutosWhatsAppIds((atuais) => Array.from(new Set([...atuais, ...produtosCardapioFiltrados.map((item) => Number(item.id))])))} disabled={!produtosCardapioFiltrados.length} className="rounded-lg bg-white px-3 py-2 text-xs font-black disabled:opacity-50">Selecionar exibidos</button>
+                <button type="button" onClick={() => setProdutosWhatsAppIds([])} disabled={!produtosWhatsApp.length} className="rounded-lg bg-white px-3 py-2 text-xs font-black disabled:opacity-50">Limpar seleção</button>
+              </div>
               <div className="mt-5 space-y-3">
                 {produtosCardapioFiltrados.map((item) => {
                   const publicado = item.exibir_cardapio === true;
@@ -7389,6 +7405,21 @@ function AdminPageContent() {
                         <p className="mt-1 text-sm font-black text-pink-600">R$ {Number(item.preco || 0).toFixed(2).replace(".", ",")}</p>
                         {item.descricao ? <p className="mt-1 line-clamp-2 text-xs font-bold text-slate-500">{item.descricao}</p> : null}
                       </div>
+                      <label className="flex shrink-0 cursor-pointer items-center gap-3 rounded-xl bg-green-50 px-4 py-3 text-xs font-black text-green-800">
+                        <input
+                          type="checkbox"
+                          checked={produtosWhatsAppIds.includes(Number(item.id))}
+                          onChange={(event) => {
+                            const marcado = event.target.checked;
+                            setProdutosWhatsAppIds((atuais) => marcado
+                              ? Array.from(new Set([...atuais, Number(item.id)]))
+                              : atuais.filter((id) => id !== Number(item.id)));
+                          }}
+                          aria-label={`Enviar ${item.nome} no WhatsApp`}
+                          className="h-5 w-5 accent-green-600"
+                        />
+                        Enviar no WhatsApp
+                      </label>
                       <label className={`flex shrink-0 cursor-pointer items-center justify-between gap-3 rounded-xl px-4 py-3 text-xs font-black uppercase sm:min-w-44 ${publicado ? "bg-pink-600 text-white" : "bg-slate-100 text-slate-600"}`}>
                         <span>{salvando ? "Salvando..." : publicado ? "Publicado" : "Não publicado"}</span>
                         {salvando ? <Loader2 size={18} className="animate-spin" /> : (
