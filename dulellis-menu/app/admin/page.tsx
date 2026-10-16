@@ -1279,7 +1279,14 @@ function AdminPageContent() {
   const preferenciaSomAlarmeCarregadaRef = useRef(false);
   const ignorarPrimeiraPersistenciaAlarmeRef = useRef(true);
   const ignorarPrimeiraPersistenciaSomAlarmeRef = useRef(true);
-  const estoquePorCategoria = categoriasEstoque.map((categoria) => ({
+  const categoriasProdutos = [...categoriasEstoque];
+  for (const item of estoque) {
+    const categoria = String(item.categoria || "").trim();
+    if (!categoriasProdutos.some((base) => base.toLowerCase() === categoria.toLowerCase())) {
+      categoriasProdutos.push(categoria);
+    }
+  }
+  const estoquePorCategoria = categoriasProdutos.map((categoria) => ({
     categoria,
     itens: estoque
       .filter(
@@ -1290,14 +1297,6 @@ function AdminPageContent() {
       )
       .sort(compararProdutosPorOrdem),
   }));
-  const estoqueOutros = estoque
-    .filter((item) => {
-      const categoria = String(item.categoria || "")
-        .trim()
-        .toLowerCase();
-      return !categoriasEstoque.some((base) => base.toLowerCase() === categoria);
-    })
-    .sort(compararProdutosPorOrdem);
   const categoriasFiltroCardapio = Array.from(
     new Set(
       estoque
@@ -2163,7 +2162,7 @@ function AdminPageContent() {
       preco: item.preco,
       descricao: item.descricao || "",
       imagem_url: item.imagem_url || "",
-      categoria: item.categoria || "Doces",
+      categoria: String(item.categoria || "").trim(),
       exibir_cardapio: item.exibir_cardapio === true,
     });
     setEditandoId(item.id);
@@ -2183,6 +2182,12 @@ function AdminPageContent() {
       categoria: categoriasEstoque[0] || "Doces",
       exibir_cardapio: false,
     });
+  };
+
+  const abrirInclusaoProduto = (categoria = categoriasEstoque[0] || "Doces") => {
+    fecharModal();
+    setNovoItem((atual) => ({ ...atual, categoria }));
+    setMostrarModalEstoque(true);
   };
 
   const limparFormularioProduto = () => {
@@ -6667,10 +6672,7 @@ function AdminPageContent() {
             )}
             {activeTab === "estoque" && (
               <button
-                onClick={() => {
-                  fecharModal();
-                  setMostrarModalEstoque(true);
-                }}
+                onClick={() => abrirInclusaoProduto()}
                 className="w-full sm:w-auto bg-pink-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-pink-700 transition-all"
               >
                 <PlusCircle size={20} /> Adicionar produto
@@ -7130,11 +7132,11 @@ function AdminPageContent() {
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               {estoquePorCategoria.map(({ categoria, itens }) => (
                 <div
-                  key={categoria}
+                  key={categoria || "Sem categoria"}
                   className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm"
                 >
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    {categoria}
+                    {categoria || "Sem categoria"}
                   </p>
                   <p className="mt-2 text-2xl font-black text-slate-800">
                     {itens.length}
@@ -7148,13 +7150,13 @@ function AdminPageContent() {
 
             <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
               <div className="flex flex-wrap gap-2">
-                {categoriasEstoque.map((categoria) => (
+                {categoriasProdutos.map((categoria) => (
                   <a
-                    key={categoria}
+                    key={categoria || "Sem categoria"}
                     href={`#categoria-${categoriaParaId(categoria)}`}
                     className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 text-xs font-black uppercase hover:bg-pink-50 hover:text-pink-700 transition-colors"
                   >
-                    {categoria}
+                    {categoria || "Sem categoria"}
                   </a>
                 ))}
                 <button
@@ -7169,17 +7171,27 @@ function AdminPageContent() {
 
             {estoquePorCategoria.map(({ categoria, itens }) => (
               <section
-                key={categoria}
+                key={categoria || "Sem categoria"}
                 id={`categoria-${categoriaParaId(categoria)}`}
                 className="space-y-4 scroll-mt-28"
               >
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-black text-slate-800 uppercase tracking-wide">
-                    {categoria}
+                    {categoria || "Sem categoria"}
                   </h2>
-                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-                    {itens.length} itens
-                  </span>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                      {itens.length} itens
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => abrirInclusaoProduto(categoria)}
+                      aria-label={`Adicionar item em ${categoria || "Sem categoria"}`}
+                      className="flex items-center gap-2 rounded-xl bg-pink-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-pink-700"
+                    >
+                      <PlusCircle size={16} /> Adicionar item
+                    </button>
+                  </div>
                 </div>
                 <div className="grid gap-4">
                   {itens.length === 0 && (
@@ -7275,9 +7287,9 @@ function AdminPageContent() {
                         <button
                           onClick={() => excluir("estoque", item.id)}
                           className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs font-bold flex items-center gap-1"
-                          title="Limpar Produto"
+                          title="Excluir produto"
                         >
-                          <Trash2 size={14} /> Limpar
+                          <Trash2 size={14} /> Excluir
                         </button>
                         <button
                           onClick={() => abrirModalPromocaoParaProduto(item)}
@@ -7293,100 +7305,7 @@ function AdminPageContent() {
               </section>
             ))}
 
-            {estoqueOutros.length > 0 && (
-              <section id="categoria-outros" className="space-y-4 scroll-mt-28">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-black text-slate-800 uppercase tracking-wide">
-                    Outros
-                  </h2>
-                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-                    {estoqueOutros.length} itens
-                  </span>
-                </div>
-                <div className="grid gap-4">
-                  {estoqueOutros.map((item) => (
-                    <div
-                      key={item.id}
-                      className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col sm:flex-row sm:items-center gap-4"
-                    >
-                      <div className="w-full h-44 rounded-2xl bg-slate-100 overflow-hidden flex-shrink-0 sm:h-28 sm:w-28 sm:self-start">
-                        {item.imagem_url ? (
-                          <img
-                            src={item.imagem_url}
-                            alt={item.nome || "Produto"}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-slate-300">
-                            <ImageIcon size={24} />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-black text-slate-800">
-                          {item.nome}
-                        </h3>
-                        <span className="text-[10px] bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full font-bold uppercase">
-                          {item.categoria || "Sem categoria"}
-                        </span>
-                        {promocoes.some(
-                          (p) =>
-                            Number(p.produto_id) === Number(item.id) &&
-                            p.ativa !== false,
-                        ) && (
-                          <span className="ml-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-black uppercase">
-                            Em promoção
-                          </span>
-                        )}
-                        <p className="text-pink-600 font-bold">
-                          R$ {Number(item.preco).toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-100 w-full sm:w-auto">
-                        <button
-                          onClick={() => mudarQtd(item.id, item.quantidade, -1)}
-                          className="p-1 hover:text-red-500"
-                        >
-                          <Minus size={18} />
-                        </button>
-                        <span className="font-black text-lg w-8 text-center">
-                          {item.quantidade}
-                        </span>
-                        <button
-                          onClick={() => mudarQtd(item.id, item.quantidade, 1)}
-                          className="p-1 hover:text-green-500"
-                        >
-                          <Plus size={18} />
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-4 sm:border-l border-slate-100 sm:pl-4 pt-2 sm:pt-0">
-                        <button
-                          onClick={() => abrirEdicao(item)}
-                          className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors text-xs font-bold flex items-center gap-1"
-                          title="Editar Produto"
-                        >
-                          <Pencil size={14} /> Editar
-                        </button>
-                        <button
-                          onClick={() => excluir("estoque", item.id)}
-                          className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs font-bold flex items-center gap-1"
-                          title="Limpar Produto"
-                        >
-                          <Trash2 size={14} /> Limpar
-                        </button>
-                        <button
-                          onClick={() => abrirModalPromocaoParaProduto(item)}
-                          className="px-3 py-2 rounded-xl bg-slate-50 text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors text-xs font-bold flex items-center gap-1"
-                          title="Marcar Promoção"
-                        >
-                          <BadgePercent size={14} /> Promo
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+
           </div>
         )}
 
@@ -7449,7 +7368,7 @@ function AdminPageContent() {
                 </label>
                 <select value={categoriaCardapio} onChange={(event) => setCategoriaCardapio(event.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-pink-400">
                   <option value="Todas">Todas as categorias</option>
-                  {categoriasFiltroCardapio.map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
+                  {categoriasFiltroCardapio.map((categoria) => <option key={categoria} value={categoria}>{categoria || "Sem categoria"}</option>)}
                 </select>
               </div>
 
@@ -10139,8 +10058,8 @@ function AdminPageContent() {
                     setNovoItem({ ...novoItem, categoria: e.target.value })
                   }
                 >
-                  {categoriasEstoque.map((categoria) => (
-                    <option key={categoria} value={categoria}>{categoria}</option>
+                  {categoriasProdutos.map((categoria) => (
+                    <option key={categoria} value={categoria}>{categoria || "Sem categoria"}</option>
                   ))}
                 </select>
               </div>
