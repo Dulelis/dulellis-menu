@@ -6613,6 +6613,18 @@ function AdminPageContent() {
             <ShoppingBag size={20} /> Vendas{" "}
           </button>
           <button
+            onClick={() => { window.location.href = "/admin/vendas"; }}
+            className="flex w-max items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-slate-400 transition-all hover:bg-slate-800 lg:w-full lg:p-4"
+          >
+            <TrendingUp size={20} /> Central de vendas
+          </button>
+          <a
+            href="/admin/encomendas"
+            className="flex w-max items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-slate-400 transition-all hover:bg-slate-800 lg:w-full lg:p-4"
+          >
+            <CalendarDays size={20} /> Agenda de encomendas
+          </a>
+          <button
             onClick={() => setActiveTab("controle")}
             className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "controle" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
           >
@@ -6735,13 +6747,6 @@ function AdminPageContent() {
                 <PlusCircle size={20} /> Novo Entregador
               </button>
             )}
-
-            <a
-              href="/admin/encomendas"
-              className="w-full sm:w-auto bg-pink-50 text-pink-700 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm border border-pink-200 hover:bg-pink-100 transition-all"
-            >
-              <CalendarDays size={18} /> Agenda de encomendas
-            </a>
 
             <button
               type="button"
@@ -9133,14 +9138,6 @@ function AdminPageContent() {
                   className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <Printer size={18} /> Imprimir Vendas
-                </button>
-                <button
-                  onClick={() => {
-                    window.location.href = "/admin/vendas";
-                  }}
-                  className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"
-                >
-                  <TrendingUp size={18} /> Central de vendas
                 </button>
               </div>
             </div>
