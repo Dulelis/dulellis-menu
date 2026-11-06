@@ -452,6 +452,7 @@ export function AdminPreordersClient() {
   const [productCategoryFilter, setProductCategoryFilter] = useState("Todas");
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
+  const [showUpcomingOrders, setShowUpcomingOrders] = useState(false);
   const knownOrderIdsRef = useRef<Set<number> | null>(null);
   const [blockForm, setBlockForm] = useState({ inicio: "", fim: "", motivo: "" });
   const [capacityForm, setCapacityForm] = useState({ data: "", hora_inicio: "08:00", hora_fim: "09:00", capacidade_total: 4, observacao: "" });
@@ -605,7 +606,13 @@ export function AdminPreordersClient() {
   }
 
   const upcomingOrders = useMemo(
-    () => (data?.encomendas || []).filter((order) => String(order.status_producao || "") !== "cancelada" && String(order.status_producao || "") !== "finalizada"),
+    () => (data?.encomendas || [])
+      .filter((order) => String(order.status_producao || "") !== "cancelada" && String(order.status_producao || "") !== "finalizada")
+      .sort((a, b) => {
+        const aTime = Date.parse(a.agendado_para || "");
+        const bTime = Date.parse(b.agendado_para || "");
+        return (Number.isFinite(aTime) ? aTime : Infinity) - (Number.isFinite(bTime) ? bTime : Infinity) || a.id - b.id;
+      }),
     [data?.encomendas],
   );
   const cancelledOrders = useMemo(
@@ -754,10 +761,41 @@ export function AdminPreordersClient() {
         {newOrderAlert ? <button type="button" onClick={() => setNewOrderAlert("")} className="mb-6 flex w-full items-center gap-3 rounded-2xl border border-pink-200 bg-pink-50 p-5 text-left font-black text-pink-800"><Bell className="shrink-0" />{newOrderAlert}<span className="ml-auto text-xs uppercase">Fechar</span></button> : null}
         {error ? <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-5 font-bold text-rose-700">{error}</div> : null}
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl bg-white p-5 shadow-sm"><CalendarDays className="text-pink-600" /><p className="mt-3 text-3xl font-black">{upcomingOrders.length}</p><p className="text-xs font-black uppercase text-slate-400">Proximas encomendas</p></div>
+          <button type="button" onClick={() => setShowUpcomingOrders((current) => !current)} aria-expanded={showUpcomingOrders} aria-controls="proximas-encomendas" className="rounded-2xl bg-white p-5 text-left shadow-sm transition-colors hover:bg-pink-50 focus-visible:outline-2 focus-visible:outline-pink-600"><CalendarDays className="text-pink-600" /><p className="mt-3 text-3xl font-black">{upcomingOrders.length}</p><p className="text-xs font-black uppercase text-slate-400">Proximas encomendas</p></button>
           <div className="rounded-2xl bg-white p-5 shadow-sm"><Clock3 className="text-amber-600" /><p className="mt-3 text-3xl font-black">{upcomingOrders.filter((order) => String(order.status_producao || "") === "aguardando_confirmacao").length}</p><p className="text-xs font-black uppercase text-slate-400">Aguardando confirmacao</p></div>
           <div className="rounded-2xl bg-white p-5 shadow-sm"><ShoppingBag className="text-emerald-600" /><p className="mt-3 text-3xl font-black">{money(upcomingOrders.reduce((sum, order) => sum + Number(order.total || 0), 0))}</p><p className="text-xs font-black uppercase text-slate-400">Valor agendado</p></div>
         </div>
+
+        {showUpcomingOrders ? (
+          <section id="proximas-encomendas" aria-labelledby="proximas-encomendas-titulo" className="mt-6 rounded-2xl bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div><h2 id="proximas-encomendas-titulo" className="text-xl font-black">Próximas encomendas</h2><p className="mt-1 text-sm text-slate-500">Da data mais próxima para a mais distante.</p></div>
+              <button type="button" onClick={() => setShowUpcomingOrders(false)} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold">Fechar</button>
+            </div>
+            {upcomingOrders.length === 0 ? <p className="mt-4 text-sm text-slate-500">Nenhuma encomenda pendente.</p> : (
+              <ol className="mt-4 space-y-3">
+                {upcomingOrders.map((order) => (
+                  <li key={order.id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-pink-700">{order.agendado_para && Number.isFinite(Date.parse(order.agendado_para)) ? new Date(order.agendado_para).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Sem data agendada"}</p>
+                        <h3 className="mt-1 font-black">#{order.id} · {order.cliente_nome || "Cliente"}</h3>
+                        <p className="mt-1 text-sm text-slate-500">{STATUS_OPTIONS.find(([status]) => status === (order.status_producao || "aguardando_confirmacao"))?.[1] || order.status_producao} · {order.tipo_recebimento || "retirada"}</p>
+                      </div>
+                      <p className="font-black">{money(order.total)}</p>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-600">{(order.itens || []).map((item) => `${item.qtd || 1}x ${item.nome || "Item"}`).join(" · ")}</p>
+                    {order.agendado_para ? <button type="button" onClick={() => {
+                      setTab("agenda");
+                      setSelectedDate(dateKey(order.agendado_para!));
+                      window.setTimeout(() => document.getElementById(`encomenda-${order.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+                    }} className="mt-3 rounded-xl bg-pink-50 px-4 py-2 text-sm font-black text-pink-700">Ver detalhes na agenda</button> : null}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        ) : null}
 
         <nav className="mt-6 grid grid-cols-2 gap-2 rounded-2xl bg-white p-2 shadow-sm sm:grid-cols-4">
           {([
