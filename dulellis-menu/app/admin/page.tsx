@@ -1948,7 +1948,32 @@ function AdminPageContent() {
   }, [alarmeSomSelecionado]);
 
   useEffect(() => {
-    void carregarDados();
+    let encerrado = false;
+    let carregando = false;
+    const atualizar = async () => {
+      if (encerrado || carregando || document.visibilityState === "hidden") return;
+      carregando = true;
+      try {
+        await carregarDados();
+      } catch (error) {
+        console.warn("Falha ao atualizar os pedidos. Uma nova tentativa sera feita.", error);
+      } finally {
+        carregando = false;
+      }
+    };
+    void atualizar();
+    const timer = window.setInterval(() => void atualizar(), 5000);
+    const aoVoltar = () => void atualizar();
+    window.addEventListener("focus", aoVoltar);
+    window.addEventListener("online", aoVoltar);
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => {
+      encerrado = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", aoVoltar);
+      window.removeEventListener("online", aoVoltar);
+      document.removeEventListener("visibilitychange", aoVoltar);
+    };
   }, [carregarDados]);
 
   useEffect(() => {
@@ -2003,14 +2028,17 @@ function AdminPageContent() {
         .filter((id) => id > 0),
     );
 
-    pedidosComAlarmeAtivoRef.current = new Set(
-      Array.from(pedidosComAlarmeAtivoRef.current).filter((id) =>
-        pedidosAguardandoAceite.has(id),
-      ),
-    );
+    // Inclui pedidos pendentes ao abrir ou recarregar o painel.
+    const haviaPendentes = pedidosComAlarmeAtivoRef.current.size > 0;
+    pedidosComAlarmeAtivoRef.current = pedidosAguardandoAceite;
+    if (!haviaPendentes && pedidosAguardandoAceite.size > 0) {
+      void tocarAlarmeNovoPedido();
+    }
+    if (pedidosAguardandoAceite.size === 0) alarmePendenteRef.current = false;
+  }, [pedidos, tocarAlarmeNovoPedido]);
 
-    if (!alarmePedidosAtivo || pedidosComAlarmeAtivoRef.current.size === 0)
-      return;
+  useEffect(() => {
+    if (!alarmePedidosAtivo) return;
 
     const timer = window.setInterval(() => {
       if (pedidosComAlarmeAtivoRef.current.size > 0) {
@@ -2019,7 +2047,7 @@ function AdminPageContent() {
     }, ADMIN_ALARME_PEDIDOS_REPETICAO_MS);
 
     return () => window.clearInterval(timer);
-  }, [alarmePedidosAtivo, pedidos, tocarAlarmeNovoPedido]);
+  }, [alarmePedidosAtivo, tocarAlarmeNovoPedido]);
 
   useEffect(() => {
     if (!ADMIN_QZ_ENABLED || !QZ_PRINTER_TARGET) return;
@@ -3352,11 +3380,11 @@ function AdminPageContent() {
     );
   }, []);
   const deveUsarRawbtNoCelular = useCallback(
-    () => ADMIN_RAWBT_ENABLED && detectarAmbienteImpressaoMovel(),
-    [detectarAmbienteImpressaoMovel],
+    () => typeof window !== "undefined" && ADMIN_RAWBT_ENABLED && /android/i.test(window.navigator.userAgent),
+    [],
   );
   const deveUsarVisualizacaoManualImpressao = useCallback(
-    () => detectarAmbienteImpressaoMovel() && !ADMIN_RAWBT_ENABLED,
+    () => detectarAmbienteImpressaoMovel(),
     [detectarAmbienteImpressaoMovel],
   );
   const gerarAssinaturaPedido = (pedido: any) =>
@@ -4005,13 +4033,6 @@ function AdminPageContent() {
       if (typeof window === "undefined") return null;
 
       const ambienteMovel = detectarAmbienteImpressaoMovel();
-      if (
-        ambienteMovel &&
-        deveUsarRawbtNoCelular() &&
-        !options.visualizacao
-      ) {
-        return null;
-      }
       const popupFeatures = ambienteMovel
         ? undefined
         : options.visualizacao
@@ -4040,7 +4061,6 @@ function AdminPageContent() {
     },
     [
       detectarAmbienteImpressaoMovel,
-      deveUsarRawbtNoCelular,
       deveUsarVisualizacaoManualImpressao,
     ],
   );
@@ -4049,8 +4069,7 @@ function AdminPageContent() {
       const ambienteImpressaoMovel = detectarAmbienteImpressaoMovel();
       const usarRawbtMovel = deveUsarRawbtNoCelular();
       const visualizar =
-        Boolean(options?.visualizar) ||
-        (ambienteImpressaoMovel && !usarRawbtMovel);
+        Boolean(options?.visualizar) || ambienteImpressaoMovel;
       let popup = options?.popupExistente || null;
       let motivoFalhaQz = "";
       if (visualizar && (!popup || popup.closed)) {
@@ -6768,7 +6787,7 @@ function AdminPageContent() {
             </p>
             <p className="mt-1 text-sm font-bold leading-6 text-slate-700">
               {ADMIN_RAWBT_ENABLED
-                ? "No celular, ao aceitar ou reimprimir um pedido, o admin envia o cupom direto para o RawBT. O corte de papel e a largura ficam nas configuracoes da impressora dentro do proprio RawBT."
+                ? "No tablet ou celular Android, ao aceitar ou reimprimir, o cupom abre com o botao Abrir no RawBT. Toque nele para enviar a impressao. O RawBT deve estar instalado e configurado com a impressora neste aparelho."
                 : "No celular, ao aceitar ou reimprimir um pedido, o cupom abre em visualizacao para voce tocar em Imprimir no navegador. No computador, a impressao automatica via QZ continua funcionando quando estiver configurada."}
             </p>
           </div>
