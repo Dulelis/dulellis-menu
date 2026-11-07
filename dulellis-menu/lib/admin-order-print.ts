@@ -301,7 +301,7 @@ export function renderOrderReceiptHtml(
   const mobileHintHtml = rawbtEnabled
     ? `
       <div class="preview-mobile-hint">
-        Ao tocar no botao, o RawBT abre para imprimir o cupom ESC/POS direto. Ajuste corte e largura no perfil da impressora dentro do RawBT.
+        Se o RawBT apresentar erro ou fechar, use Imprimir pelo Android e selecione a impressora. O cupom continua aberto para tentar novamente. Antes, confirme que a pagina de teste imprime dentro do RawBT.
       </div>
     `
     : mobilePreview
@@ -319,7 +319,10 @@ export function renderOrderReceiptHtml(
           <div class="preview-subtitle">Pedido #${renderText(data.orderId)}</div>
         </div>
         <div class="preview-actions">
-          <button type="button" onclick="window.__orderReceiptPrimaryAction ? window.__orderReceiptPrimaryAction() : window.print()">${primaryActionLabel}</button>
+          ${rawbtEnabled
+            ? `<a class="receipt-print-link" href="${escapeHtml(rawbtIntentUrl || rawbtSchemeUrl)}">Abrir no RawBT</a>
+               <button type="button" onclick="window.print()">Imprimir pelo Android</button>`
+            : `<button type="button" onclick="window.print()">${primaryActionLabel}</button>`}
           <button type="button" class="secondary" onclick="window.close()">Fechar</button>
         </div>
       </div>
@@ -365,23 +368,11 @@ export function renderOrderReceiptHtml(
     : "";
 
   const qrCodeUrlSerialized = JSON.stringify(data.qrCodeUrl || "");
-  const rawbtIntentUrlSerialized = JSON.stringify(rawbtIntentUrl);
-  const rawbtSchemeUrlSerialized = JSON.stringify(rawbtSchemeUrl);
   const initializationScript = visualize
     ? `
       window.addEventListener("load", () => {
         const qrCodeImageUrl = ${qrCodeUrlSerialized};
-        const rawbtIntentUrl = ${rawbtIntentUrlSerialized};
-        const rawbtSchemeUrl = ${rawbtSchemeUrlSerialized};
         const qrImage = document.getElementById("maps-qrcode");
-        window.__orderReceiptPrimaryAction = () => {
-          const targetUrl = rawbtIntentUrl || rawbtSchemeUrl;
-          if (targetUrl) {
-            window.location.href = targetUrl;
-            return;
-          }
-          window.print();
-        };
         if (qrCodeImageUrl && qrImage instanceof HTMLImageElement) {
           qrImage.src = qrCodeImageUrl;
         }
@@ -455,7 +446,7 @@ export function renderOrderReceiptHtml(
             gap: 10px;
             flex-wrap: wrap;
           }
-          .preview-actions button {
+          .preview-actions button, .preview-actions .receipt-print-link {
             border: none;
             border-radius: 999px;
             padding: 10px 16px;
