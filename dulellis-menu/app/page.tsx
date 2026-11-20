@@ -3,9 +3,10 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, usePathname } from "next/navigation";
 import { AppBottomNav } from "@/components/AppBottomNav";
 import { PropagandaFrame } from "@/components/PropagandaFrame";
+import { NATURAL_STORE_CONFIG_ID, isNaturalProduct } from "@/lib/natural-store";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
@@ -375,21 +376,21 @@ function limparRascunhoCheckoutMercadoPago() {
   } catch {}
 }
 
-function salvarVitrineCache(cache: VitrineCache) {
+function salvarVitrineCache(cache: VitrineCache, naturais = false) {
   if (typeof window === "undefined") return;
 
   try {
-    window.localStorage.setItem(VITRINE_CACHE_STORAGE_KEY, JSON.stringify(cache));
+    window.localStorage.setItem(VITRINE_CACHE_STORAGE_KEY + (naturais ? ".naturais" : ".delivery"), JSON.stringify(cache));
   } catch (error) {
     console.warn("Não foi possível salvar o cache local da vitrine.", error);
   }
 }
 
-function lerVitrineCache(): VitrineCache | null {
+function lerVitrineCache(naturais = false): VitrineCache | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = window.localStorage.getItem(VITRINE_CACHE_STORAGE_KEY);
+    const raw = window.localStorage.getItem(VITRINE_CACHE_STORAGE_KEY + (naturais ? ".naturais" : ".delivery"));
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as Partial<VitrineCache>;
@@ -415,7 +416,7 @@ function lerVitrineCache(): VitrineCache | null {
   } catch (error) {
     console.warn("O cache local da vitrine ficou inválido e será ignorado.", error);
     try {
-      window.localStorage.removeItem(VITRINE_CACHE_STORAGE_KEY);
+      window.localStorage.removeItem(VITRINE_CACHE_STORAGE_KEY + (naturais ? ".naturais" : ".delivery"));
     } catch {}
     return null;
   }
@@ -973,6 +974,7 @@ function descricaoPromocaoVitrine(promo: Promocao) {
 }
 
 function ClientePageContent() {
+  const naturais = usePathname() === "/naturais";
   const searchParams = useSearchParams();
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -1095,7 +1097,7 @@ function ClientePageContent() {
   );
 
   const aplicarVitrineCache = useCallback((cache: VitrineCache) => {
-    setProdutos(cache.produtos);
+    setProdutos(cache.produtos.filter((p) => isNaturalProduct(p) === naturais));
     setTaxas(cache.taxas);
     setPromocoes(cache.promocoes);
     setPropagandas(cache.propagandas);
@@ -1114,7 +1116,7 @@ function ClientePageContent() {
       dias_semana: normalizarDiasSemana(horario.dias_semana),
       categorias_produtos: normalizarCategoriasVitrine(horario.categorias_produtos, cache.produtos),
     });
-  }, []);
+  }, [naturais]);
 
   const aplicarTaxaUltimoPedido = useCallback((valor: number | string | null | undefined) => {
     const taxa = Number(valor);
@@ -1251,12 +1253,11 @@ function ClientePageContent() {
           supabase.from("taxas_entrega").select("*"),
           supabase.from("promocoes").select("*").eq("ativa", true).order("created_at", { ascending: false }),
           supabase.from("propagandas").select("*").eq("ativa", true).order("ordem").order("created_at", { ascending: false }),
-          supabase
-            .from("configuracoes_loja")
-            .select("*")
-            .order("id", { ascending: true })
-            .limit(1)
-            .maybeSingle(),
+          supabase.from("configuracoes_loja").select("*").in("id", naturais ? [1, NATURAL_STORE_CONFIG_ID] : [1]).then((result) => {
+            const delivery = result.data?.find((row) => Number(row.id) === 1);
+            const store = naturais ? result.data?.find((row) => Number(row.id) === NATURAL_STORE_CONFIG_ID) : delivery;
+            return { error: result.error, data: store ? { ...delivery, hora_abertura: store.hora_abertura, hora_fechamento: store.hora_fechamento, dias_semana: store.dias_semana, ativo: store.ativo, id: store.id } : null };
+          }),
         ]);
 
       if (errProd) {
@@ -1264,7 +1265,7 @@ function ClientePageContent() {
         throw new Error(`Erro ao carregar produtos${detalhes ? `: ${detalhes}` : ""}`);
       }
 
-      const produtosCarregados = (resProdutos ?? []) as Produto[];
+      const produtosCarregados = ((resProdutos ?? []) as Produto[]).filter((p) => isNaturalProduct(p) === naturais);
       const taxasCarregadas = errTax ? [] : ((resTaxas ?? []) as TaxaEntregaRow[]);
       const promocoesCarregadas = errProm ? [] : ((resPromocoes ?? []) as Promocao[]);
       const propagandasCarregadas = errProp ? [] : ((resPropagandas ?? []) as Propaganda[]);
@@ -1305,7 +1306,7 @@ function ClientePageContent() {
         };
         setHorarioFuncionamento(horarioNormalizado);
       } else {
-        const horario = (resHorario ?? {}) as HorarioFuncionamentoRow;
+        const horario = (resHorario ?? { ativo: false }) as HorarioFuncionamentoRow;
         horarioNormalizado = {
           id: horario.id,
           cidade_atendida: String(horario.cidade_atendida || DEFAULT_CITY).trim() || DEFAULT_CITY,
@@ -1330,10 +1331,10 @@ function ClientePageContent() {
         promocoes: promocoesCarregadas,
         propagandas: propagandasCarregadas,
         horarioFuncionamento: horarioNormalizado,
-      });
+      }, naturais);
     } catch (e) {
       console.error("Erro Supabase:", e);
-      const cacheLocal = mostrarLoading ? lerVitrineCache() : null;
+      const cacheLocal = mostrarLoading ? lerVitrineCache(naturais) : null;
       if (cacheLocal) {
         aplicarVitrineCache(cacheLocal);
         alert("Sem conexão. Exibindo a última vitrine salva no aparelho.");
@@ -1345,7 +1346,7 @@ function ClientePageContent() {
         setLoading(false);
       }
     }
-  }, [aplicarVitrineCache]);
+  }, [aplicarVitrineCache, naturais]);
 
   const atualizacaoAutomaticaAtiva = useMemo(
     () =>
@@ -2382,7 +2383,7 @@ function ClientePageContent() {
       const res = await fetch("/api/public/stock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, delta }),
+        body: JSON.stringify({ id, delta, canal_origem: naturais ? "naturais" : "app" }),
       });
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -2403,7 +2404,7 @@ function ClientePageContent() {
       }
       return false;
     },
-    [ajustarQuantidadeProdutoLocal, definirQuantidadeProdutoLocal],
+    [ajustarQuantidadeProdutoLocal, definirQuantidadeProdutoLocal, naturais],
   );
 
   const adicionarAoCarrinho = useCallback(
@@ -2874,6 +2875,7 @@ function ClientePageContent() {
             referencia: referenciaPagamento || undefined,
             tipo_entrega: tipoEntrega,
             tipo_pedido: "delivery",
+            canal_origem: naturais ? "naturais" : "app",
             cliente_ja_salvo: clienteJaSalvoNoFluxo,
           }),
         });
@@ -2915,6 +2917,7 @@ function ClientePageContent() {
             referencia: referenciaPagamento || undefined,
             tipo_entrega: tipoEntrega,
             tipo_pedido: "delivery",
+            canal_origem: naturais ? "naturais" : "app",
             troco_para:
               formaPagamento === FORMA_DINHEIRO && trocoParaValor !== null
                 ? trocoParaValor
@@ -2998,7 +3001,7 @@ function ClientePageContent() {
     } finally {
       setLoading(false);
     }
-  }, [abrirModalPedidoFinalizado, carrinho, carregarDadosIniciais, cliente, enderecoSalvoCliente, formaPagamento, referenciaPagamento, resetarFluxoCheckout, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, sincronizarPedidoAcompanhamento, taxaEntrega, tipoEntrega, totalGeral, trocoParaPreenchido, trocoParaValor]);
+  }, [naturais, abrirModalPedidoFinalizado, carrinho, carregarDadosIniciais, cliente, enderecoSalvoCliente, formaPagamento, referenciaPagamento, resetarFluxoCheckout, retiradaNoBalcao, salvarOuAtualizarCliente, sessaoCliente, sincronizarPedidoAcompanhamento, taxaEntrega, tipoEntrega, totalGeral, trocoParaPreenchido, trocoParaValor]);
 
   const quantidadesCarrinho = useMemo(
     () =>
@@ -3401,8 +3404,8 @@ function ClientePageContent() {
             priority
           />
           <p className="inline-flex items-baseline justify-center gap-2 text-slate-400 uppercase tracking-normal">
-            <span className="text-base font-black text-pink-500 sm:text-lg">Delivery</span>
-            <span className="text-xs font-semibold text-slate-600">artesanal</span>
+            <span className="text-base font-black text-pink-500 sm:text-lg">{naturais ? "Produtos Naturais" : "Delivery"}</span>
+            <span className="text-xs font-semibold text-slate-600">{naturais ? "loja" : "artesanal"}</span>
           </p>
         </div>
         {sessaoCliente ? (
@@ -3437,7 +3440,7 @@ function ClientePageContent() {
           </div>
         ) : null}
         <div className="mx-auto mt-3 max-w-xl">
-          <ServiceModeSwitcher active="delivery" />
+          <ServiceModeSwitcher active={naturais ? "naturais" : "delivery"} />
         </div>
         <PwaInstallPrompt />
       </header>
@@ -4939,10 +4942,11 @@ function ClientePageContent() {
 }
 
 export default function ClientePage() {
+  const pathname = usePathname();
   return (
     <>
       <Suspense fallback={null}>
-        <ClientePageContent />
+        <ClientePageContent key={pathname} />
       </Suspense>
     </>
   );

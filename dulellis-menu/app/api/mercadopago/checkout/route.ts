@@ -328,7 +328,7 @@ export async function POST(request: Request) {
     if (Number.isInteger(pedidoId) && pedidoId > 0) {
       const { data: pedido, error: erroPedido } = await supabase
         .from("pedidos")
-        .select("id,cliente_id,total,cliente_nome,whatsapp,pagamento_referencia,itens,forma_pagamento,tipo_pedido,valor_sinal,saldo_restante,status_pedido,status_producao,detalhes_encomenda")
+        .select("id,cliente_id,total,cliente_nome,whatsapp,pagamento_referencia,itens,forma_pagamento,tipo_pedido,canal_origem,valor_sinal,saldo_restante,status_pedido,status_producao,detalhes_encomenda")
         .eq("id", pedidoId)
         .maybeSingle();
       if (erroPedido || !pedido) {
@@ -474,6 +474,9 @@ export async function POST(request: Request) {
     const retornoSuccessUrl = new URL(`${baseUrl}/retorno-pagamento`);
     const retornoFailureUrl = new URL(`${baseUrl}/retorno-pagamento`);
     const retornoPendingUrl = new URL(`${baseUrl}/retorno-pagamento`);
+    if (pedidoDraftSnapshot?.canal_origem === "naturais" || body.canal_origem === "naturais") {
+      for (const url of [retornoSuccessUrl, retornoFailureUrl, retornoPendingUrl]) url.searchParams.set("loja", "naturais");
+    }
     retornoSuccessUrl.searchParams.set("ref", referencia);
     retornoFailureUrl.searchParams.set("ref", referencia);
     retornoPendingUrl.searchParams.set("ref", referencia);

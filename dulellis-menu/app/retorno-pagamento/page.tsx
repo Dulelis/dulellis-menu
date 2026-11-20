@@ -377,6 +377,7 @@ type RetornoPagamentoPageProps = {
     ref?: string;
     external_reference?: string;
     cliente_nome?: string;
+    loja?: string;
   }>;
 };
 
@@ -420,7 +421,7 @@ export default async function RetornoPagamentoPage({ searchParams }: RetornoPaga
   const isPreorder = normalizarTexto(String(pedidoResumo?.tipoPedido || "")) === "encomenda" || /^encomenda-/i.test(referencia);
   const redirectUrl = isPreorder && pedidoIdInicial > 0
     ? `/encomendas/pedido/${pedidoIdInicial}`
-    : `/?${retornoHomeParams.toString()}`;
+    : `${params.loja === "naturais" ? "/naturais" : "/"}?${retornoHomeParams.toString()}`;
 
   return (
     <main className="min-h-screen bg-white text-slate-900 flex items-center justify-center p-6">

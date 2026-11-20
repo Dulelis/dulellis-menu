@@ -1,3 +1,4 @@
+import { NATURAL_STORE_CONFIG_ID } from "@/lib/natural-store";
 import type { ServiceSupabaseClient } from "@/lib/order-draft";
 
 export const STORE_TIMEZONE = "America/Sao_Paulo";
@@ -144,11 +145,12 @@ export function evaluateDeliveryAvailability(
 export async function getDeliveryAvailability(
   supabase: ServiceSupabaseClient,
   now = new Date(),
+  naturalStore = false,
 ): Promise<DeliveryAvailability> {
   const { data, error } = await supabase
     .from("configuracoes_loja")
     .select("hora_abertura,hora_fechamento,ativo,dias_semana")
-    .order("id", { ascending: true })
+    .eq("id", naturalStore ? NATURAL_STORE_CONFIG_ID : 1)
     .limit(1)
     .maybeSingle();
 
@@ -159,5 +161,6 @@ export async function getDeliveryAvailability(
       message: "Nao foi possivel validar o horario do delivery.",
     };
   }
-  return evaluateDeliveryAvailability((data || null) as StoreScheduleRow | null, now);
+  const result = evaluateDeliveryAvailability((data || null) as StoreScheduleRow | null, now);
+  return naturalStore ? { ...result, message: result.message.replace(/delivery/gi, "Produtos Naturais") } : result;
 }

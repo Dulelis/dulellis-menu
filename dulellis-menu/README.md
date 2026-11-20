@@ -127,3 +127,9 @@ Ultima verificacao local: lint e TypeScript ok em `2026-03-13`.
 - rodar `cmd /c npm run lint`
 - rodar `cmd /c npm run typecheck`
 - fazer `git push origin main`
+
+## Loja de Produtos Naturais
+
+A vitrine `/naturais` usa os produtos da categoria Produtos naturais, separados do delivery. Clientes, entrega, pagamentos e fila operacional s?o compartilhados. Os pedidos mant?m `tipo_pedido=delivery` e usam `canal_origem=naturais`, inclusive no snapshot do Mercado Pago.
+
+O hor?rio independente ? configurado em `/admin/naturais` e armazenado em `configuracoes_loja.id=1000001`. O delivery utiliza `id=1`. Para preparar outro ambiente, execute `node --env-file=.env.local scripts/ensure-natural-store.mjs`; o script preserva configura??es existentes e cria a loja pausada at? o respons?vel definir e ativar os hor?rios.

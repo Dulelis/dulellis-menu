@@ -1,3 +1,4 @@
+import { isNaturalProduct } from "@/lib/natural-store";
 import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { checkRateLimit, cleanupExpiredBuckets } from "@/lib/rate-limit";
@@ -59,7 +60,9 @@ export async function POST(request: NextRequest) {
   // Devolucoes continuam permitidas depois do fechamento para nao prender
   // unidades de um carrinho que foi limpo. Novas reservas exigem loja aberta.
   if (delta < 0) {
-    const availability = await getDeliveryAvailability(supabase);
+    const { data: product, error: productError } = await supabase.from("estoque").select("categoria").eq("id", id).maybeSingle();
+    if (productError || !product) return NextResponse.json({ ok: false, error: "Produto indispon?vel." }, { status: 400 });
+    const availability = await getDeliveryAvailability(supabase, new Date(), isNaturalProduct(product));
     if (!availability.open) {
       return NextResponse.json(
         { ok: false, error: availability.message },

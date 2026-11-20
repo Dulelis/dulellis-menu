@@ -1,3 +1,4 @@
+import { isNaturalProduct } from "@/lib/natural-store";
 import { encodeOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { getDeliveryAvailability } from "@/lib/delivery-schedule";
@@ -26,6 +27,7 @@ export type PublicOrderBody = {
   tipo_entrega?: string;
   troco_para?: number | string;
   tipo_pedido?: string;
+  canal_origem?: string;
 };
 
 export type ServiceSupabaseClient = NonNullable<
@@ -74,7 +76,7 @@ export type OrderDraftSnapshot = {
   tipo_entrega: string;
   retirada_no_balcao: boolean;
   tipo_pedido: "delivery" | "encomenda";
-  canal_origem: "app";
+  canal_origem: "app" | "naturais";
   tipo_recebimento: "entrega" | "retirada";
   agendado_para: string | null;
   status_producao: string | null;
@@ -559,7 +561,8 @@ export async function prepareOrderDraft(args: {
   if (tipoPedidoNormalizado !== "delivery") {
     throw new OrderDraftError(400, "O fluxo de encomendas ainda nao esta disponivel para finalizacao.");
   }
-  const disponibilidade = await getDeliveryAvailability(supabase);
+  const naturalStore = body.canal_origem === "naturais";
+  const disponibilidade = await getDeliveryAvailability(supabase, new Date(), naturalStore);
   if (!disponibilidade.open) {
     const status = disponibilidade.reason === "configuration_error" ? 503 : 409;
     throw new OrderDraftError(status, disponibilidade.message);
@@ -592,7 +595,7 @@ export async function prepareOrderDraft(args: {
   const ids = Array.from(new Set(itensValidos.map((i) => i.id)));
   const { data: produtosDb, error: erroProdutos } = await supabase
     .from("estoque")
-    .select("id,nome,preco")
+    .select("id,nome,preco,categoria")
     .in("id", ids);
   if (erroProdutos) {
     throw new OrderDraftError(500, erroProdutos.message);
@@ -602,6 +605,7 @@ export async function prepareOrderDraft(args: {
     id?: number | string;
     nome?: string | null;
     preco?: number | string | null;
+    categoria?: string | null;
   }>;
   const mapa = new Map(produtosTipados.map((produto) => [Number(produto.id), produto]));
   const itensPedido: OrderItemSnapshot[] = [];
@@ -612,6 +616,9 @@ export async function prepareOrderDraft(args: {
         400,
         `Produto ${item.id} nao encontrado.`,
       );
+    }
+    if (isNaturalProduct(produto) !== naturalStore) {
+      throw new OrderDraftError(400, "Separe os produtos naturais dos produtos do delivery em pedidos diferentes.");
     }
     itensPedido.push({
       id: item.id,
@@ -728,7 +735,7 @@ export async function prepareOrderDraft(args: {
       tipo_entrega: tipoEntrega,
       retirada_no_balcao: retiradaNoBalcao,
       tipo_pedido: "delivery",
-      canal_origem: "app",
+      canal_origem: naturalStore ? "naturais" : "app",
       tipo_recebimento: retiradaNoBalcao ? "retirada" : "entrega",
       agendado_para: null,
       status_producao: null,
@@ -952,7 +959,7 @@ export function normalizeOrderDraftSnapshot(
     tipo_pedido: normalizarTexto(String(base.tipo_pedido || "delivery")) === "encomenda"
       ? "encomenda"
       : "delivery",
-    canal_origem: "app",
+    canal_origem: base.canal_origem === "naturais" ? "naturais" : "app",
     tipo_recebimento: retiradaNoBalcao ? "retirada" : "entrega",
     agendado_para: String(base.agendado_para || "").trim() || null,
     status_producao: String(base.status_producao || "").trim() || null,
