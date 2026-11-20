@@ -207,14 +207,14 @@ export default function AdminPushNotificationsPage() {
   return (
     <main className="min-h-[100dvh] bg-slate-100 px-4 py-6 text-slate-900 sm:px-6">
       <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <Link href="/admin" className="inline-flex items-center gap-2 text-sm font-black text-pink-700"><ArrowLeft size={17} /> Voltar ao painel</Link>
             <h1 className="mt-3 text-3xl font-black">Notificações da vitrine</h1>
             <p className="mt-1 text-sm font-semibold text-slate-600">Envie mensagens somente aos clientes que autorizaram neste dispositivo.</p>
           </div>
           <button type="button" onClick={() => void load()} className="rounded-xl bg-white p-3 text-slate-700 shadow-sm" aria-label="Atualizar"><RefreshCw size={19} className={loading ? "animate-spin" : ""} /></button>
-        </div>
+        </header>
 
         {error ? <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</p> : null}
         {success ? <p className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-700">{success}</p> : null}

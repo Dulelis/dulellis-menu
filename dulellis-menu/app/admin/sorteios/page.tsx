@@ -193,7 +193,7 @@ export default function AdminRafflesPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-pink-50 via-white to-amber-50 px-4 py-6 text-slate-800 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <Link href="/admin" className="inline-flex items-center gap-2 text-sm font-black text-pink-700">
               <ArrowLeft size={17} /> Voltar ao painel
@@ -209,7 +209,7 @@ export default function AdminRafflesPage() {
           <button type="button" onClick={() => void load()} disabled={loading || drawing} className="rounded-2xl bg-white p-3 text-slate-700 shadow-sm disabled:opacity-50" aria-label="Atualizar participantes">
             <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
           </button>
-        </div>
+        </header>
 
         {error ? <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</p> : null}
 
@@ -273,7 +273,7 @@ export default function AdminRafflesPage() {
         <section className="mt-5 grid gap-5 lg:grid-cols-2">
           <div className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
             <h2 className="text-xl font-black">Participantes habilitados</h2>
-            <div className="mt-4 max-h-96 space-y-2 overflow-y-auto pr-1">
+            <div className="mt-4 space-y-2 pr-1">
               {candidates.map((candidate) => (
                 <div key={candidate.key} className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 p-3">
                   <div className="min-w-0"><p className="truncate text-sm font-black">{candidate.nome}</p><p className="text-[10px] font-bold text-slate-500">{candidate.quantidade_pedidos} pedido(s) válido(s){candidate.data_aniversario ? ` · Nasc. ${formatDate(candidate.data_aniversario)}` : ""}</p></div>
@@ -286,7 +286,7 @@ export default function AdminRafflesPage() {
 
           <div className="rounded-3xl bg-white p-5 shadow-sm sm:p-7">
             <h2 className="text-xl font-black">Histórico de sorteios</h2>
-            <div className="mt-4 max-h-96 space-y-3 overflow-y-auto pr-1">
+            <div className="mt-4 space-y-3 pr-1">
               {history.map((item) => (
                 <article key={item.id} className="rounded-2xl border border-slate-200 p-4">
                   <div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-900">{item.ganhador_nome}</p><p className="mt-1 text-xs font-bold text-slate-500">{formatDate(item.periodo_inicio)} a {formatDate(item.periodo_fim)}</p></div><span className="rounded-full bg-pink-50 px-2.5 py-1 text-[9px] font-black uppercase text-pink-700">{TYPE_LABELS[item.tipo] || item.tipo}</span></div>

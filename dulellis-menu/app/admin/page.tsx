@@ -34,8 +34,6 @@ import {
 } from "@/lib/admin-order-print";
 import { openSpreadsheetReport } from "@/lib/admin-report-print";
 import {
-  Package,
-  Users,
   PlusCircle,
   Minus,
   Plus,
@@ -53,23 +51,19 @@ import {
   ShoppingBag,
   Printer,
   Award,
-  Map as MapIcon,
   RotateCcw,
   ChevronDown,
   ChevronUp,
   BadgePercent,
   Megaphone,
   Clock3,
-  Bike,
   BellRing,
   BellOff,
   Calculator,
   Save,
-  Settings,
   CalendarDays,
   Search,
   X,
-  BookOpen,
   Copy,
   ExternalLink,
   Share2,
@@ -6489,7 +6483,7 @@ function AdminPageContent() {
     },
   );
   return (
-    <div className="admin-app-shell flex min-h-[100dvh] flex-col bg-slate-50 font-sans lg:flex-row print:bg-white">
+    <div className="admin-dashboard bg-slate-50 font-sans print:bg-white">
       {ADMIN_QZ_ENABLED ? (
         <Script src={QZ_TRAY_SCRIPT_URL} strategy="afterInteractive" />
       ) : null}
@@ -6552,108 +6546,9 @@ function AdminPageContent() {
           </form>
         </div>
       ) : null}
-      <aside className="admin-app-sidebar w-full bg-slate-900 text-white p-4 lg:w-64 lg:p-6 print:hidden">
-        <h2 className="text-xl font-black text-pink-500 italic mb-4 text-center tracking-tighter lg:text-2xl lg:mb-10">
-          DULELIS
-        </h2>
-        <nav className="flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <button
-            onClick={() => setActiveTab("painel")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "painel" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <RotateCcw size={20} /> Painel Geral{" "}
-          </button>
-          <button
-            onClick={() => setActiveTab("estoque")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "estoque" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <Package size={20} /> Estoque / Cardápio{" "}
-          </button>
-          <button
-            onClick={() => setActiveTab("cardapio")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "cardapio" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            <BookOpen size={20} /> Cardápio divulgação
-          </button>
-          <button
-            onClick={() => setActiveTab("promocoes")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "promocoes" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <BadgePercent size={20} /> Promoções{" "}
-          </button>
-          <button
-            onClick={() => setActiveTab("propagandas")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "propagandas" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <Megaphone size={20} /> Propaganda{" "}
-          </button>
-          <button
-            onClick={() => { window.location.href = "/admin/notificacoes"; }}
-            className="flex w-max items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-slate-400 transition-all hover:bg-slate-800 lg:w-full lg:p-4"
-          >
-            <BellRing size={20} /> Notificar clientes
-          </button>
-          <button
-            onClick={() => { window.location.href = "/admin/sorteios"; }}
-            className="flex w-max items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-slate-400 transition-all hover:bg-slate-800 lg:w-full lg:p-4"
-          >
-            <Award size={20} /> Sorteios
-          </button>
-          <button
-            onClick={() => setActiveTab("clientes")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "clientes" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <Users size={20} /> Lista de Clientes{" "}
-          </button>
-          <button
-            onClick={() => setActiveTab("taxas")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "taxas" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <MapIcon size={20} /> Taxas de Entrega{" "}
-          </button>
-          <button
-            onClick={() => setActiveTab("entregadores")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "entregadores" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <Bike size={20} /> Entregadores{" "}
-          </button>
-          <button
-            onClick={() => setActiveTab("vendas")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "vendas" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <ShoppingBag size={20} /> Vendas{" "}
-          </button>
-          <button
-            onClick={() => { window.location.href = "/admin/vendas"; }}
-            className="flex w-max items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-slate-400 transition-all hover:bg-slate-800 lg:w-full lg:p-4"
-          >
-            <TrendingUp size={20} /> Central de vendas
-          </button>
-          <a
-            href="/admin/encomendas"
-            className="flex w-max items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-slate-400 transition-all hover:bg-slate-800 lg:w-full lg:p-4"
-          >
-            <CalendarDays size={20} /> Agenda de encomendas
-          </a>
-          <button
-            onClick={() => setActiveTab("controle")}
-            className={`flex items-center gap-3 w-max lg:w-full px-4 py-3 lg:p-4 whitespace-nowrap rounded-2xl transition-all ${activeTab === "controle" ? "bg-pink-600 shadow-lg" : "text-slate-400 hover:bg-slate-800"}`}
-          >
-            {" "}
-            <Settings size={20} /> Controle Admin{" "}
-          </button>
-        </nav>
-      </aside>
 
-      <main className="admin-app-main flex-1 overflow-y-auto h-auto p-4 sm:p-6 lg:h-screen lg:p-8 print:h-auto print:overflow-visible print:p-0">
+
+      <main className="admin-app-main p-4 sm:p-6 lg:p-8 print:p-0">
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6 sm:mb-8 print:hidden">
           <h1 className="text-2xl sm:text-3xl font-black text-slate-800">
             {activeTab === "painel" && "Painel Geral"}
@@ -8573,7 +8468,7 @@ function AdminPageContent() {
                   </p>
                 </div>
 
-                <div className="mt-4 space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+                <div className="mt-4 space-y-3  pr-1">
                   {entregasDetalhadas.length > 0 ? (
                     entregasDetalhadas.map((entrega) => {
                       const entregaId = Number(entrega?.id || 0);
@@ -9010,7 +8905,7 @@ function AdminPageContent() {
                           </button>
                         </div>
                         {historicoAberto && (
-                          <div className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
+                          <div className="mt-3 space-y-2  pr-1">
                             {historicoCliente.length > 0 ? (
                               historicoCliente.map((pedido, index) => (
                                 <div
@@ -9321,7 +9216,7 @@ function AdminPageContent() {
                   {pedidosDoDia.length} registro(s)
                 </p>
               </div>
-                <div className="space-y-3 max-h-[72vh] overflow-y-auto pr-1">
+                <div className="space-y-3  pr-1">
                   {pedidosDoDia.length > 0 ? (
                     pedidosDoDia.map((pedido) => {
                       const pedidoCompleto = completarPedidoComCliente(pedido);
@@ -9708,7 +9603,7 @@ function AdminPageContent() {
                   Produtos Mais Vendidos
                 </h3>
                 {rankingProdutos.length > 0 ? (
-                  <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                  <div className="space-y-3  pr-1">
                     {rankingProdutos.map((prod, index) => (
                       <div
                         key={index}
@@ -9749,7 +9644,7 @@ function AdminPageContent() {
                   Clientes VIP (Mês)
                 </h3>
                 {rankingClientes.length > 0 ? (
-                  <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                  <div className="space-y-3  pr-1">
                     {rankingClientes.map((cliente, index) => (
                       <button
                         type="button"

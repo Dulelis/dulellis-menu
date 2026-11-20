@@ -544,3 +544,31 @@ textarea {
     padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
   }
 }
+
+/* Shared administrative navigation and single content scroll area. */
+.admin-workspace { display: flex; height: 100dvh; overflow: hidden; background: var(--color-slate-50); color: var(--color-slate-900); }
+.admin-navigation { width: 16rem; flex-shrink: 0; display: flex; flex-direction: column; background: var(--color-slate-900); color: white; padding: 1rem; z-index: 60; }
+.admin-brand { display: flex; justify-content: space-between; align-items: center; padding: .5rem .75rem 1rem; font-size: 1.5rem; font-weight: 900; color: var(--color-pink-400); }
+.admin-navigation nav { overflow-y: auto; min-height: 0; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: .25rem; }
+.admin-navigation nav a { display: flex; align-items: center; min-height: 44px; padding: .65rem .9rem; border-radius: .8rem; font-size: .875rem; font-weight: 700; color: var(--color-slate-300); }
+.admin-navigation nav a:hover { background: var(--color-slate-800); color: white; }
+.admin-navigation nav a[aria-current] { background: var(--color-pink-600); color: white; }
+.admin-content-column { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
+.admin-topbar { display: flex; flex-shrink: 0; align-items: center; gap: .75rem; padding: .75rem 1rem; padding-top: max(.75rem, env(safe-area-inset-top)); border-bottom: 1px solid var(--color-slate-200); background: white; }
+.admin-toolbar-button { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 44px; border: 1px solid var(--color-slate-200); border-radius: .8rem; padding: .6rem .9rem; background: white; font-size: .875rem; font-weight: 700; }
+.admin-page-content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.admin-page-content > main, .admin-page-content > .admin-dashboard { min-height: 100%; }
+.admin-page-content header { position: sticky; top: 0; z-index: 20; background: var(--color-slate-50); padding-top: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-slate-200); }
+.admin-page-content header :is(button, a), .admin-page-content > main > div > section:first-child :is(button, a) { min-height: 44px; border-radius: .8rem; font-size: .875rem; font-weight: 700; }
+.admin-workspace :is(button, a, input, select, textarea):focus-visible { outline: 3px solid var(--color-pink-400); outline-offset: 3px; }
+.admin-menu-backdrop { position: fixed; inset: 0; background: #170d0980; z-index: 50; }
+@media (max-width: 1023px) {
+  .admin-navigation { position: fixed; inset: 0 auto 0 0; width: min(19rem, 85vw); transform: translateX(-100%); transition: transform .2s; }
+  .admin-navigation.is-open { transform: translateX(0); }
+  .admin-page-content header { position: static; }
+}
+@media print {
+  .admin-workspace, .admin-content-column, .admin-page-content { display: block; height: auto; overflow: visible; }
+  .admin-navigation, .admin-topbar, .admin-menu-backdrop { display: none !important; }
+  .admin-page-content header { position: static; }
+}

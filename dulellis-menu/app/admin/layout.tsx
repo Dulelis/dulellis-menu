@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { AdminShell } from "@/components/admin/AdminShell";
 import type { Metadata, Viewport } from "next";
 import { AdminShortcutCleanup } from "@/components/AdminShortcutCleanup";
 
@@ -33,7 +35,7 @@ export default function AdminLayout({
   return (
     <>
       <AdminShortcutCleanup />
-      {children}
+      <Suspense fallback={null}><AdminShell>{children}</AdminShell></Suspense>
     </>
   );
 }
