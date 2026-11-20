@@ -572,3 +572,23 @@ textarea {
   .admin-navigation, .admin-topbar, .admin-menu-backdrop { display: none !important; }
   .admin-page-content header { position: static; }
 }
+
+/* Function actions live in the fixed toolbar, independently of page content. */
+.admin-topbar { flex-wrap: wrap; align-items: center; gap: .75rem 1.25rem; }
+.admin-navigation-actions { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
+.admin-actions-slot { flex: 1; min-width: 0; }
+.admin-page-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
+.admin-page-actions :is(button, a) { display: inline-flex; width: auto; min-height: 44px; align-items: center; justify-content: center; gap: .5rem; padding: .65rem 1rem; border-radius: .8rem; font-size: .875rem; font-weight: 700; white-space: nowrap; }
+.admin-page-actions input { min-height: 44px; }
+.admin-page-actions button:disabled { cursor: not-allowed; opacity: .5; }
+.admin-page-content header { position: static; }
+@media (min-width: 1024px) {
+  .admin-menu-expanded .admin-navigation { display: none; }
+  .admin-brand > button { display: none; }
+  .admin-menu-backdrop { display: none; }
+}
+@media (max-width: 1023px) {
+  .admin-navigation-actions { width: 100%; }
+  .admin-page-actions { justify-content: flex-start; }
+  .admin-topbar { max-height: 42dvh; overflow-y: auto; }
+}

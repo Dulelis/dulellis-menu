@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminPageActions } from "@/components/admin/AdminPageActions";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
@@ -213,7 +214,7 @@ export default function AdminPushNotificationsPage() {
             <h1 className="mt-3 text-3xl font-black">Notificações da vitrine</h1>
             <p className="mt-1 text-sm font-semibold text-slate-600">Envie mensagens somente aos clientes que autorizaram neste dispositivo.</p>
           </div>
-          <button type="button" onClick={() => void load()} className="rounded-xl bg-white p-3 text-slate-700 shadow-sm" aria-label="Atualizar"><RefreshCw size={19} className={loading ? "animate-spin" : ""} /></button>
+          <AdminPageActions><button type="button" onClick={() => void load()} className="rounded-xl bg-white p-3 text-slate-700 shadow-sm" aria-label="Atualizar"><RefreshCw size={19} className={loading ? "animate-spin" : ""} /></button></AdminPageActions>
         </header>
 
         {error ? <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</p> : null}

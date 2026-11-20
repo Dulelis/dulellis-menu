@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
+import { AdminPageActions } from "@/components/admin/AdminPageActions";
 import React, {
   Suspense,
   useState,
@@ -6564,7 +6565,7 @@ function AdminPageContent() {
             {activeTab === "relatorios" && "Relatórios"}
           </h1>
 
-          <div className="flex w-full flex-wrap items-center gap-2 sm:gap-3 md:w-auto">
+          <AdminPageActions>
             <button
               type="button"
               onClick={() => {
@@ -6672,7 +6673,7 @@ function AdminPageContent() {
             >
               {saindo ? "Saindo..." : "Sair"}
             </button>
-          </div>
+          </AdminPageActions>
         </header>
 
         {impressaoMovelAtiva ? (

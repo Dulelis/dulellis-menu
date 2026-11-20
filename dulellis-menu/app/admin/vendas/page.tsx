@@ -1,6 +1,7 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { AdminPageActions } from "@/components/admin/AdminPageActions";
 import { SalesCalendar } from "@/components/admin/SalesCalendar";
 import {
   BarChart3,
@@ -649,7 +650,7 @@ export default function AdminVendasPage() {
               Calendário, movimentos, produtos, valores e ações em um só lugar.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <AdminPageActions>
             <div className="flex min-w-[280px] flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:flex-initial">
               <label className="relative min-w-0 flex-1">
                 <Search
@@ -705,7 +706,7 @@ export default function AdminVendasPage() {
             >
               <Printer size={18} /> Imprimir relatório
             </button>
-          </div>
+          </AdminPageActions>
         </header>
 
         {erro ? (

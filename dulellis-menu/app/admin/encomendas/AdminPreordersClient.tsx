@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminPageActions } from "@/components/admin/AdminPageActions";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -724,7 +725,7 @@ export function AdminPreordersClient() {
             <Link href="/admin" className="rounded-2xl bg-slate-100 p-3 text-slate-600"><ArrowLeft size={20} /></Link>
             <div><p className="text-xs font-black uppercase tracking-[0.2em] text-pink-600">Dulelis Admin</p><h1 className="text-2xl font-black">Agenda de encomendas</h1></div>
           </div>
-          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void enableNotifications()} className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-wider ${notificationsEnabled ? "bg-emerald-100 text-emerald-800" : "bg-pink-100 text-pink-700"}`}><Bell size={16} />{notificationsEnabled ? "Avisos ativos" : "Ativar avisos"}</button><button type="button" onClick={() => void load()} className="flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white"><RefreshCw size={16} />Atualizar</button></div>
+          <AdminPageActions><button type="button" onClick={() => void enableNotifications()} className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-wider ${notificationsEnabled ? "bg-emerald-100 text-emerald-800" : "bg-pink-100 text-pink-700"}`}><Bell size={16} />{notificationsEnabled ? "Avisos ativos" : "Ativar avisos"}</button><button type="button" onClick={() => void load()} className="flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-xs font-black uppercase tracking-wider text-white"><RefreshCw size={16} />Atualizar</button></AdminPageActions>
         </div>
       </header>
 

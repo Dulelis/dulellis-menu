@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminPageActions } from "@/components/admin/AdminPageActions";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -206,9 +207,9 @@ export default function AdminRafflesPage() {
               Participam somente clientes com compra paga, pedido finalizado e entrega concluída sem pendências.
             </p>
           </div>
-          <button type="button" onClick={() => void load()} disabled={loading || drawing} className="rounded-2xl bg-white p-3 text-slate-700 shadow-sm disabled:opacity-50" aria-label="Atualizar participantes">
+          <AdminPageActions><button type="button" onClick={() => void load()} disabled={loading || drawing} className="rounded-2xl bg-white p-3 text-slate-700 shadow-sm disabled:opacity-50" aria-label="Atualizar participantes">
             <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
-          </button>
+          </button></AdminPageActions>
         </header>
 
         {error ? <p className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</p> : null}
