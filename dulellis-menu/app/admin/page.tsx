@@ -6566,6 +6566,71 @@ function AdminPageContent() {
           </h1>
 
           <AdminPageActions>
+            {activeTab === "vendas" && (<>
+
+                <div className="flex w-full overflow-hidden rounded-2xl border border-pink-200 bg-white shadow-sm sm:w-auto">
+                  <label className="relative min-w-0 flex-1">
+                    <Search
+                      size={17}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500"
+                    />
+                    <input
+                      type="search"
+                      inputMode="numeric"
+                      value={buscaNumeroVenda}
+                      onChange={(event) =>
+                        setBuscaNumeroVenda(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") buscarVendaPorNumero();
+                      }}
+                      placeholder="Número do pedido"
+                      className="h-full min-w-0 py-3 pl-10 pr-3 text-sm font-bold outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={buscarVendaPorNumero}
+                    className="bg-pink-600 px-4 text-xs font-black uppercase text-white"
+                  >
+                    Buscar
+                  </button>
+                </div>
+                <button
+                  onClick={marcarVendasEmDestaque}
+                  className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all"
+                >
+                  Marcar todas
+                </button>
+                <button
+                  onClick={desmarcarVendasSelecionadas}
+                  className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"
+                >
+                  Desmarcar
+                </button>
+                <button
+                  onClick={abrirEdicaoVendaSelecionada}
+                  disabled={pedidosSelecionadosVendas.length !== 1}
+                  className="w-full sm:w-auto bg-amber-50 text-amber-800 border border-amber-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-amber-100 transition-all disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Pencil size={18} /> Editar
+                </button>
+                <button
+                  onClick={() => void excluirVendasSelecionadas()}
+                  disabled={!pedidosSelecionadosVendas.length}
+                  className="w-full sm:w-auto bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Trash2 size={18} /> Excluir
+                </button>
+                <button
+                  onClick={imprimirVendasSelecionadasPlanilha}
+                  disabled={!pedidosSelecionadosVendas.length}
+                  className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Printer size={18} /> Imprimir Vendas
+                </button>
+
+            </>)}
             <button
               type="button"
               onClick={() => {
@@ -8992,69 +9057,7 @@ function AdminPageContent() {
                   editar, excluir ou imprimir.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <div className="flex w-full overflow-hidden rounded-2xl border border-pink-200 bg-white shadow-sm sm:w-auto">
-                  <label className="relative min-w-0 flex-1">
-                    <Search
-                      size={17}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500"
-                    />
-                    <input
-                      type="search"
-                      inputMode="numeric"
-                      value={buscaNumeroVenda}
-                      onChange={(event) =>
-                        setBuscaNumeroVenda(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") buscarVendaPorNumero();
-                      }}
-                      placeholder="Número do pedido"
-                      className="h-full min-w-0 py-3 pl-10 pr-3 text-sm font-bold outline-none"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={buscarVendaPorNumero}
-                    className="bg-pink-600 px-4 text-xs font-black uppercase text-white"
-                  >
-                    Buscar
-                  </button>
-                </div>
-                <button
-                  onClick={marcarVendasEmDestaque}
-                  className="w-full sm:w-auto bg-blue-50 text-blue-700 border border-blue-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-blue-100 transition-all"
-                >
-                  Marcar todas
-                </button>
-                <button
-                  onClick={desmarcarVendasSelecionadas}
-                  className="w-full sm:w-auto bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 transition-all"
-                >
-                  Desmarcar
-                </button>
-                <button
-                  onClick={abrirEdicaoVendaSelecionada}
-                  disabled={pedidosSelecionadosVendas.length !== 1}
-                  className="w-full sm:w-auto bg-amber-50 text-amber-800 border border-amber-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-amber-100 transition-all disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Pencil size={18} /> Editar
-                </button>
-                <button
-                  onClick={() => void excluirVendasSelecionadas()}
-                  disabled={!pedidosSelecionadosVendas.length}
-                  className="w-full sm:w-auto bg-red-50 text-red-700 border border-red-200 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-red-100 transition-all disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Trash2 size={18} /> Excluir
-                </button>
-                <button
-                  onClick={imprimirVendasSelecionadasPlanilha}
-                  disabled={!pedidosSelecionadosVendas.length}
-                  className="w-full sm:w-auto bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-slate-700 transition-all disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <Printer size={18} /> Imprimir Vendas
-                </button>
-              </div>
+
             </div>
             <SalesCalendar
               selectedDate={dataVendasSelecionada}
