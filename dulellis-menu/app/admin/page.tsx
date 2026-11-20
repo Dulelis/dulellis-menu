@@ -1897,6 +1897,15 @@ function AdminPageContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (searchParams.get("tab") !== "clientes") return;
+    const whatsapp = String(searchParams.get("cliente_zap") || "");
+    const nome = String(searchParams.get("cliente_nome") || "").trim();
+    if (!whatsapp && !nome) return;
+    setClienteEmFoco({ whatsapp, nome });
+    setBuscaClientes(whatsapp || nome);
+  }, [searchParams]);
+
+  useEffect(() => {
     try {
       const salvo = window.localStorage.getItem(
         ADMIN_ALARME_PEDIDOS_STORAGE_KEY,

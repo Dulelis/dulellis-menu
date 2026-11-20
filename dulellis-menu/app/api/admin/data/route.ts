@@ -22,10 +22,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY ausente." }, { status: 500 });
   }
 
+  const naturalStore = request.nextUrl.searchParams.get("store") === "naturais";
+  const pedidosQuery = supabase.from("pedidos").select("*").neq("tipo_pedido", "encomenda");
+  const pedidosFiltrados = naturalStore
+    ? pedidosQuery.eq("canal_origem", "naturais")
+    : pedidosQuery.or("canal_origem.is.null,canal_origem.eq.app");
+
   const [resEst, resCli, resPed, resEncomendasImpressao, resTaxas, resProm, resPropagandas, resHorario, resEntregadores, resEntregas, resPrecificacoes] = await Promise.all([
     supabase.from("estoque").select("*").order("nome"),
     supabase.from("clientes").select("*").order("created_at", { ascending: false }),
-    supabase.from("pedidos").select("*").neq("tipo_pedido", "encomenda").or("canal_origem.is.null,canal_origem.eq.app").order("created_at", { ascending: false }),
+    pedidosFiltrados.order("created_at", { ascending: false }),
     supabase
       .from("pedidos")
       .select("*")

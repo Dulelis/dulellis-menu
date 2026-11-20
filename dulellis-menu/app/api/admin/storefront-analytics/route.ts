@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
 
   const from = request.nextUrl.searchParams.get("from") || "";
   const to = request.nextUrl.searchParams.get("to") || "";
+  const naturalStore = request.nextUrl.searchParams.get("store") === "naturais";
   if (!DATE_PATTERN.test(from) || !DATE_PATTERN.test(to) || from > to) {
     return NextResponse.json(
       { ok: false, error: "Período de visualizações inválido." },
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from("admin_audit_logs")
       .select("actor")
-      .eq("action", "storefront_view")
+      .eq("action", naturalStore ? "storefront_view_naturais" : "storefront_view")
       .gte("created_at", start.toISOString())
       .lt("created_at", end.toISOString())
       .range(offset, offset + PAGE_SIZE - 1);

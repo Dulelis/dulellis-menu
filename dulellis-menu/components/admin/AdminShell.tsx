@@ -22,6 +22,7 @@ const items = [
   ["Central de vendas", "/admin/vendas"],
   ["Agenda de encomendas", "/admin/encomendas"],
   ["Loja de produtos naturais", "/admin/naturais"],
+  ["Vendas produtos naturais", "/admin/naturais/vendas"],
   ["Relatórios", "/admin?tab=relatorios"],
   ["Controle administrativo", "/admin?tab=controle"],
 ] as const;

@@ -24,7 +24,12 @@ function storefrontDateKey(date = new Date()) {
 }
 
 export async function POST(request: NextRequest) {
-  const existingSession = cookieId(request.cookies.get(SESSION_COOKIE)?.value);
+  const body = await request.json().catch(() => ({}));
+  const naturalStore = body?.store === "naturais";
+  const visitorCookie = naturalStore ? `${VISITOR_COOKIE}_naturais` : VISITOR_COOKIE;
+  const sessionCookie = naturalStore ? `${SESSION_COOKIE}_naturais` : SESSION_COOKIE;
+  const action = naturalStore ? "storefront_view_naturais" : "storefront_view";
+  const existingSession = cookieId(request.cookies.get(sessionCookie)?.value);
   if (existingSession) {
     return NextResponse.json({ ok: true, counted: false });
   }
@@ -38,14 +43,14 @@ export async function POST(request: NextRequest) {
   }
 
   const visitorId =
-    cookieId(request.cookies.get(VISITOR_COOKIE)?.value) || randomUUID();
-  const actor = `storefront:${visitorId}`;
+    cookieId(request.cookies.get(visitorCookie)?.value) || randomUUID();
+  const actor = `storefront:${naturalStore ? "naturais:" : ""}${visitorId}`;
   const thirtyMinutesAgo = new Date(Date.now() - SESSION_SECONDS * 1000);
   const { data: recentView, error: recentError } = await supabase
     .from("admin_audit_logs")
     .select("id")
     .eq("actor", actor)
-    .eq("action", "storefront_view")
+    .eq("action", action)
     .gte("created_at", thirtyMinutesAgo.toISOString())
     .limit(1)
     .maybeSingle();
@@ -61,9 +66,10 @@ export async function POST(request: NextRequest) {
   if (!recentView) {
     const { error } = await supabase.from("admin_audit_logs").insert({
       actor,
-      action: "storefront_view",
+      action,
       details: {
-        page: "vitrine",
+        page: naturalStore ? "naturais" : "vitrine",
+        store: naturalStore ? "naturais" : "delivery",
         local_date: storefrontDateKey(),
       },
     });
@@ -78,14 +84,14 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ ok: true, counted });
   const secure = process.env.NODE_ENV === "production";
-  response.cookies.set(VISITOR_COOKIE, visitorId, {
+  response.cookies.set(visitorCookie, visitorId, {
     httpOnly: true,
     sameSite: "lax",
     secure,
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
   });
-  response.cookies.set(SESSION_COOKIE, randomUUID(), {
+  response.cookies.set(sessionCookie, randomUUID(), {
     httpOnly: true,
     sameSite: "lax",
     secure,

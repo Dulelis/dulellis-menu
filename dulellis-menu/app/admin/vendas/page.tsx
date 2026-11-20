@@ -28,6 +28,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type Pedido = {
   id: number;
+  cliente_id?: number | null;
   cliente_nome?: string | null;
   whatsapp?: string | null;
   total?: number | string | null;
@@ -172,7 +173,8 @@ function paymentCategory(value: unknown) {
   return "outros";
 }
 
-export default function AdminVendasPage() {
+export function AdminSalesControl({ store = "delivery" }: { store?: "delivery" | "naturais" }) {
+  const naturalStore = store === "naturais";
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
@@ -190,7 +192,7 @@ export default function AdminVendasPage() {
     setLoading(true);
     setErro("");
     try {
-      const response = await fetch("/api/admin/data", { cache: "no-store" });
+      const response = await fetch(`/api/admin/data${naturalStore ? "?store=naturais" : ""}`, { cache: "no-store" });
       const json = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
@@ -207,7 +209,7 @@ export default function AdminVendasPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [naturalStore]);
 
   useEffect(() => {
     void loadData();
@@ -352,7 +354,7 @@ export default function AdminVendasPage() {
   const loadAnalytics = useCallback(async () => {
     setLoadingAnalytics(true);
     try {
-      const params = new URLSearchParams(analyticsRange);
+      const params = new URLSearchParams({ ...analyticsRange, store });
       const response = await fetch(
         `/api/admin/storefront-analytics?${params.toString()}`,
         { cache: "no-store" },
@@ -378,7 +380,7 @@ export default function AdminVendasPage() {
     } finally {
       setLoadingAnalytics(false);
     }
-  }, [analyticsRange]);
+  }, [analyticsRange, store]);
 
   useEffect(() => {
     void loadAnalytics();
@@ -641,13 +643,13 @@ export default function AdminVendasPage() {
         <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.3em] text-rose-600">
-              Administração
+              {naturalStore ? "Produtos Naturais" : "Administração"}
             </p>
             <h1 className="mt-1 text-3xl font-black text-slate-950 sm:text-4xl">
-              Central de controle de vendas
+              {naturalStore ? "Central de vendas da loja" : "Central de controle de vendas"}
             </h1>
             <p className="mt-2 max-w-3xl text-sm font-bold text-slate-500">
-              Calendário, movimentos, produtos, valores e ações em um só lugar.
+              Calendário, movimentos, produtos, valores e ações {naturalStore ? "exclusivos de Produtos Naturais." : "em um só lugar."}
             </p>
           </div>
           <AdminPageActions>
@@ -694,10 +696,10 @@ export default function AdminVendasPage() {
               Atualizar dados
             </button>
             <Link
-              href={`/admin?tab=vendas&data=${selectedDate}`}
+              href={naturalStore ? "/admin/naturais" : `/admin?tab=vendas&data=${selectedDate}`}
               className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm"
             >
-              <ChevronLeft size={18} /> Abrir dia no operacional
+              <ChevronLeft size={18} /> {naturalStore ? "Voltar à loja" : "Abrir dia no operacional"}
             </Link>
             <button
               type="button"
@@ -1137,9 +1139,12 @@ export default function AdminVendasPage() {
                                 ? new Date(order.created_at).toLocaleString("pt-BR")
                                 : "Sem data"}
                             </p>
-                            <h3 className="mt-1 text-base font-black text-slate-900">
+                            <Link
+                              href={`/admin?tab=clientes&cliente_zap=${encodeURIComponent(String(order.whatsapp || ""))}&cliente_nome=${encodeURIComponent(String(order.cliente_nome || ""))}`}
+                              className="mt-1 block text-base font-black text-slate-900 underline decoration-rose-200 underline-offset-4 hover:text-rose-700"
+                            >
                               {order.cliente_nome || "Cliente sem nome"}
-                            </h3>
+                            </Link>
                             <p className="text-xs font-bold text-slate-500">
                               {order.whatsapp || "Sem telefone"}
                             </p>
@@ -1360,6 +1365,10 @@ export default function AdminVendasPage() {
       `}</style>
     </main>
   );
+}
+
+export default function AdminVendasPage() {
+  return <AdminSalesControl />;
 }
 
 function Metric({

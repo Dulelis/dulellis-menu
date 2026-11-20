@@ -1706,10 +1706,12 @@ function ClientePageContent() {
   useEffect(() => {
     void fetch("/api/public/storefront-view", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       keepalive: true,
+      body: JSON.stringify({ store: naturais ? "naturais" : "delivery" }),
     }).catch(() => {});
-  }, []);
+  }, [naturais]);
 
   useEffect(() => {
     if (!atualizacaoAutomaticaAtiva) return;
