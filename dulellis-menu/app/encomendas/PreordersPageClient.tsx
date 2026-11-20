@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
+import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { CUSTOMER_PASSWORD_RULES_TEXT } from "@/lib/customer-password-policy";
 import { buildDulelisWhatsappUrl } from "@/lib/store-contact";
@@ -830,6 +831,7 @@ export function PreordersPageClient() {
 
   return (
     <main className="app-page min-h-[100dvh] bg-white pb-32 font-sans text-slate-900">
+      <PwaLaunchSplash loading={loading} />
       <header className="app-topbar relative overflow-hidden border-b border-pink-50 bg-white px-4 pb-4 pt-5 text-center sm:px-8 sm:pb-6">
         <div className="absolute left-0 top-0 h-1 w-full bg-amber-600" />
         <div className="absolute right-3 top-3 z-10 sm:right-4 sm:top-4">
