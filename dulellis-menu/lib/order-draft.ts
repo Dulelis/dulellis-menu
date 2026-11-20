@@ -1,5 +1,5 @@
 import { isNaturalProduct } from "@/lib/natural-store";
-import { readStoreProfiles, storeAddressSummary } from "@/lib/store-profiles";
+import { DEFAULT_STORE_PROFILES, storeAddressSummary } from "@/lib/store-profiles";
 import { encodeOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { getDeliveryAvailability } from "@/lib/delivery-schedule";
@@ -571,7 +571,7 @@ export async function prepareOrderDraft(args: {
   const tipoEntrega = String(body.tipo_entrega || "");
   const retiradaNoBalcao = tipoEntregaEhRetirada(tipoEntrega);
   const pickupAddress = retiradaNoBalcao
-    ? storeAddressSummary((await readStoreProfiles(supabase)).profiles[naturalStore ? "naturais" : "delivery"])
+    ? storeAddressSummary(DEFAULT_STORE_PROFILES.delivery)
     : "";
   const formaPagamento = String(body.forma_pagamento || "").trim();
   const trocoParaBruto = Number(body.troco_para);

@@ -7,7 +7,7 @@ import { useSearchParams, usePathname } from "next/navigation";
 import { AppBottomNav } from "@/components/AppBottomNav";
 import { PropagandaFrame } from "@/components/PropagandaFrame";
 import { NATURAL_STORE_CONFIG_ID, isNaturalProduct } from "@/lib/natural-store";
-import { DEFAULT_STORE_PROFILES, storeAddressSummary, type StoreAddress } from "@/lib/store-profiles";
+import { DEFAULT_STORE_PROFILES, storeAddressSummary } from "@/lib/store-profiles";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
@@ -327,12 +327,7 @@ type BlocoRetiradaLojaProps = {
 };
 
 function BlocoRetiradaLoja({ className = "", descricao }: BlocoRetiradaLojaProps) {
-  const naturalStore = usePathname() === "/naturais";
-  const [profile, setProfile] = useState<StoreAddress>(naturalStore ? DEFAULT_STORE_PROFILES.naturais : DEFAULT_STORE_PROFILES.delivery);
-  useEffect(() => {
-    fetch(`/api/public/store-profile?canal=${naturalStore ? "naturais" : "delivery"}`, { cache: "no-store" })
-      .then((response) => response.json()).then((json) => { if (json.profile) setProfile(json.profile); }).catch(() => undefined);
-  }, [naturalStore]);
+  const profile = DEFAULT_STORE_PROFILES.delivery;
   const summary = storeAddressSummary(profile);
   return (
     <div className={`rounded-[2rem] border border-emerald-100 bg-emerald-50 px-5 py-4 ${className}`.trim()}>

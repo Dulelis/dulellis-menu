@@ -742,7 +742,6 @@ function formatarMoedaAdmin(valor: unknown) {
 const PRECIFICACAO_FICHA_PREFIXO = "DULELLIS_FICHA_V1:";
 const PRECIFICACAO_INSUMOS_PREFIXO = "DULELLIS_INSUMOS_V1:";
 const PRECIFICACAO_INSUMOS_NOME = "__DULELLIS_CATALOGO_INSUMOS__";
-const CONFIGURACAO_LOJAS_NOME = "__DULELLIS_CONFIG_LOJAS__";
 
 function normalizarNomeInsumo(valor: unknown) {
   return String(valor || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -1856,7 +1855,7 @@ function AdminPageContent() {
       }
     }
     setPrecificacoes(
-      precificacoesCarregadas.filter((item) => item.nome !== PRECIFICACAO_INSUMOS_NOME && item.nome !== CONFIGURACAO_LOJAS_NOME),
+      precificacoesCarregadas.filter((item) => item.nome !== PRECIFICACAO_INSUMOS_NOME),
     );
     if (json.data?.horario) {
       setHorarioFuncionamento({
