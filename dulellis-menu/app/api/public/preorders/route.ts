@@ -15,6 +15,7 @@ import {
   PREORDER_PAYMENT_POLICY_TEXT,
   PREORDER_PAYMENT_POLICY_VERSION,
 } from "@/lib/preorder-payment-policy";
+import { readStoreProfiles, storeAddressSummary } from "@/lib/store-profiles";
 
 const WEEKDAYS = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"] as const;
 
@@ -456,7 +457,7 @@ export async function POST(request: NextRequest) {
       cliente_id: Number(session.clienteId || 0),
       cliente: customerPayload,
       cep: receiptType === "entrega" ? customerPayload.cep || null : null,
-      endereco: receiptType === "entrega" ? customerPayload.endereco || null : "Retirada no balcao",
+      endereco: receiptType === "entrega" ? customerPayload.endereco || null : storeAddressSummary((await readStoreProfiles(supabase)).profiles.encomendas) || "Endereço de retirada pendente de configuração",
       numero: receiptType === "entrega" ? customerPayload.numero || null : null,
       bairro: receiptType === "entrega" ? customerPayload.bairro || null : null,
       cidade: receiptType === "entrega" ? customerPayload.cidade || null : null,

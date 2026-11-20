@@ -15,10 +15,10 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("pedidos")
-    .select("id,created_at,status_pedido,forma_pagamento,status_pagamento,observacao,pagamento_id,pagamento_atualizado_em,tipo_pedido")
+    .select("id,created_at,status_pedido,forma_pagamento,status_pagamento,observacao,pagamento_id,pagamento_atualizado_em,tipo_pedido,canal_origem,cliente_nome,itens,total")
     .neq("tipo_pedido", "encomenda")
     .order("created_at", { ascending: false })
-    .limit(40);
+    .limit(80);
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

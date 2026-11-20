@@ -8,9 +8,24 @@ export async function GET(request: NextRequest) {
   if (!await isAdminRequestAuthorized(request)) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   const db = getServiceSupabase();
   if (!db) return NextResponse.json({ error: "Serviço indisponível." }, { status: 503 });
-  const { data, error } = await db.from("configuracoes_loja").select("hora_abertura,hora_fechamento,dias_semana,ativo").eq("id", NATURAL_STORE_CONFIG_ID).maybeSingle();
-  if (error) return NextResponse.json({ error: "Não foi possível carregar o horário." }, { status: 500 });
-  return NextResponse.json({ horario: data }, { headers: { "Cache-Control": "no-store" } });
+  const [schedule, orders] = await Promise.all([
+    db.from("configuracoes_loja").select("hora_abertura,hora_fechamento,dias_semana,ativo").eq("id", NATURAL_STORE_CONFIG_ID).maybeSingle(),
+    db.from("pedidos").select("id,created_at,cliente_nome,whatsapp,itens,total,taxa_entrega,forma_pagamento,status_pedido,status_pagamento,tipo_recebimento,endereco,numero,bairro,cidade,observacao,canal_origem").eq("canal_origem", "naturais").order("created_at", { ascending: false }).limit(300),
+  ]);
+  if (schedule.error || orders.error) return NextResponse.json({ error: "Não foi possível carregar a loja." }, { status: 500 });
+  return NextResponse.json({ horario: schedule.data, pedidos: orders.data || [] }, { headers: { "Cache-Control": "no-store" } });
+}
+
+export async function PATCH(request: NextRequest) {
+  if (!await isAdminRequestAuthorized(request)) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+  const originError = enforceSameOriginForWrite(request); if (originError) return originError;
+  const body = await request.json().catch(() => null); const id = Number(body?.id); const status = String(body?.status || "");
+  const allowed = new Set(["aguardando_aceite", "recebido", "em_preparo", "saiu_entrega", "finalizado", "cancelado"]);
+  if (!Number.isInteger(id) || id <= 0 || !allowed.has(status)) return NextResponse.json({ error: "Pedido ou status inválido." }, { status: 400 });
+  const db = getServiceSupabase(); if (!db) return NextResponse.json({ error: "Serviço indisponível." }, { status: 503 });
+  const { data, error } = await db.from("pedidos").update({ status_pedido: status }).eq("id", id).eq("canal_origem", "naturais").select("id").maybeSingle();
+  if (error || !data) return NextResponse.json({ error: "Não foi possível atualizar a venda." }, { status: error ? 500 : 404 });
+  return NextResponse.json({ ok: true });
 }
 
 export async function POST(request: NextRequest) {

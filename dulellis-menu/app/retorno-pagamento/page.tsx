@@ -234,7 +234,9 @@ async function buscarResumoPedidoPorReferencia(referencia: string): Promise<Pedi
   const total = Number(pedido.total || 0);
   const retiradaNoBalcao = pedidoEhRetiradaNoBalcao(String(pedido.observacao || ""));
 
-  let enderecoCompleto = retiradaNoBalcao ? LOJA_ENDERECO_RETIRADA_RESUMO : "";
+  let enderecoCompleto = retiradaNoBalcao
+    ? String(pedido.endereco || "").trim() || LOJA_ENDERECO_RETIRADA_RESUMO
+    : "";
   let pontoReferencia = "";
 
   if (!retiradaNoBalcao) {

@@ -5,6 +5,7 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Menu, X } from "lucide-react";
 import { AdminActionsTarget } from "./AdminPageActions";
+import { AdminSaleAlert } from "./AdminSaleAlert";
 
 const items = [
   ["Painel geral", "/admin?tab=painel"],
@@ -21,6 +22,7 @@ const items = [
   ["Central de vendas", "/admin/vendas"],
   ["Agenda de encomendas", "/admin/encomendas"],
   ["Loja de produtos naturais", "/admin/naturais"],
+  ["Lojas e endereços", "/admin/lojas"],
   ["Relatórios", "/admin?tab=relatorios"],
   ["Controle administrativo", "/admin?tab=controle"],
 ] as const;
@@ -50,6 +52,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <AdminActionsTarget.Provider value={actionsTarget}>
     <div className={`admin-workspace ${menuOpen ? "admin-menu-expanded" : ""}`}>
+      <AdminSaleAlert />
       <aside className={`admin-navigation ${menuOpen ? "is-open" : ""}`} aria-label="Menu administrativo">
         <div className="admin-brand">DULELIS <button type="button" onClick={() => setMenuOpen(false)} className="lg:hidden" aria-label="Fechar menu"><X size={22} /></button></div>
         <nav aria-label="Funções do administrador">

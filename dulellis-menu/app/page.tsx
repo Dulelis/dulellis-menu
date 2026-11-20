@@ -7,6 +7,7 @@ import { useSearchParams, usePathname } from "next/navigation";
 import { AppBottomNav } from "@/components/AppBottomNav";
 import { PropagandaFrame } from "@/components/PropagandaFrame";
 import { NATURAL_STORE_CONFIG_ID, isNaturalProduct } from "@/lib/natural-store";
+import { DEFAULT_STORE_PROFILES, storeAddressSummary, type StoreAddress } from "@/lib/store-profiles";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PwaLaunchSplash } from "@/components/PwaLaunchSplash";
@@ -326,6 +327,13 @@ type BlocoRetiradaLojaProps = {
 };
 
 function BlocoRetiradaLoja({ className = "", descricao }: BlocoRetiradaLojaProps) {
+  const naturalStore = usePathname() === "/naturais";
+  const [profile, setProfile] = useState<StoreAddress>(naturalStore ? DEFAULT_STORE_PROFILES.naturais : DEFAULT_STORE_PROFILES.delivery);
+  useEffect(() => {
+    fetch(`/api/public/store-profile?canal=${naturalStore ? "naturais" : "delivery"}`, { cache: "no-store" })
+      .then((response) => response.json()).then((json) => { if (json.profile) setProfile(json.profile); }).catch(() => undefined);
+  }, [naturalStore]);
+  const summary = storeAddressSummary(profile);
   return (
     <div className={`rounded-[2rem] border border-emerald-100 bg-emerald-50 px-5 py-4 ${className}`.trim()}>
       <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-600">
@@ -336,14 +344,14 @@ function BlocoRetiradaLoja({ className = "", descricao }: BlocoRetiradaLojaProps
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
           Endereço para retirada
         </p>
-        <p className="mt-1 text-sm font-black text-slate-800">{LOJA_ENDERECO_RETIRADA}</p>
+        <p className="mt-1 text-sm font-black text-slate-800">{[profile.endereco, profile.numero].filter(Boolean).join(", ") || "Endereço pendente de configuração"}</p>
         <p className="mt-1 text-xs font-bold text-slate-500">
-          {LOJA_BAIRRO_RETIRADA}, {LOJA_CIDADE_UF_RETIRADA}
+          {[profile.bairro, [profile.cidade, profile.uf].filter(Boolean).join(" - ")].filter(Boolean).join(", ")}
         </p>
-        <p className="text-xs font-bold text-slate-500">CEP {LOJA_CEP_RETIRADA}</p>
+        {profile.cep ? <p className="text-xs font-bold text-slate-500">CEP {profile.cep}</p> : null}
       </div>
       <a
-        href={LOJA_LINK_MAPS_RETIRADA}
+        href={profile.maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(summary)}`}
         target="_blank"
         rel="noreferrer"
         className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-700"

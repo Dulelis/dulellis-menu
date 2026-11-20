@@ -1,4 +1,5 @@
 import { isNaturalProduct } from "@/lib/natural-store";
+import { readStoreProfiles, storeAddressSummary } from "@/lib/store-profiles";
 import { encodeOrderPaymentReference } from "@/lib/order-payment-metadata";
 import { getServiceSupabase } from "@/lib/server-supabase";
 import { getDeliveryAvailability } from "@/lib/delivery-schedule";
@@ -569,6 +570,9 @@ export async function prepareOrderDraft(args: {
   }
   const tipoEntrega = String(body.tipo_entrega || "");
   const retiradaNoBalcao = tipoEntregaEhRetirada(tipoEntrega);
+  const pickupAddress = retiradaNoBalcao
+    ? storeAddressSummary((await readStoreProfiles(supabase)).profiles[naturalStore ? "naturais" : "delivery"])
+    : "";
   const formaPagamento = String(body.forma_pagamento || "").trim();
   const trocoParaBruto = Number(body.troco_para);
   const trocoPara =
@@ -714,7 +718,7 @@ export async function prepareOrderDraft(args: {
       cliente: payloadCliente,
       cep: retiradaNoBalcao ? null : payloadCliente.cep || null,
       endereco: retiradaNoBalcao
-        ? "Retirada no balcao"
+        ? pickupAddress || "Endereço de retirada pendente de configuração"
         : payloadCliente.endereco || null,
       numero: retiradaNoBalcao ? null : payloadCliente.numero || null,
       bairro: retiradaNoBalcao ? null : payloadCliente.bairro || null,
