@@ -23,6 +23,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ServiceModeSwitcher } from "@/components/ServiceModeSwitcher";
+import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PRIVACY_POLICY_PATH, PRIVACY_POLICY_VERSION } from "@/lib/privacy-policy";
 import { CUSTOMER_PASSWORD_RULES_TEXT } from "@/lib/customer-password-policy";
 import { buildDulelisWhatsappUrl } from "@/lib/store-contact";
@@ -322,6 +323,16 @@ export function PreordersPageClient() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const logout = useCallback(async () => {
+    await fetch("/api/public/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "logout" }),
+    }).catch(() => undefined);
+    setSession(null);
+    setMyOrders([]);
   }, []);
 
   const loadMyOrders = useCallback(async () => {
@@ -818,30 +829,35 @@ export function PreordersPageClient() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-pink-50 via-white to-amber-50 pb-32 text-slate-900">
-      <header className="px-4 pb-5 pt-4">
-        <div className="mx-auto max-w-xl">
-          <ServiceModeSwitcher active="encomendas" />
-          <div className="mt-4 overflow-hidden rounded-[2rem] bg-slate-900 p-6 text-white shadow-[0_12px_32px_rgba(38,22,15,0.16)]">
-            <div className="flex items-center gap-3 text-pink-300">
-              <CalendarDays size={24} />
-              <p className="text-xs font-black uppercase tracking-[0.24em]">Agenda Dulelis</p>
-            </div>
-            <h1 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">Sua encomenda, preparada para o momento certo.</h1>
-            <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-300">
-              Escolha os produtos, personalize e reserve a data. A agenda funciona separadamente do horario do delivery.
-            </p>
-            {config ? (
-              <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-extrabold uppercase tracking-[0.06em]">
-                <span className="rounded-full bg-white/10 px-3 py-2">Antecedencia: {minimumLeadHours}h</span>
-                <span className="rounded-full bg-white/10 px-3 py-2">Agenda: {String(config.hora_inicio || "").slice(0, 5)}–{String(config.hora_fim || "").slice(0, 5)}</span>
-              </div>
-            ) : null}
-          </div>
+    <main className="app-page min-h-[100dvh] bg-white pb-32 font-sans text-slate-900">
+      <header className="app-topbar relative overflow-hidden border-b border-pink-50 bg-white px-4 pb-4 pt-5 text-center sm:px-8 sm:pb-6">
+        <div className="absolute left-0 top-0 h-1 w-full bg-amber-600" />
+        <div className="absolute right-3 top-3 z-10 sm:right-4 sm:top-4">
+          {!session ? (
+            <button type="button" onClick={() => setAuthOpen(true)} className="flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-white"><LogIn size={14} />Login para pedir</button>
+          ) : (
+            <button type="button" onClick={() => void logout()} className="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-700"><User size={14} />Sair</button>
+          )}
         </div>
+        <div className="flex flex-col items-center justify-center gap-1 pt-7 sm:pt-2">
+          <Image src="/logo.png" alt="Dulelis Confeitaria" width={320} height={144} className="h-auto w-full max-w-[210px] object-contain drop-shadow-sm sm:max-w-[280px]" priority />
+          <p className="inline-flex items-baseline justify-center gap-2 uppercase text-slate-400"><span className="text-base font-black text-pink-500 sm:text-lg">Encomendas</span><span className="text-xs font-semibold text-slate-600">artesanais</span></p>
+        </div>
+        {session ? <div className="mx-auto mt-3 max-w-xl text-left"><p className="text-base font-black leading-none text-slate-800 sm:text-lg">Olá, {session.nome.split(" ")[0]}</p></div> : null}
+        <div className="mx-auto mt-3 max-w-xl"><ServiceModeSwitcher active="encomendas" /></div>
+        <PwaInstallPrompt />
       </header>
 
-      <div className="mx-auto max-w-xl space-y-5 px-4">
+      <section className="border-b border-pink-50 bg-white/90 px-4 py-4 backdrop-blur-xl">
+        <div className="mx-auto max-w-xl overflow-hidden rounded-[2rem] border border-pink-100 bg-pink-50 p-6 shadow-[0_8px_24px_rgba(138,75,29,0.08)]">
+          <div className="flex items-center gap-3 text-pink-700"><CalendarDays size={24} /><p className="text-xs font-black uppercase tracking-[0.24em]">Agenda Dulelis</p></div>
+          <h1 className="mt-3 text-3xl font-black leading-tight text-slate-900 sm:text-4xl">Sua encomenda, preparada para o momento certo.</h1>
+          <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-600">Escolha os produtos, personalize e reserve a data. A agenda funciona separadamente do horário do delivery.</p>
+          {config ? <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-extrabold uppercase tracking-[0.06em] text-pink-800"><span className="rounded-full bg-white px-3 py-2">Antecedência: {minimumLeadHours}h</span><span className="rounded-full bg-white px-3 py-2">Agenda: {String(config.hora_inicio || "").slice(0, 5)}–{String(config.hora_fim || "").slice(0, 5)}</span></div> : null}
+        </div>
+      </section>
+
+      <div className="mx-auto max-w-xl space-y-5 px-4 pt-5">
         {loading ? (
           <div className="rounded-[2rem] bg-white p-8 text-center shadow-lg">
             <Loader2 className="mx-auto animate-spin text-pink-600" />
